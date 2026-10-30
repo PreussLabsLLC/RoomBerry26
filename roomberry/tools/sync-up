@@ -1,0 +1,6 @@
+# @(#)sync.up 2.3 2026/10/24 19:38:52
+
+set -x
+
+cd ..
+rsync -Lave ssh autonomy.json roomb*.py pi@pi://home/pi/Projects/Roomberry/roomberry

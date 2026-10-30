@@ -1,0 +1,1 @@
+nohup nice python roomberry.py 2>&1 > rb.log &

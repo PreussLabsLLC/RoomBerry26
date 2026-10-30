@@ -1,0 +1,117 @@
+{
+  "_sccsid": "@(#)autonomy.json 2.3.19 2026/10/28 22:00:00",
+  "_note": "Room dimensions and tag positions are surveyed. Intrinsics and camera mount are illustrative placeholders. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 15 faces -X into the room; robot viewing heading is +X and approach is from lower X; tag 16 viewing heading was confirmed as -Y. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
+  "start_mode": "idle",
+  "motion_ramp": {
+    "enabled": true,
+    "acceleration_mm_s2": 100,
+    "deceleration_mm_s2": 200
+  },
+  "robot_radius_mm": 174,
+  "map": {
+    "width_mm": 9000,
+    "height_mm": 8000,
+    "origin_mm": [0, 0],
+    "cell_size_mm": 87,
+    "cleaning_radius_mm": 87,
+    "state_path": "roomberry/map-state-reset-20261028-02.json",
+    "persist_interval_s": 30
+  },
+  "reverse_current_monitor": {
+    "enabled": true,
+    "mode": "report_only",
+    "sustained_current_a": 0.40,
+    "baseline_margin_a": 0.20,
+    "immediate_current_a": 0.65,
+    "persistence_s": 0.25,
+    "no_progress_s": 1.0
+  },
+  "sensor_log": {
+    "enabled": true,
+    "directory": "/var/log/roomberry-sensors",
+    "interval_s": 0.1,
+    "flush_interval_s": 10,
+    "max_files": 20,
+    "filename_prefix": "roomberry-sensors"
+  },
+  "camera": {
+    "family": "tag16h5",
+    "tag_size_m": 0.0575,
+    "intrinsics": { "fx": 1000, "fy": 1000, "cx": 648, "cy": 486 },
+    "max_dimension": 1640,
+    "highest_resolution": false,
+    "capture_resolution": [1640, 1232],
+    "snapshot_interval": 20,
+    "pause_for_detection": true
+  },
+  "camera_from_robot": [
+    [0, -1, 0, 0],
+    [0, 0, -1, 0.16],
+    [1, 0, 0, -0.125],
+    [0, 0, 0, 1]
+  ],
+  "landmarks": [
+    {
+      "family": "tag16h5",
+      "id": 1,
+      "surface": "carpet",
+      "world_from_tag": [
+        [-1, 0, 0, 1.06],
+        [0, 0, -1, 0.0],
+        [0, -1, 0, 0.16],
+        [0, 0, 0, 1]
+      ]
+    },
+    {
+      "family": "tag16h5",
+      "id": 2,
+      "surface": "carpet",
+      "world_from_tag": [
+        [0, 0, -1, 0.0],
+        [1, 0, 0, 0.535],
+        [0, -1, 0, 0.16],
+        [0, 0, 0, 1]
+      ]
+    },
+    {
+      "family": "tag16h5",
+      "id": 16,
+      "surface": "carpet",
+      "world_from_tag": [
+        [-1, 0, 0, 3.10],
+        [0, 0, -1, 0.95],
+        [0, -1, 0, 0.16],
+        [0, 0, 0, 1]
+      ]
+    },
+    {
+      "family": "tag16h5",
+      "id": 15,
+      "surface": "hard_floor",
+      "world_from_tag": [
+        [0, 0, 1, 7.73],
+        [-1, 0, 0, 1.52],
+        [0, -1, 0, 0.16],
+        [0, 0, 0, 1]
+      ]
+    }
+  ],
+  "max_localization_age": 900,
+  "min_decision_margin": 10,
+  "discover_unknown_tags": true,
+  "discovered_tags_path": "roomberry/discovered-tags.json",
+  "tag_filter": {
+    "max_reprojection_error": 10.0,
+    "min_tag_distance_m": 0.08,
+    "max_tag_distance_m": 8.0,
+    "max_pose_jump_mm": 500.0,
+    "max_pose_jump_age": 30.0,
+    "max_heading_jump_rad": 0.6,
+    "consensus_distance_mm": 250.0,
+    "consensus_heading_rad": 0.35
+  },
+  "mission_period": 0.2
+}
+
+
+

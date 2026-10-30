@@ -1,0 +1,16 @@
+# @(#)roomberry.service v2.1 2026/10/29
+[Unit]
+Description=Roomberry httpd server
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/bin/roomberry.py
+WorkingDirectory=/usr/local/bin/
+StandardOutput=inherit
+StandardError=inherit
+Restart=on-failure
+User=root
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target
