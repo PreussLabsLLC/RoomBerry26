@@ -1,6 +1,6 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 2.3.16 2026/10/28 21:00:00
+# @(#)roomberry.py 2.3.navlink.1 2026/10/30 09:51:08
 import xml.etree.ElementTree as ET
 import logging
 import traceback
@@ -21,6 +21,7 @@ from roomberry_mapper import RoomberryMapper
 from roomberry_mission import RoomberryMission
 from roomberry_navigation import NavigationCoordinator
 from roomberry_sensor_log import SensorCsvRecorder
+from roomberry_navlink import NavLinkReceiver
 from irobot.openinterface.constants import MODES
 
 CAM_RESOLUTION = (1296, 972)
@@ -225,9 +226,14 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
             camera_config.get('highest_resolution', True)
         )
         self.last_camera_operation = time()
+        self.navlink = NavLinkReceiver.from_config(
+            (autonomy_config or {}).get('navlink'), self.logger,
+        )
 
     def start(self):
         self.logger.info('Roomberry Server correctly started.')
+        if self.navlink is not None:
+            self.navlink.start()
         self.roomba_control.start()
         self.camera_service.start()
         if self.mission is not None:
@@ -248,7 +254,11 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                 try:
                     self.camera_service.close()
                 finally:
-                    self.roomba_control.close()
+                    try:
+                        self.roomba_control.close()
+                    finally:
+                        if self.navlink is not None:
+                            self.navlink.close()
 
     def handle_error(self, request, client_address):
         self.logger.info('Exception happened during processing of request from %s', client_address, exc_info=True)        

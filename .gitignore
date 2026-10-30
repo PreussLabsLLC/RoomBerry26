@@ -1,3 +1,4 @@
+# @(#).gitignore 2.3.navlink.1 2026/10/30 10:30:00
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -123,3 +124,8 @@ roomberry/logs/sensors/
 /utils/version.txt
 /roomberry/**/map-state*.json
 /roomberry/**/map-state*.json.tmp
+
+# NavLink recordings and Xcode per-user state
+roomberry/logs/navlink/
+xcuserdata/
+*.xcuserstate

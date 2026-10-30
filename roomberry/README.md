@@ -1,4 +1,4 @@
-﻿<!-- @(#)README.md 2.9 2026/10/26 -->
+﻿<!-- @(#)README.md 2.3.navlink.1 2026/10/30 10:01:30 -->
 # Roomberry
 
 **Roomberry 26** follows the original roomberry project (Pi Zero W with picam riding on
@@ -224,6 +224,23 @@ stop recording, or raise `interval_s` for a smaller file. The records are plain
 CSV with a header row and can be opened directly in Excel or a spreadsheet.
 `tools/get-pi-logs` copies the directory to the repository's `logs/sensors`
 folder.
+
+## NavLink recording
+
+The `navlink` section in `autonomy.json` starts a logging-only UDP receiver on
+port 5010 with a normal manual Roomberry launch. StarLock sends 128-byte
+observations at 10 Hz. Logs go to `/var/log/roomberry-navlink/`, buffered and
+flushed every 10 seconds, with rotation at 16 MiB and retention of 20 files.
+The launch user needs write access to that directory. No systemd setup is
+required, and NavLink data does not affect localization or motor commands.
+
+To receive independently of Roomberry's serial/camera hardware, run
+`python3 roomberry_navlink.py --directory "$HOME/navlink-logs"` and stop with
+Ctrl-C. Run only one receiver on port 5010. Export a recording with
+`python3 roomberry_navlink.py --csv /path/to/run.bin > navlink.csv`.
+`tools/get-pi-logs` fetches integrated recordings into `logs/navlink/`.
+See [NavLink](../navlink/navlink.md) for the byte layout, validity flags,
+coordinate conventions and current calibration limitations.
 
 
 **Roomberry** isÂ a surveillance robot based on **Roomba** using a **Raspberry Pi Zero W** and a **camera module**. A demo of Roomberry's capabilities as well as the web interface developed to interact with the robot can be seen in the following video:

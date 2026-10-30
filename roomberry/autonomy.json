@@ -1,5 +1,5 @@
 {
-  "_sccsid": "@(#)autonomy.json 2.3.19 2026/10/28 22:00:00",
+  "_sccsid": "@(#)autonomy.json 2.3.navlink.1 2026/10/30 09:51:08",
   "_note": "Room dimensions and tag positions are surveyed. Intrinsics and camera mount are illustrative placeholders. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 15 faces -X into the room; robot viewing heading is +X and approach is from lower X; tag 16 viewing heading was confirmed as -Y. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
   "start_mode": "idle",
   "motion_ramp": {
@@ -25,6 +25,15 @@
     "immediate_current_a": 0.65,
     "persistence_s": 0.25,
     "no_progress_s": 1.0
+  },
+  "navlink": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5010,
+    "directory": "/var/log/roomberry-navlink",
+    "flush_interval_s": 10,
+    "max_files": 20,
+    "max_file_bytes": 16777216
   },
   "sensor_log": {
     "enabled": true,
