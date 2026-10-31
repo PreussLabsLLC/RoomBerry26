@@ -1,4 +1,4 @@
-﻿<!-- @(#)README.md 2.3.navlink.1 2026/10/30 10:01:30 -->
+﻿<!-- @(#)README.md 2.3.map-log.1 2026/10/30 18:30:00 -->
 # Roomberry
 
 **Roomberry 26** follows the original roomberry project (Pi Zero W with picam riding on
@@ -65,7 +65,7 @@ correction is that old by the time it is applied.
 ## Connecting autonomy
 
 The service reads `roomberry/autonomy.json` when that file exists. Without it,
-the mapper and mission coordinator are not started. The mission defaults to `idle`; set `start_mode` to `discovery` to run the stationary AprilTag survey cycle, or `clean` only after validating the room survey and calibration. Discovery uses the dock, tag 2, and every other configured landmark in order, moves at 50 mm/s with cleaning motors off, and captures each scan at the camera sensor maximum resolution. It approaches tag 2 until bumper contact, then parks 500 mm from each remaining tag face to scan it before returning to the 500 mm retreat point. Tags 1 and 2 are excluded from the visit list, so the current configuration visits tag 16 followed by tag 15. Each visit logs the arrival pose, the tag-corrected post-scan pose, the odometry correction, the facing error, and the landmark's optional surface so carpet and hard-floor runs can be compared. The dock anchor is (1060, 260) mm with the robot facing -Y, so the retreat target is (1060, 760) mm. Leave `start_mode` as `idle` until ready to run the robot. During any active mission, Sunday through Thursday LEDs mirror left cliff or left IR proximity, front-left cliff or front-left IR, wall or center IR, front-right cliff or front-right IR, and right cliff or right IR activity, holding each indication for two seconds after a brief trigger; Friday and Saturday remain unused. A rising edge on the physical Schedule button starts discovery and both physical Schedule and Clock presses play a short confirmation beep. The room frame uses meters in the 4x4 tag transforms, with +X to
+the mapper and mission coordinator are not started. The mission defaults to `idle`; set `start_mode` to `discovery` to run the stationary AprilTag survey cycle, or `clean` only after validating the room survey and calibration. Discovery follows tag 1 at the dock, tag 16, tag 15, then tag 1 again, cruises at up to 80 mm/s with cleaning motors off, and captures scans at the configured resolution (currently 820 by 616). After its dock retreat and tag 1 scan, it parks 500 mm from each visit tag face to scan it before returning directly toward the dock retreat point. The dedicated tag 2 approach/contact visit is disabled; tag 2 remains available as a localization landmark if observed. Tags 1 and 2 are excluded from the visit list, so the current configuration visits tag 16 followed by tag 15. The return has no scheduled tag 16 revisit; the mapper plans a route toward tag 1 around known obstacles. Each visit logs the arrival pose, the tag-corrected post-scan pose, the odometry correction, the facing error, and the landmark's optional surface so carpet and hard-floor runs can be compared. The dock anchor is (1060, 260) mm with the robot facing -Y, so the retreat target is (1060, 760) mm. Leave `start_mode` as `idle` until ready to run the robot. During any active mission, Sunday through Thursday LEDs mirror left cliff or left IR proximity, front-left cliff or front-left IR, wall or center IR, front-right cliff or front-right IR, and right cliff or right IR activity, holding each indication for two seconds after a brief trigger; Friday and Saturday remain unused. A rising edge on the physical Schedule button starts discovery and both physical Schedule and Clock presses play a short confirmation beep. The room frame uses meters in the 4x4 tag transforms, with +X to
 the right, +Y forward, and heading counter-clockwise; the mapper converts its
 public pose and waypoints to millimeters. The configuration needs:
 
@@ -114,6 +114,57 @@ short bounded drive commands through the command arbiter. Cliff, wheel-drop,
 stale-sensor, and localization-age checks stop the mission. A hard safety stop
 puts it in idle; it must be restarted after the condition is resolved.
 
+Waypoint transit uses continuous differential steering: both wheels move forward
+through ordinary bends, with the outside wheel capped at the normal transit
+speed. Steering updates and straight/curve transitions do not insert a stop.
+The robot slows on bends and near its goal. For distant waypoints, heading errors
+above 60 degrees still require a pivot; forward steering resumes below 45 degrees
+instead of pivoting all the way to zero error. Within 200 mm of a waypoint,
+tighter thresholds keep it from circling a nearby target. Dedicated tag-facing,
+dock alignment, and obstacle-recovery maneuvers retain their in-place turns,
+which slow as the remaining angle shrinks.
+
+Before waypoint travel, the mapper checks the commanded short arc's robot
+footprint, with a small margin, against blocked cell areas and room boundaries.
+If a new contact or localization update leaves the current pose inside only
+the extra obstacle padding, a command may move away without reducing starting
+clearance; the robot footprint and sampling margin must still remain clear.
+The same escape rule applies to extra room-edge padding. Grid routes exclude
+center waypoints too close to the boundary for that footprint, so a nominally
+free edge cell is not proposed and then rejected by the motion guard.
+The planner inflates the whole blocked square by the same footprint and padding
+as the motion guard; map rendering uses that clearance too. If a curve does not
+fit, the robot aligns in place and checks again. A blocked discovery waypoint
+pauses motion while preserving the mission and original goal, invalidates the
+cached route, and explores with bump and go for two minutes. It randomly selects
+a heading with map clearance, drives straight until contact or a mapped obstacle,
+and backs up about 35 mm after contact before choosing another heading.
+Contact turns first try 10–20 degrees away from the bumper, then try wider
+45–180 degree escape headings if necessary. Retreat is capped at two seconds;
+a held bumper after retreat keeps the robot stopped. A bumper contact that blocks a targeted localization turn during a waypoint or home leg starts contact retreat and bump-and-go instead of waiting for the search to time out. During exploration it stops for a scan
+about every twenty seconds and checks for a usable route to the original goal
+every ten seconds, resuming navigation early when possible. After two minutes
+it replans and can make at most two bounded tag-view searches. If still blocked
+with a localized pose, it starts another bump-and-go cycle. Mapped obstacles
+are preserved throughout recovery. Repeated stationary scans are limited
+to two at the same viewpoint until the robot moves at least 100 mm or turns
+15 degrees; the bounded localization search can still take its required views. A fresh accepted tag can trigger an earlier
+retry. A usable route resumes automatically; reaching the original goal resumes
+the normal alignment/visit stage. Ordinary blockage does not immediately switch
+to idle. Manual takeover cancels recovery, and hard hazards still stop the mission.
+Every actual mission mode change, including entry to and exit from bump-and-go,
+plays a four-note ascending melody. The four-character display shows `bUMP`
+while exploring and `SCAn` during its stationary scans. Repeated control ticks
+do not repeat the melody. Existing wheel-drop protection suppresses sounds
+that would require rearming the robot.
+If the estimated position lies inside map clearance, the map labels reachability
+as unknown instead of coloring the entire room unreachable.
+This depends on the estimated
+pose and known map: it cannot compensate for a badly drifted pose or unseen
+furniture. The controller's bumper, cliff, wheel-drop, sensor-freshness checks,
+acceleration limits, and command watchdogs continue to apply. Surface-specific
+wheel-odometry correction is not applied by this driving-style change.
+
 ## Remote control
 
 A drive or Open Interface mode command from the web interface cancels any
@@ -143,15 +194,38 @@ mapped as obstacles only during intentional mission motion, not while idle,
 charging, or retreating off the dock. The map point is placed at the bumper
 face rather than several cells into the obstacle.
 
-After the retreat scan, discovery turns directly toward the tag 2 approach
+The post-retreat scan must accept a surveyed tag before transit to tag 2.
+If it does not, discovery retries twice while stationary, then ends in idle
+instead of navigating from the old dock fix. An old `tag_ids` value or
+`localized=True` alone does not satisfy this check.
+
+The user confirmed that tag 16 faces +Y like tag 1. At its surveyed (3100, 950) mm
+position, its 500 mm parking point is (3100, 1450) mm and the robot faces −Y.
+Tag 15 faces −X, so its parking point is (7230, 1520) mm and viewing heading +X. Its configured full tag transform uses that orientation
+for localization and viewpoint selection as well as parking.
+
+After a successful retreat scan, discovery turns directly toward the tag 2 approach
 point instead of making a full U-turn first. It turns again to face tag 2 at the
-500 mm approach point before requesting its scan. After bumper contact it
+500 mm approach point before requesting its scan. Missing tag 2 triggers two
+stationary yaw views at +0.5 and -0.5 radians; it does not move sideways to chase
+an unconfirmed tag. All three views failing ends discovery in idle. Only an
+accepted tag-2 fix allows the heading to be restored for intentional contact.
+After an unexpected contact, tag-2 transit uses mapped routing too, and an
+unreachable approach point enters the same paused route recovery. After bumper contact it
 reverses until the physical bumper is clear and
 the robot has moved at least 150 mm from the tag, then starts the remaining tag
 visits. The light bumpers are treated as proximity hints rather than contact
 sensors because the white tag can keep them active. The reverse is capped at
 250 mm, with a 10 second safety timeout if odometry stalls; failing either limit
 stops the mission for manual recovery.
+
+During the remaining tag visits, a scan that accepts any surveyed tag preserves
+the active destination. Rejected detections with bad image geometry do not
+trigger a translation detour. Opportunistic repositioning is reserved for
+geometrically usable pose-jump candidates when no tag fix was accepted, and
+completed dock tags 1 and 2 cannot divert the visit route back toward home.
+Stationary tag-view searches may still look back at a known tag to refresh
+localization; those turns do not change the active travel destination.
 
 Each additional tag is approached from a parking point 500 mm along its
 surveyed normal, aligned, and scanned without touching the tag or an unknown
@@ -227,12 +301,26 @@ folder.
 
 ## NavLink recording
 
-The `navlink` section in `autonomy.json` starts a logging-only UDP receiver on
+The `navlink` section in `autonomy.json` starts a UDP recorder on
 port 5010 with a normal manual Roomberry launch. StarLock sends 128-byte
 observations at 10 Hz. Logs go to `/var/log/roomberry-navlink/`, buffered and
 flushed every 10 seconds, with rotation at 16 MiB and retention of 20 files.
 The launch user needs write access to that directory. No systemd setup is
-required, and NavLink data does not affect localization or motor commands.
+required. Recording preserves all valid wire packets, including duplicates
+and tracking failures.
+
+The optional `phone_position` section enables gradual position aiding. The
+shipped configuration enables it at a maximum 5 mm/s with a 20-second blend
+time constant. A stationary accepted AprilTag fix anchors the phone frame to
+the room, using the configured mounting yaw and lens offset. Fresh, normally
+tracked phone positions can then nudge the localizer's X/Y position. Heading,
+tag localization age and Roomba distance counters are unchanged. Corrections
+are disabled outside autonomous modes and when Roomba sensors are stale.
+Missing/stale phone tracking, session/alignment/odometry resets, implausible
+phone steps or disagreement over 750 mm require another tag anchor. Phone
+corrections are logged every ten seconds; set `phone_position.enabled` false
+to return to recording alone. Existing AprilTag corrections retain their
+current behavior; the rate limit applies to phone aiding.
 
 To receive independently of Roomberry's serial/camera hardware, run
 `python3 roomberry_navlink.py --directory "$HOME/navlink-logs"` and stop with
@@ -338,7 +426,66 @@ mode or shutting down forces a final save. A saved grid must match the configure
 origin, cell size, and robot radius. The live pose is reacquired from AprilTags
 after restart; the saved trajectory remains visible. Request http://<robot>:8080/map.png for a
 fresh PNG showing cleaned, pending, unreachable, and blocked cells, playfield
-boundaries, the current localized pose, its recent trail, and surveyed tags.
-The trail fades from pale blue at older poses to strong blue at the newest, and
-it is broken wherever consecutive poses jump more than about 275 mm, so a
-localization jump between runs is not drawn as a line across the room.
+boundaries, the current localized pose, its trail, and surveyed tags.
+Each tag marker has an arrow pointing out of its printed face into the room,
+opposite the heading a robot uses to look straight at it. With the current
+survey, tags 1 and 16 point +Y, tag 2 points +X, and tag 15 points −X. These
+arrows come from the same full tag transforms used by localization and parking.
+The entire trail recorded since Roomberry started is strong blue, with no
+2,000-point cutoff for that current session. Up to 2,000 points loaded from
+previous runs remain as faded history. Session boundaries are saved with the
+trail so a PNG rendered directly from a saved state can distinguish them.
+Restarting Roomberry starts a new trail session; changing mission mode does not.
+The renderer never connects across a session boundary or a localization jump
+greater than about 275 mm. Legacy snapshots without a session marker render
+their trail fully visible; once loaded by Roomberry, those points become history.
+
+
+Timestamped map session logs
+
+The `map_log` configuration enables automatic PNG archives independently of web
+requests. Each service start creates a folder such as
+`/var/log/roomberry-maps/roomberry-maps-20261030-183000-123456/`.
+Files are named `map-YYYYMMDD-HHMMSS-microseconds-sequence.png`; `index.csv`
+records the local timestamp with UTC offset, epoch seconds, filename, mode and
+capture reason. The timestamp describes the captured map snapshot, rather than
+when the background worker finished rendering it, and also appears on the PNG.
+A snapshot is queued at startup, every 30 seconds during active modes, at scan
+pauses and map-flush events, and at clean shutdown. A bounded worker keeps only
+the latest pending snapshot if rendering falls behind; it drains the pending
+final snapshot on clean shutdown. Power loss can prevent that final write.
+Rendering and image writes run outside the mission thread. Permission or render
+failures disable this recorder and log the error without stopping navigation.
+Archives are not automatically deleted.
+
+```
+"map_log": {
+  "enabled": true,
+  "directory": "/var/log/roomberry-maps",
+  "interval_s": 30
+}
+```
+
+Create the parent directory with ownership matching the Roomberry service user.
+For a service running as `pi`:
+
+```bash
+sudo install -d -o pi -g pi -m 0755 /var/log/roomberry-maps
+```
+
+`tools/get-pi-logs` fetches these sessions into `roomberry/logs/maps/` alongside
+the existing sensor and NavLink downloads. The existing `tools/sync-up` Python
+file glob includes the new `roomberry_map_log.py` module. No web-page visit is
+needed for recording. These paths and settings take effect after deployment and
+service restart.
+
+Map colors distinguish the measured obstacle cell (dark brown), robot-center
+clearance (tan), disconnected free space (gray), and unvisited reachable space
+(yellow). At 87 mm pitch a 20 × 20 mm chair leg fits in one blocked cell, but the
+174 mm robot radius plus padding excludes the surrounding 24 cell centers as
+well: 25 centers in a 5 × 5 patch. This patch is not the physical size of the
+leg. The motion guard uses continuous footprint checks; the grid is a coarse
+planning approximation. If the pose itself conflicts with obstacle clearance,
+reachability is labeled unknown rather than marking the room unreachable.
+
+Normal discovery cruise is capped at 80 mm/s. Minimum pivot speed is 30 mm/s. Ordinary transit bends keep the inner wheel at least 30 mm/s; near-goal and proximity motion retains slower limits.

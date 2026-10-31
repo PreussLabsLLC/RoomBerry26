@@ -60,6 +60,18 @@ class AprilTagLocalizer:
         self._discovered_tags = {}
         self._discovered_tags_log = []
 
+    def nudge_position(self, dx_mm, dy_mm):
+        """Apply bounded external translation without refreshing tag age or heading."""
+        if self._pose is None or not all(isfinite(v) for v in (dx_mm, dy_mm)):
+            return False
+        x, y = self._pose['x_mm'] + dx_mm, self._pose['y_mm'] + dy_mm
+        if self.room_bounds_mm is not None:
+            xmin, ymin, xmax, ymax = self.room_bounds_mm
+            if not xmin <= x <= xmax or not ymin <= y <= ymax:
+                return False
+        self._pose.update(x_mm=x, y_mm=y)
+        return True
+
     def invalidate_pose(self):
         """A carried/restarted robot must reacquire a tag before global navigation."""
         self._pending_relocation = None

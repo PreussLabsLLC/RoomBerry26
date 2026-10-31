@@ -1,15 +1,17 @@
 """On-demand PNG map rendering for Roomberry."""
-# @(#)roomberry_map_image.py 2.3.6 2026/10/28 14:30:00
+# @(#)roomberry_map_image.py 2.3.map-log.1 2026/10/30 18:30:00
 from collections import deque
 from io import BytesIO
-from math import ceil, hypot
+from math import ceil, cos, hypot, sin
 from PIL import Image, ImageDraw
+from roomberry_mapper import obstacle_clearance_cells
 
 
 COLORS = {
     'pending': (242, 190, 75), 'mowed': (92, 170, 112),
     'excluded': (205, 83, 83), 'blocked': (88, 53, 53),
-    'unreachable': (150, 150, 150), 'free': (247, 247, 240),
+    'unreachable': (150, 150, 150), 'clearance': (225, 196, 174),
+    'free': (247, 247, 240),
 }
 
 # A trail gap this large usually means localization jumped between runs (or
@@ -18,6 +20,7 @@ COLORS = {
 TRAIL_GAP_MM = 275.0
 TRAIL_OLDEST_COLOR = (220, 232, 246)
 TRAIL_NEWEST_COLOR = (25, 100, 210)
+TAG_FACING_COLOR = (15, 50, 120)
 
 
 def trail_segments(trail, gap_mm=TRAIL_GAP_MM):
@@ -46,12 +49,12 @@ def _fade_color(fraction):
     )
 
 
-def render_map(state, tags=()):
+def render_map(state, tags=(), caption=None):
     cols, rows = state['cols'], state['rows']
     pitch = float(state['cell_size_mm'])
     ox, oy = float(state['origin_x']), float(state['origin_y'])
     scale = max(2, min(12, 720 // max(cols, rows)))
-    left, top, right_margin, bottom_margin = 56, 42, 20, 56
+    left, top, right_margin, bottom_margin = 56, 42, 20, 82
     plot_width, plot_height = cols * scale, rows * scale
     right, bottom = left + plot_width, top + plot_height
     width, height = right + right_margin, bottom + bottom_margin
@@ -63,18 +66,15 @@ def render_map(state, tags=()):
         (x, y) for y in range(rows) for x in range(cols)
         if occ[y][x] == 'blocked'
     }
-    clearance = set()
     radius = float(state.get('robot_radius_mm', pitch * 2))
-    reach = int(radius / pitch) + 1
-    for x, y in blocked:
-        for yy in range(max(0, y - reach), min(rows, y + reach + 1)):
-            for xx in range(max(0, x - reach), min(cols, x + reach + 1)):
-                if hypot(xx - x, yy - y) * pitch <= radius:
-                    clearance.add((xx, yy))
+    clearance = obstacle_clearance_cells(cols,rows,pitch,radius,blocked)
 
     pose = state.get('pose')
     reachable = set()
-    if pose and pose.get('cell') and pose['cell'] not in blocked | clearance:
+    start = None if not pose or pose.get('cell') is None else tuple(pose['cell'])
+    reachability_known = (start is not None and 0 <= start[0] < cols and
+                          0 <= start[1] < rows and start not in blocked | clearance)
+    if reachability_known:
         start = tuple(pose['cell'])
         reachable = {start}
         queue = deque([start])
@@ -100,8 +100,11 @@ def render_map(state, tags=()):
         for x in range(cols):
             cookie = cookies[y][x]
             color = COLORS['blocked'] if occ[y][x] == 'blocked' else COLORS[cookie]
-            if cookie == 'pending' and pose and (x, y) not in reachable:
-                color = COLORS['unreachable']
+            if cookie == 'pending' and occ[y][x] != 'blocked':
+                if (x, y) in clearance:
+                    color = COLORS['clearance']
+                elif reachability_known and (x, y) not in reachable:
+                    color = COLORS['unreachable']
             cell_left = left + x * scale
             cell_top = top + (rows - y - 1) * scale
             draw.rectangle((cell_left, cell_top,
@@ -110,35 +113,53 @@ def render_map(state, tags=()):
 
     draw.rectangle((left, top, right, bottom), outline=(25, 25, 25), width=3)
     trail = state.get('trail', [])
-    segments = trail_segments(trail)
-    pair_count = sum(max(0, len(segment) - 1) for segment in segments)
+    # Legacy snapshots lack session metadata; show them fully rather than
+    # guessing which points are old. Never bridge a process-session boundary.
+    session_start = max(0, min(len(trail), int(state.get('trail_session_start', 0))))
+    old_segments = trail_segments(trail[:session_start])
+    current_segments = trail_segments(trail[session_start:])
+    pair_count = sum(max(0, len(segment) - 1) for segment in old_segments)
     # Composite onto the actual cell colors so old paths fade into the map
     # rather than becoming pale opaque lines over obstacles and coverage.
     trail_layer = Image.new('RGBA', im.size, (0, 0, 0, 0))
     trail_draw = ImageDraw.Draw(trail_layer)
     pair_index = 0
-    for segment in segments:
+    for segment in old_segments:
         for start, end in zip(segment, segment[1:]):
             fraction = pair_index / max(1, pair_count - 1)
-            # Keep the only line of a short trail fully visible.
-            if pair_count == 1:
-                fraction = 1.0
             pair_index += 1
-            opacity = int(round(255 * (0.03 + 0.97 * fraction ** 3)))
+            opacity = int(round(255 * (0.08 + 0.27 * fraction)))
             trail_draw.line(
                 (xy(*start), xy(*end)),
                 fill=_fade_color(fraction) + (opacity,),
                 width=max(2, scale // 2),
             )
+    for segment in current_segments:
+        trail_draw.line([xy(*point) for point in segment],
+                        fill=TRAIL_NEWEST_COLOR + (255,),
+                        width=max(2, scale // 2))
     im = Image.alpha_composite(im.convert('RGBA'), trail_layer).convert('RGB')
     draw = ImageDraw.Draw(im)
-    for x, y, tag_id in tags:
+    for marker in tags:
+        x, y, tag_id = marker[:3]
         px, py = xy(x, y)
         radius_px = max(4, scale)
         draw.ellipse((px - radius_px, py - radius_px,
                       px + radius_px, py + radius_px),
                      fill=(35, 95, 190), outline='white', width=2)
-        draw.text((px + radius_px + 2, py - radius_px), str(tag_id),
+        if len(marker) > 3:
+            heading = float(marker[3])
+            ux, uy = cos(heading), -sin(heading)  # Screen Y points downward.
+            length, head = max(22, scale*4), max(6, scale)
+            start = (px+ux*(radius_px+1), py+uy*(radius_px+1))
+            tip = (px+ux*length, py+uy*length)
+            draw.line((start, tip), fill='white', width=5)
+            draw.line((start, tip), fill=TAG_FACING_COLOR, width=3)
+            draw.polygon((tip,
+                          (tip[0]-ux*head-uy*head*.5, tip[1]-uy*head+ux*head*.5),
+                          (tip[0]-ux*head+uy*head*.5, tip[1]-uy*head-ux*head*.5)),
+                         fill=TAG_FACING_COLOR)
+        draw.text((px + radius_px + 2, py - radius_px - 12), str(tag_id),
                   fill=(15, 50, 120))
     if pose:
         x, y = pose['x_mm'], pose['y_mm']
@@ -184,14 +205,24 @@ def render_map(state, tags=()):
 
     draw.text((left + plot_width / 2 - 18, bottom + 34), 'X (mm)',
               fill=(25, 25, 25))
+    draw.text((left, bottom + 59), 'Tag arrows point out of the printed face into the room.',
+              fill=TAG_FACING_COLOR)
     y_label = Image.new('RGBA', (48, 14), (255, 255, 255, 0))
     ImageDraw.Draw(y_label).text((0, 0), 'Y (mm)', fill=(25, 25, 25))
     y_label = y_label.rotate(90, expand=True)
     im.paste(y_label, (3, top + (plot_height - y_label.height) // 2), y_label)
 
+    if pose and not reachability_known:
+        draw.text((left, 24), 'Reachability unknown: estimated pose conflicts with map clearance.',
+                  fill=COLORS['blocked'])
+
+    if caption:
+        draw.text((left, bottom + 72), caption, fill=(30, 30, 30))
+
     # Keep the legend in the top margin, clear of the coordinate labels.
     legend = [('Cleaned', COLORS['mowed']), ('Not visited', COLORS['pending']),
-              ('Unreachable', COLORS['unreachable']), ('Blocked', COLORS['blocked'])]
+              ('Unreachable', COLORS['unreachable']), ('Clearance', COLORS['clearance']),
+              ('Blocked', COLORS['blocked'])]
     x_cursor, legend_y = 8, 8
     for label, color in legend:
         draw.rectangle((x_cursor, legend_y, x_cursor + 11, legend_y + 11),
@@ -199,7 +230,7 @@ def render_map(state, tags=()):
         draw.text((x_cursor + 15, legend_y - 1), label, fill=(30, 30, 30))
         box = draw.textbbox((0, 0), label)
         x_cursor += 22 + box[2] - box[0]
-    draw.text((left + 330, 8), 'Ticks: 500 mm minor / 1000 mm labeled',
+    draw.text((left, bottom + 47), 'Ticks: 500 mm minor / 1000 mm labeled',
               fill=(30, 30, 30))
 
     output = BytesIO()

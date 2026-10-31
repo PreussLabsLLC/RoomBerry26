@@ -1,4 +1,4 @@
-"""NavLink v1 observation-only UDP receiver and buffered binary recorder."""
+"""NavLink v1 UDP recorder with ordered observations for optional position aiding."""
 # @(#)roomberry_navlink.py 2.3.navlink.1 2026/10/30 09:51:08
 
 import argparse
@@ -53,8 +53,8 @@ def decode_packet(data):
 class NavLinkReceiver:
     """Record valid wire packets, including duplicates and tracking failures.
 
-    No motor, mapper or localization consumer receives these observations.
-    Sequence and timestamp history is retained verbatim for offline analysis.
+    Recording retains sequence and timestamp history verbatim. Optional
+    localization aiding reads a separate ordered observation snapshot.
     """
 
     def __init__(self, directory='/var/log/roomberry-navlink', host='0.0.0.0',
@@ -79,6 +79,34 @@ class NavLinkReceiver:
         self._stop = threading.Event()
         self._bytes = 0
         self._last_flush = 0
+        self._observation_lock = threading.Lock()
+        self._observation = None
+        self._observation_identity = None
+        self._observation_seq = None
+        self._clock_offset = None
+
+    def _observe(self, values, received_at):
+        """Keep ordered observations separately from the unfiltered recording."""
+        row = dict(zip(FIELDS, values))
+        identity = (row['session'], row['alignment'])
+        with self._observation_lock:
+            if identity != self._observation_identity:
+                self._observation_identity = identity
+                self._observation_seq = None
+                self._clock_offset = None
+            if self._observation_seq is not None:
+                advance = (row['seq'] - self._observation_seq) & 0xffffffff
+                if not 0 < advance < 0x80000000:
+                    return
+            self._observation_seq = row['seq']
+            offset = received_at - row['send_us'] / 1e6
+            self._clock_offset = offset if self._clock_offset is None else min(self._clock_offset, offset)
+            row['frame_monotonic'] = row['frame_us'] / 1e6 + self._clock_offset
+            self._observation = row
+
+    def latest_observation(self):
+        with self._observation_lock:
+            return None if self._observation is None else dict(self._observation)
 
     @classmethod
     def from_config(cls, config, logger=None):
@@ -135,7 +163,7 @@ class NavLinkReceiver:
         self._stop.clear()
         self._thread = threading.Thread(target=self._run, name='NavLink', daemon=True)
         self._thread.start()
-        self.logger.info('NavLink listening on %s:%d (record only)', self.host, self.port)
+        self.logger.info('NavLink listening on %s:%d (recording enabled)', self.host, self.port)
         return True
 
     def _run(self):
@@ -152,13 +180,14 @@ class NavLinkReceiver:
                     self.rejected += 1
                     continue
                 try:
-                    decode_packet(data)
+                    values = decode_packet(data)
                 except ValueError:
                     self.rejected += 1
                     continue
                 if self._bytes + 144 > self.max_file_bytes:
                     self._open_log()
                 self._file.write(RECEIPT.pack(wall_ns, monotonic_ns) + data)
+                self._observe(values, monotonic_ns / 1e9)
                 self._bytes += 144
                 self.received += 1
         except OSError:

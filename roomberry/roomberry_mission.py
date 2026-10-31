@@ -1,12 +1,12 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 2.3.18 2026/10/28 21:40:00
+# @(#)roomberry_mission.py 2.3.map-log.1 2026/10/30 18:30:00
 
 from math import atan2, cos, hypot, pi, sin
 from random import uniform, choice
 from threading import Event, RLock, Thread
 from time import monotonic, time
 
-from irobot.openinterface.constants import MODES
+from irobot.openinterface.constants import MODES, ROBOT
 
 from roomberry_control import LIGHT_BUMPER_PROXIMITY_THRESHOLD
 from roomberry_navigation import (
@@ -23,9 +23,21 @@ MIN_PROGRESS_MM = 20.0
 NAVIGATION_SPEED = 80
 TURN_SPEED = 60
 HEADING_TOLERANCE_RAD = 0.25
-# A continuous turn stops inside the tighter tolerance, while a straight leg
-# may drift up to the wider tolerance before another turn is worth starting.
-TURN_TOLERANCE_RAD = 0.12
+# Cruise with both wheels forward; pivot only for large heading changes.
+# Separate entry/exit angles avoid alternating between a pivot and an arc.
+WAYPOINT_PIVOT_ENTER_RAD = pi / 3.0
+WAYPOINT_PIVOT_EXIT_RAD = pi / 4.0
+WAYPOINT_NEAR_MM = 200.0
+WAYPOINT_NEAR_PIVOT_ENTER_RAD = 0.55
+WAYPOINT_NEAR_PIVOT_EXIT_RAD = 0.35
+WAYPOINT_LOOKAHEAD_MM = 250.0
+# At 80 mm/s outside-wheel speed, this keeps the inner wheel above 30 mm/s.
+WAYPOINT_MAX_STEERING = 0.45
+WAYPOINT_HEADING_DEADBAND_RAD = 0.03
+MIN_TURN_SPEED = 30
+BUMP_GO_SECONDS = 120.0
+BLOCKED_RETRY_SECONDS = 10.0
+BLOCKED_VIEW_SEARCHES = 2
 # Watchdogs for a repeated continuous command. The mission loop extends them on
 # every tick, so they only fire when the coordinator stops refreshing motion.
 SPIN_WATCHDOG_SECONDS = 0.6
@@ -35,7 +47,7 @@ DRIVE_WATCHDOG_SECONDS = 1.0
 # send either resume the same motion or fail visibly instead of stalling.
 CONTINUOUS_REISSUE_SECONDS = 0.5
 MAX_TAG_PROCESSING_AGE = 5.0
-DISCOVERY_SPEED = 60
+DISCOVERY_SPEED = 80
 # Keep these discovery stages uninterrupted while a continuous command is
 # active; a stationary scan would brake a smooth reverse or turn and invite
 # wheel slip. If motion has stopped, a scan is allowed so localization can
@@ -70,10 +82,10 @@ DISCOVERY_REVERSE_SPEED = 50
 DISCOVERY_TURN_SPEED = 50
 WALL_FOLLOW_SPEED = 50
 DISCOVERY_AVOID_SPEED = 40
-DISCOVERY_AVOID_REVERSE_MM = 100.0
-DISCOVERY_AVOID_FORWARD_MM = 180.0
+DISCOVERY_AVOID_REVERSE_MM = 35.0
+DISCOVERY_AVOID_FORWARD_MM = 90.0
 DISCOVERY_AVOID_TURN_RAD = pi / 4.0
-DISCOVERY_AVOID_TURN_TOLERANCE_RAD = 0.12
+DISCOVERY_AVOID_TURN_TOLERANCE_RAD = 0.06
 DISCOVERY_AVOID_STAGE_TIMEOUT_SECONDS = 8.0
 # The parallel leg is much longer than the reverse or turn, so give it enough
 # time for the full distance at detour speed plus odometry and turn-in slack.
@@ -125,6 +137,8 @@ class RoomberryMission:
         self.mapper = mapper
         self.navigation = navigation
         self.localizer = localizer
+        self.phone_position = None
+        self._announced_mode = None
         self.logger = logger
         self.dock_waypoint_mm = dock_waypoint_mm
         self.wall_follow = wall_follow or {'enabled': False}
@@ -140,6 +154,8 @@ class RoomberryMission:
         self._aim_scan_pending = False
         self._aim_scan_cooldown = 0.0
         self._localization_recovery = None
+        self.map_log = None
+        self._blocked_waypoint = None
         self._restart_generation = 0
         self._detections_after_restart = 0.0
         self._wall_clear_start = None
@@ -156,6 +172,7 @@ class RoomberryMission:
         self._discovery_localization_stale_logged = False
         self._discovery_start_travelled = None
         self._discovery_turning = False
+        self._discovery_retreat_scan_failures = 0
         self._discovery_hazard_since = None
         self._discovery_proximity_ticks = 0
         self._scan_pose = None
@@ -206,6 +223,7 @@ class RoomberryMission:
             )
             self._aim_scan_pending = False
             self._localization_recovery = None
+            self._blocked_waypoint = None
             self._mode = mode
             if mode == MODE_DISCOVERY:
                 self._localization_recovery = None
@@ -221,7 +239,7 @@ class RoomberryMission:
                 self._discovery_release_start_travelled = None
                 self._discovery_release_clear_since = None
                 self._discovery_release_deadline = None
-                self._tag2_finish_retry = False
+                self._discovery_retreat_scan_failures = 0
                 self._discovery_scan_resume = None
                 self._discovery_repositioned_tags = set()
                 self._discovery_logged_tags = set()
@@ -271,6 +289,19 @@ class RoomberryMission:
             self.logger.info('Mission mode changed to %s', mode)
             if leaving_active:
                 self._flush_map('leaving active mode')
+            self._announce_mode()
+
+    def _announce_mode(self):
+        """Announce real mode transitions, including the bump-and-go submode."""
+        bump = (self._mode == MODE_DISCOVERY and self._blocked_waypoint is not None
+                and self._blocked_waypoint.get('wander') is not None)
+        display_stage = 'bump' if bump else self._discovery_stage
+        identity = (self._mode, bool(bump))
+        self.robot_control.set_drive_display(self._mode, display_stage, self._scan_active)
+        if identity != self._announced_mode:
+            self._announced_mode = identity
+            self.logger.info('Navigation mode: %s.', 'bump-and-go' if bump else self._mode)
+            self._button_beep('mode_change')
 
     def _flush_map(self, reason):
         """Persist pending map changes without letting a write block shutdown."""
@@ -278,6 +309,8 @@ class RoomberryMission:
             self.mapper.flush()
         except Exception:
             self.logger.exception('Unable to persist map state while %s.', reason)
+        if self.map_log is not None:
+            self.map_log.request(reason, mode=self._mode, force=True)
 
     def take_manual_control(self, moving=True):
         """Enter remote-control mode when a web/manual command arrives.
@@ -347,7 +380,9 @@ class RoomberryMission:
                 )
                 return False
             if (self._mode == MODE_DISCOVERY and moving and
-                    self._discovery_stage in DISCOVERY_CONTINUOUS_STAGES):
+                    (self._discovery_stage in DISCOVERY_CONTINUOUS_STAGES or
+                     (self._blocked_waypoint is not None and
+                      self._blocked_waypoint.get('wander') is not None))):
                 self.logger.debug(
                     'Skipping AprilTag scan during continuous discovery stage %s.',
                     self._discovery_stage,
@@ -357,11 +392,26 @@ class RoomberryMission:
             if self._mode == MODE_DISCOVERY and recovery is not None and recovery['phase'] != 'scan':
                 return False
             if (self._mode == MODE_DISCOVERY and recovery is None and
+                    self._blocked_waypoint is None and
                     self._discovery_stage in ('visit_approach', 'wall_follow', 'return') and
                     monotonic() >= self._aim_scan_cooldown and
                     self._choose_scan_heading(self._scan_pose) is not None):
                 self._aim_scan_pending = True
                 return False  # Coordinator aims first; camera never commands a turn.
+            blocked = self._blocked_waypoint
+            if self._mode == MODE_DISCOVERY and blocked is not None:
+                pose = self._scan_pose
+                view = None if pose is None else tuple(pose[k] for k in ('x_mm', 'y_mm', 'heading_rad'))
+                last = blocked.get('scan_view')
+                unchanged = (view == last if view is None or last is None else
+                    hypot(view[0]-last[0], view[1]-last[1]) < 100 and
+                    abs(self._wrap(view[2]-last[2])) < pi/12)
+                if (recovery is None and not self._aim_scan_pending and unchanged and
+                        blocked.get('view_scans', 0) >= 2):
+                    self.logger.debug('Skipping repeated blocked-route scan at unchanged viewpoint.')
+                    return False
+                blocked['view_scans'] = blocked.get('view_scans', 0)+1 if unchanged else 1
+                blocked['scan_view'] = view
             self._scan_active = True
             self._scan_started_at = monotonic()
             self._send_stop('AprilTag scan pause', smooth=True)
@@ -426,13 +476,14 @@ class RoomberryMission:
                     with self._coord_lock:
                         if not self._scan_active:
                             self._tick()
+                            if self.map_log is not None and self._mode != MODE_IDLE:
+                                self.map_log.request(mode=self._mode)
                 except Exception:
                     self.logger.exception('Mission update failed; stopping the robot.')
                     with self._coord_lock:
                         self._send_stop('mission update error')
             try:
-                self.robot_control.set_drive_display(
-                    self._mode, self._discovery_stage, self._scan_active)
+                self._announce_mode()
             except Exception:
                 self.logger.exception('Drive display update failed; mission remains active.')
             elapsed = monotonic() - started
@@ -462,7 +513,6 @@ class RoomberryMission:
         self.logger.info('Clock button pressed; returning to dock staging point %s '
                          '(%.0f mm in front of dock).',
                          self._discovery_waypoint, DOCK_APPROACH_MM)
-        self._button_beep('unhappy')
         return True
 
     def _tick(self):
@@ -472,11 +522,15 @@ class RoomberryMission:
             self._restart_generation = generation
             self._detections_after_restart = time()
             self.localizer.invalidate_pose()
+            if self.phone_position is not None:
+                self.phone_position.reset()
             self._localization_recovery = None
             if self._mode != MODE_IDLE:
                 self.set_mode(MODE_IDLE)
             self.camera.request_scan()
         if state.get('oi_stopped') is True:
+            if self.phone_position is not None:
+                self.phone_position.reset()
             if self._mode != MODE_IDLE:
                 self.set_mode(MODE_IDLE)
             return
@@ -491,9 +545,7 @@ class RoomberryMission:
             self.logger.info('Schedule button pressed; starting discovery mode.')
             self.set_mode(MODE_DISCOVERY, wake_robot=False)
             self._discovery_start_travelled = state.get('travelled_distance')
-            # Beep after the mode change so the OI is in Safe mode and the
-            # song is not cancelled by the switch from Passive mode.
-            self._button_beep()
+            # set_mode announces after the OI mode change has completed.
             return
         sensors = state['sensors']
         if not state.get('ready') or sensors is None:
@@ -543,6 +595,11 @@ class RoomberryMission:
                 detection_timestamp=localization_timestamp,
                 odometry_epoch=state.get('odometry_epoch'),
             )
+        if self.phone_position is not None:
+            pose = self.phone_position.apply(
+                self.localizer, pose, monotonic(), state.get('odometry_epoch'),
+                enabled=(self._mode in (MODE_DISCOVERY, MODE_CLEAN, MODE_RETURN_TO_BASE)
+                         and state.get('age') is not None and state['age'] <= .5))
         self._scan_pose = pose
         if new_detections:
             self._button_beep('happy' if pose and pose.get('accepted_tag_ids') else 'unhappy')
@@ -837,7 +894,8 @@ class RoomberryMission:
             'kind': TURN,
             'reason': reason,
             'steering': 1.0 if error > 0 else -1.0,
-            'velocity': DISCOVERY_TURN_SPEED,
+            'velocity': min(DISCOVERY_TURN_SPEED,
+                            max(MIN_TURN_SPEED, int(abs(error) * ROBOT.WHEEL_BASE))),
             'max_duration_s': SPIN_WATCHDOG_SECONDS,
             'continuous': True,
         }
@@ -853,7 +911,7 @@ class RoomberryMission:
             float(current) - float(self._discovery_start_travelled),
         )
     def _discovery_visit_order(self):
-        """Return configured landmarks to visit after tags 1 and 2."""
+        """Return configured visit landmarks after the tag 1 departure scan."""
         excluded = {DISCOVERY_INITIAL_TAG_ID, DISCOVERY_TAG_ID}
         return [
             int(tag_id) for tag_id in self.discovery_landmarks
@@ -863,27 +921,8 @@ class RoomberryMission:
         target = self.discovery_landmarks.get(tag_id) or {}
         return str(target.get('surface', 'unknown'))
     def _discovery_return_route(self):
-        """Return earlier parking points in reverse, then the retreat point.
-
-        The last visit already ends at its parking point, so it is omitted.
-        Reusing the earlier parking points keeps the return path clear of the
-        tag mounting surfaces and near a surveyed anchor tag.
-        """
-        tags = (
-            self._discovery_visit_tags
-            if self._discovery_visit_tags is not None
-            else self._discovery_visit_order()
-        )
-        route = []
-        for tag_id in reversed(tags[:-1]):
-            target = self.discovery_landmarks.get(tag_id) or {}
-            world_from_tag = target.get('world_from_tag')
-            if world_from_tag is not None:
-                route.append(self._tag_approach_waypoint(
-                    world_from_tag, DISCOVERY_PARK_DISTANCE_MM,
-                ))
-        route.append((DOCK_X_MM, DOCK_Y_MM + RETREAT_MM))
-        return route
+        """Return directly toward tag 1's retreat point using mapped routes."""
+        return [(DOCK_X_MM, DOCK_Y_MM + RETREAT_MM)]
     def _begin_discovery_visit(self):
         """Start the next parking-and-scan visit, or return to the retreat point."""
         resume = getattr(self, '_discovery_scan_resume', None)
@@ -1071,6 +1110,7 @@ class RoomberryMission:
             return 'right'
         return None
     def _stop_discovery_for_recovery(self, reason):
+        self._blocked_waypoint = None
         self._send_stop(reason)
         self.logger.warning('Discovery ended; mission set to idle: %s.', reason)
         self._mode = MODE_IDLE
@@ -1104,10 +1144,9 @@ class RoomberryMission:
         self._discovery_route_step = None
         self._discovery_avoid_side = side
         self._discovery_avoid_start_travelled = state.get('travelled_distance')
-        repeated = stage == 'avoid_forward'
-        self._discovery_avoid_reverse_mm = uniform(80.0, 120.0)
-        self._discovery_avoid_forward_mm = uniform(100.0, 220.0)
-        turn = uniform(pi / 3, pi * 0.6) if repeated else uniform(pi / 7, pi / 3)
+        self._discovery_avoid_reverse_mm = uniform(30.0, 40.0)
+        self._discovery_avoid_forward_mm = uniform(60.0, 120.0)
+        turn = uniform(pi / 18, pi / 9)
         heading = (pose['heading_rad'] if pose is not None else
                    float(state.get('angle', 0)) * pi / 180.0)
         self.logger.info('Detour geometry: reverse_mm=%.0f turn_rad=%.3f forward_mm=%.0f.',
@@ -1297,7 +1336,11 @@ class RoomberryMission:
         if now >= recovery['deadline'] or (recovery['phase'] == 'turn' and now >= recovery['turn_deadline']):
             self._localization_recovery = None
             self._aim_scan_pending = False
-            self._stop_discovery_for_recovery('localization viewpoint recovery timed out')
+            if self._blocked_waypoint is not None:
+                self._blocked_waypoint['next_try'] = now + BLOCKED_RETRY_SECONDS
+                self._send_stop('blocked-route tag search timed out; discovery remains paused')
+            else:
+                self._stop_discovery_for_recovery('localization viewpoint recovery timed out')
             return
         if recovery['phase'] == 'scan':
             if not new_detections or detection_timestamp is None or detection_timestamp < recovery['captured_after']:
@@ -1343,6 +1386,215 @@ class RoomberryMission:
             self.camera.request_scan()
             return
         self._dispatch(self._turn_action('bounded localization viewpoint turn', error), pose)
+
+    def _begin_blocked_waypoint_recovery(self, waypoint):
+        """Preserve the mission goal and start bounded bump-and-go exploration."""
+        self._send_stop('waypoint blocked; pause and replan')
+        if self._blocked_waypoint is None:
+            goal = (self._discovery_waypoint if self._discovery_stage in
+                    ('tag2_approach','visit_approach','return','dock_approach')
+                    and self._discovery_waypoint is not None else waypoint)
+            self._blocked_waypoint = dict(goal=goal, searches=0, next_try=monotonic(),
+                wander=dict(until=monotonic()+BUMP_GO_SECONDS, phase='choose'))
+            self._aim_scan_pending = False
+            self._localization_recovery = None
+            self.logger.warning('Waypoint footprint blocked; discovery remains active. '
+                                'Exploring for two minutes before retrying %s.', goal)
+            self._announce_mode()
+        self._discovery_route_step = None
+        self._discovery_route_goal = None
+        self._discovery_avoid_attempts = max(1,getattr(self,'_discovery_avoid_attempts',0))
+
+    def _bump_go_tick(self, state, pose, roam):
+        """Bounded straight exploration; encoder turns, contact retreat, no aiming."""
+        now = monotonic()
+        bumps = state['sensors'].bumps_and_wheel_drops
+        contact = bumps.bump_left or bumps.bump_right
+        angle = float(state.get('angle', 0)) * pi / 180
+        distance = float(state.get('distance', 0))
+        phase = roam['phase']
+        if phase == 'scan':
+            captured = self.camera.last_detection_time
+            if ((isinstance(captured, (int, float)) and captured >= roam['scan_after'])
+                    or now >= roam['scan_deadline']):
+                roam.update(phase='choose', next_scan=now+20)
+            return True
+        if contact and phase not in ('back', 'release'):
+            self._send_stop('bump and go contact')
+            if pose and pose.get('localized') and state.get('battery_status') != 'charging':
+                self._record_contact_obstacle(pose, self._contact_observation(state['sensors']))
+            roam.update(phase='back', distance=distance, deadline=now+2,
+                        contact_side=1 if bumps.bump_right and not bumps.bump_left else
+                        -1 if bumps.bump_left and not bumps.bump_right else choice((-1, 1)))
+            phase = 'back'
+        if phase == 'back':
+            if abs(distance-roam['distance']) >= 35 or now >= roam['deadline']:
+                self._send_stop('bump and go retreat complete')
+                roam['phase'] = 'release' if contact else 'choose'
+            else:
+                self._dispatch(dict(kind=BACK_UP, reason='bump and go retreat',
+                    velocity=-30, max_duration_s=DRIVE_WATCHDOG_SECONDS,
+                    continuous=True), pose)
+            return True
+        if phase == 'release':
+            self._send_stop('bump and go waiting for bumper release')
+            if not contact:
+                roam['phase'] = 'choose'
+            return True
+        if now >= roam['until']:
+            self._send_stop('bump and go complete; retry original target')
+            self.logger.info('Bump and go complete; returning to %s.',
+                             self._blocked_waypoint['goal'])
+            return False
+        if not pose or not pose.get('localized'):
+            self._send_stop('bump and go waiting for localization')
+            return True
+        roam.setdefault('next_scan', now+20)
+        if phase in ('choose', 'drive') and now >= roam['next_scan']:
+            self._send_stop('bump and go periodic localization scan')
+            roam.update(phase='scan', scan_after=time(), scan_deadline=now+12)
+            self.camera.request_scan()
+            return True
+        if phase == 'choose':
+            # Randomize a full circle, then prefer headings with a long clear ray.
+            side = roam.get('contact_side')
+            if side is not None:
+                # A contact calls for a small correction away from that side.
+                headings = [pose['heading_rad']+side*a*pi/180 for a in (10, 15, 20)]
+            else:
+                origin = uniform(-pi, pi)
+                headings = [origin+i*2*pi/24 for i in range(24)]
+            heading = None
+            for horizon in ((150, 60) if side is not None else (600, 200)):
+                clear = [h for h in headings if self.mapper.motion_is_clear(
+                    dict(pose, heading_rad=h), DISCOVERY_SPEED, 0,
+                    horizon / DISCOVERY_SPEED)]
+                if clear:
+                    heading = choice(clear)
+                    break
+            if heading is None and side is not None:
+                # A fridge face needs a wider escape turn when small turns fail.
+                headings = [pose['heading_rad']+side*a*pi/180 for a in (45, 60, 90, 120, 150, 180)]
+                clear = [h for h in headings if self.mapper.motion_is_clear(
+                    dict(pose, heading_rad=h), DISCOVERY_SPEED, 0, 150 / DISCOVERY_SPEED)]
+                if clear:
+                    heading = choice(clear)
+            if heading is None:
+                self._send_stop('bump and go no clear heading')
+                return True
+            roam.pop('contact_side', None)
+            roam.update(phase='turn', target=angle+self._wrap(heading-pose['heading_rad']),
+                        deadline=now+12)
+            phase = 'turn'
+        if phase == 'turn':
+            error = self._wrap(roam['target']-angle)
+            if abs(error) <= 0.05:
+                self._send_stop('bump and go heading selected')
+                roam.update(phase='drive', progress=distance, progress_at=now)
+            elif now >= roam['deadline']:
+                self._send_stop('bump and go turn timeout')
+                roam['phase'] = 'choose'
+            else:
+                self._dispatch(self._turn_action('bump and go choose heading', error), pose)
+            return True
+        if not self.mapper.motion_is_clear(pose, DISCOVERY_SPEED, 0, DRIVE_WATCHDOG_SECONDS):
+            self._send_stop('bump and go mapped obstacle')
+            roam['phase'] = 'choose'
+            return True
+        if abs(distance-roam['progress']) >= 10:
+            roam.update(progress=distance, progress_at=now)
+        elif now-roam['progress_at'] > 3:
+            self._send_stop('bump and go no forward progress')
+            roam['phase'] = 'choose'
+            return True
+        self._dispatch(dict(kind=DRIVE, reason='bump and go straight exploration',
+            velocity=DISCOVERY_SPEED, steering=0, max_duration_s=DRIVE_WATCHDOG_SECONDS,
+            continuous=True), pose)
+        return True
+
+    def _blocked_waypoint_tick(self, state, pose, new_detections):
+        blocked = self._blocked_waypoint
+        if blocked is None:
+            return False
+        if blocked.get('wander') is not None:
+            roam = blocked['wander']
+            now = monotonic()
+            roam.setdefault('next_route_try', now+10)
+            bumps = state['sensors'].bumps_and_wheel_drops
+            if (roam['phase'] in ('choose', 'drive') and now >= roam['next_route_try']
+                    and pose and pose.get('localized') and not (bumps.bump_left or bumps.bump_right)):
+                roam['next_route_try'] = now+10
+                self._discovery_route_step = self._discovery_route_goal = None
+                target = self._discovery_route_target(blocked['goal'], pose)
+                action = dict(kind=GO_TO_WAYPOINT, reason='route available during bump and go',
+                              waypoint=target, max_duration_s=DRIVE_WATCHDOG_SECONDS)
+                if target is not None and self._command_for(action, pose) is not None:
+                    self._send_stop('route available; leave bump and go')
+                    blocked.pop('wander')
+                    blocked['next_try'] = 0.0
+                    self._announce_mode()
+                    self._dispatch(action, pose)
+                    return True
+            if self._bump_go_tick(state, pose, blocked['wander']):
+                return True
+            blocked.pop('wander')
+            self._announce_mode()
+            blocked['next_try'] = 0.0
+            self._discovery_route_step = self._discovery_route_goal = None
+        bumps = state['sensors'].bumps_and_wheel_drops
+        if bumps.bump_left or bumps.bump_right:
+            # Keep the saved goal through contacts while retrying it as well.
+            self._aim_scan_pending = False
+            self._localization_recovery = None
+            blocked['wander'] = dict(until=monotonic(), phase='choose')
+            self._announce_mode()
+            self._bump_go_tick(state, pose, blocked['wander'])
+            return True
+        if self._aim_scan_pending:
+            return False  # Existing bounded viewpoint state machine owns this tick.
+        now = monotonic()
+        fresh_fix = bool(new_detections and pose and pose.get('accepted_tag_ids'))
+        if now < blocked['next_try'] and not fresh_fix:
+            self._send_stop('waiting to retry blocked route')
+            return True
+        if fresh_fix:
+            self._discovery_route_step = self._discovery_route_goal = None
+        if pose and pose.get('localized'):
+            goal = blocked['goal']
+            if hypot(goal[0]-pose['x_mm'],goal[1]-pose['y_mm']) <= 35:
+                self._blocked_waypoint = None
+                return False
+            target = self._discovery_route_target(goal,pose)
+            if target is not None:
+                action = dict(kind=GO_TO_WAYPOINT,reason='recover blocked discovery route',
+                              waypoint=target,max_duration_s=DRIVE_WATCHDOG_SECONDS)
+                if self._command_for(action,pose) is not None:
+                    blocked['next_try'] = 0.0
+                    self._dispatch(action,pose)
+                    return True
+        self._send_stop('blocked route needs localization or another plan')
+        self._discovery_route_step = self._discovery_route_goal = None
+        blocked['next_try'] = now + BLOCKED_RETRY_SECONDS
+        if blocked['searches'] < BLOCKED_VIEW_SEARCHES:
+            blocked['searches'] += 1
+            self._aim_scan_pending = True
+            self._localization_recovery = None
+            self.logger.info('Blocked-route localization search %d/%d; goal remains %s.',
+                             blocked['searches'],BLOCKED_VIEW_SEARCHES,blocked['goal'])
+            return False
+        if pose and pose.get('localized'):
+            blocked.update(searches=0, next_try=0.0,
+                           wander=dict(until=now+BUMP_GO_SECONDS, phase='choose'))
+            self.logger.warning('No route to %s; restarting bump-and-go with mapped obstacles preserved.',
+                                blocked['goal'])
+            self._announce_mode()
+            return True
+        # After bounded aiming attempts, remain stopped in discovery. Continue
+        # occasional stationary captures/replans without random reverse loops.
+        self.logger.info('Discovery paused: no clear route to %s; retrying in %.0f s.',
+                         blocked['goal'],BLOCKED_RETRY_SECONDS)
+        self.camera.request_scan()
+        return True
 
     def _discovery_tick(self, state, pose, new_detections, detection_timestamp):
         self._set_cleaning_motors(False)
@@ -1410,29 +1662,54 @@ class RoomberryMission:
             )
             self._send_stop('discovery hard safety condition')
             self._mode = MODE_IDLE
+            self._blocked_waypoint = None
             self.navigation.set_mode(MODE_IDLE)
             self.robot_control.set_operation_indicators(False)
             self._flush_map('discovery hard safety stop')
             return
         self._discovery_hazard_since = None
+        if (self._aim_scan_pending and (bumps.bump_left or bumps.bump_right)
+                and stage in ('visit_approach', 'return', 'dock_approach')
+                and pose and pose.get('localized') and self._discovery_waypoint is not None):
+            # A held bumper prevents the scan turn; retreat instead of timing out.
+            self._aim_scan_pending = False
+            self._localization_recovery = None
+            self._begin_blocked_waypoint_recovery(self._discovery_waypoint)
+        if self._blocked_waypoint_tick(state,pose,new_detections):
+            return
         if self._aim_scan_pending:
             if new_detections and pose and pose.get('accepted_tag_ids'):
                 self._aim_scan_pending = False
                 self._localization_recovery = None
                 self._aim_scan_cooldown = monotonic() + 20
                 self.logger.info('Targeted tag search accepted %s.', pose['accepted_tag_ids'])
+                if self._blocked_waypoint is not None:
+                    self._blocked_waypoint['next_try'] = 0.0
+                    self._discovery_route_step = self._discovery_route_goal = None
+                    return  # Next tick replans the preserved goal through recovery.
             else:
                 self._localization_recovery_tick(state, pose, new_detections, detection_timestamp)
                 return
         if (new_detections and pose and pose.get('localized') and
+                not pose.get('accepted_tag_ids') and
                 stage in ('wall_follow', 'visit_approach', 'return') and
                 getattr(self, '_discovery_scan_resume', None) is None):
             accepted = set(pose.get('accepted_tag_ids', ()))
+            rejected = dict(pose.get('rejected_tags', ()))
             tried = getattr(self, '_discovery_repositioned_tags', set())
             for detection in self.camera.latest_detections:
                 tag_id = int(detection['id'])
                 key = (detection.get('family', 'tag16h5'), tag_id)
+                reason = rejected.get(key, '')
+                # Translation recovery is only for a geometrically usable
+                # pose that disagrees with odometry. Bad image geometry is
+                # not evidence that we should drive to the apparent landmark.
+                pose_jump = (reason.startswith('jump ') or
+                             reason == 'large relocation needs another consistent scan')
+                completed_dock_tag = (tag_id in (DISCOVERY_INITIAL_TAG_ID, DISCOVERY_TAG_ID) and
+                                      self._discovery_visit_tags is not None)
                 if (tag_id not in self.discovery_landmarks or key in accepted or
+                        not pose_jump or completed_dock_tag or
                         tag_id in tried or detection.get('hamming', 1) != 0 or
                         detection.get('decision_margin', 0) < 10):
                     continue
@@ -1554,47 +1831,36 @@ class RoomberryMission:
                 self._discovery_stage = 'retreat'
                 self._discovery_waypoint = (DOCK_X_MM, DOCK_Y_MM + RETREAT_MM)
             elif stage == 'retreat_scan':
-                target = self.discovery_landmarks.get(DISCOVERY_TAG_ID)
-                if target is None:
-                    self.logger.error('Discovery requires surveyed AprilTag %d.', DISCOVERY_TAG_ID)
-                    self._mode = MODE_IDLE
-                    self._flush_map('discovery missing tag')
+                if not ids:
+                    self._discovery_retreat_scan_failures += 1
+                    if self._discovery_retreat_scan_failures >= 3:
+                        self._stop_discovery_for_recovery(
+                            'no accepted surveyed tag after retreat; reacquire localization before landmark visits')
+                    else:
+                        self._send_stop('retreat scan needs a fresh tag fix', smooth=True)
+                        self.logger.warning(
+                            'Retreat scan has no accepted tag (%d/3); holding position for another scan.',
+                            self._discovery_retreat_scan_failures)
+                        # Leave scan_time clear; the scan-state handler requests
+                        # the next capture on the next tick without moving.
                     return
-                tag = target['world_from_tag']
-                self._discovery_waypoint = self._tag_approach_waypoint(
-                    tag, RETREAT_MM,
-                )
-                self.logger.info(
-                    'Discovery tag %d approach waypoint from tag normal: %s.',
-                    DISCOVERY_TAG_ID, self._discovery_waypoint,
-                )
-                # Turn directly toward the approach waypoint. A dedicated
-                # 180-degree turn-around here would rotate away from the target
-                # and then immediately need a second large turn back.
-                self._discovery_turning = False
-                self._discovery_avoid_attempts = 0
-                self._tag2_retry_index = 0
-                self._tag2_heading_offset = 0.0
-                self._discovery_stage = 'tag2_approach'
+                self._discovery_retreat_scan_failures = 0
+                self.logger.info('Discovery departure localized; skipping tag 2 and starting landmark visits.')
+                self._begin_discovery_visit()
             elif stage == 'tag2_approach_scan':
                 retry = getattr(self, '_tag2_retry_index', 0)
                 if DISCOVERY_TAG_ID not in ids and retry < 2:
                     self._tag2_heading_offset = (0.5, -0.5)[retry]
                     self._tag2_retry_index = retry + 1
-                    tag = self.discovery_landmarks[DISCOVERY_TAG_ID]['world_from_tag']
-                    base = self._tag_approach_waypoint(tag, RETREAT_MM)
-                    heading = self._tag_normal_heading(tag)
-                    shift = 100.0 if retry == 0 else -100.0
-                    self._discovery_waypoint = (base[0] - sin(heading) * shift,
-                                                base[1] + cos(heading) * shift)
-                    self._discovery_stage = 'tag2_approach'
+                    self._discovery_stage = 'tag2_align'
+                    self.logger.warning(
+                        'Tag 2 scan has no accepted fix; retrying in place at yaw offset %+.2f rad.',
+                        self._tag2_heading_offset)
                     return
                 self._tag2_heading_offset = 0.0
-                if retry:
-                    self._tag2_finish_retry = True
-                    self._discovery_waypoint = self._tag_approach_waypoint(
-                        self.discovery_landmarks[DISCOVERY_TAG_ID]['world_from_tag'], RETREAT_MM)
-                    self._discovery_stage = 'tag2_approach'
+                if DISCOVERY_TAG_ID not in ids:
+                    self._stop_discovery_for_recovery(
+                        'tag 2 not accepted after three stationary views; no blind contact approach')
                     return
                 # Restore the surveyed heading before intentional contact.
                 if abs(self._wrap(self._tag_normal_heading(
@@ -1770,35 +2036,17 @@ class RoomberryMission:
                         'the configured tag normal.', self._discovery_visit_tag,
                     )
                 return
-            if stage in ('visit_approach', 'return'):
+            if stage in ('tag2_approach', 'visit_approach', 'return'):
                 route_target = self._discovery_route_target(target, pose)
                 if route_target is None:
-                    if getattr(self, '_discovery_scan_resume', None) is not None:
-                        self._begin_discovery_visit()
-                    self._send_stop('no mapped route; switching to wall following', smooth=True)
-                    self._wall_seen = False
-                    self._wall_lost_at = None
-                    self._wall_boundary_goal = None
-                    self._discovery_stage = 'wall_follow'
-                    self.logger.warning('No mapped route to %s; following the right wall and scanning for tags.', target)
+                    self._begin_blocked_waypoint_recovery(target)
                     return
                 target = route_target
-                dx, dy = target[0] - pose['x_mm'], target[1] - pose['y_mm']
-                distance = hypot(dx, dy)
-            desired = atan2(dy, dx)
-            error = self._wrap(desired - pose['heading_rad'])
-            tolerance = (TURN_TOLERANCE_RAD if self._discovery_turning
-                         else HEADING_TOLERANCE_RAD)
-            if abs(error) > tolerance:
-                self._discovery_turning = True
-                duration = SPIN_WATCHDOG_SECONDS
-            else:
-                self._discovery_turning = False
-                duration = min(DRIVE_WATCHDOG_SECONDS,
-                               distance / DISCOVERY_SPEED)
             self._dispatch({'kind': GO_TO_WAYPOINT, 'reason': 'discovery ' + stage,
-                            'max_duration_s': duration, 'waypoint': target,
-                            'turn': self._discovery_turning}, pose)
+                            'max_duration_s': DRIVE_WATCHDOG_SECONDS,
+                            'waypoint': target}, pose)
+            self._discovery_turning = bool(
+                self._active_command and self._active_command[0] in ('spin_left', 'spin_right'))
             return
         if stage == 'dock_align':
             heading = (
@@ -1836,19 +2084,16 @@ class RoomberryMission:
                 self._flush_map('discovery missing tag')
                 return
             target_heading = self._tag_normal_heading(target['world_from_tag'])
-            if stage == 'tag2_align' and not getattr(self, '_tag2_finish_retry', False):
+            if stage == 'tag2_align':
                 tag = target['world_from_tag']
-                target_heading = atan2(float(tag[1][3]) * 1000 - pose['y_mm'],
-                                       float(tag[0][3]) * 1000 - pose['x_mm'])
+                target_heading = self._wrap(
+                    atan2(float(tag[1][3]) * 1000 - pose['y_mm'],
+                          float(tag[0][3]) * 1000 - pose['x_mm']) +
+                    getattr(self, '_tag2_heading_offset', 0.0))
             error = self._wrap(target_heading - pose['heading_rad'])
             if abs(error) <= TAG2_ALIGN_TOLERANCE_RAD:
                 if stage == 'tag2_contact_align':
                     self._send_stop('tag 2 contact heading restored', smooth=True)
-                    self._discovery_stage = 'tag2_contact'
-                    return
-                if getattr(self, '_tag2_finish_retry', False):
-                    self._send_stop('tag 2 retry complete; original approach restored', smooth=True)
-                    self._tag2_finish_retry = False
                     self._discovery_stage = 'tag2_contact'
                     return
                 self._send_stop('tag 2 aligned for approach scan', smooth=True)
@@ -2121,6 +2366,12 @@ class RoomberryMission:
     def _dispatch(self, action, pose):
         command = self._command_for(action, pose)
         if command is None:
+            if (self._mode == MODE_DISCOVERY and action['kind'] == GO_TO_WAYPOINT
+                    and pose and pose.get('localized') and
+                    hypot(action['waypoint'][0] - pose['x_mm'],
+                          action['waypoint'][1] - pose['y_mm']) > 35.0):
+                self._begin_blocked_waypoint_recovery(action['waypoint'])
+                return
             self._send_stop(action['reason'])
             return
         operation, kwargs, duration = command
@@ -2135,13 +2386,12 @@ class RoomberryMission:
         continuous = bool(action.get('continuous',
                                      action.get('kind') == GO_TO_WAYPOINT))
         now = monotonic()
+        if continuous and self._active_command is not None and now >= self._active_until:
+            self._send_stop('continuous action watchdog expired', disable_cleaning=False)
+            return
         reissue = False
         if signature == self._active_command:
             if continuous:
-                if now >= self._active_until:
-                    self._send_stop('continuous action watchdog expired',
-                                    disable_cleaning=False)
-                    return
                 # Refresh the watchdog instead of braking. The mission loop
                 # refreshes this every tick, so stopping at the cap would turn
                 # a smooth move into 0.2 s stop/start chunks.
@@ -2161,11 +2411,12 @@ class RoomberryMission:
                 return
         if self._active_command is not None and not reissue:
             previous_operation, previous_kwargs = self._active_command
+            previous_sign = self._drive_sign(previous_operation, dict(previous_kwargs))
             retune_same_drive = (
                 continuous and
-                previous_operation == operation and
-                self._drive_sign(operation, dict(previous_kwargs)) ==
-                self._drive_sign(operation, kwargs)
+                ((previous_sign is not None and
+                  previous_sign == self._drive_sign(operation, kwargs)) or
+                 (previous_operation == operation and operation in ('spin_left', 'spin_right')))
             )
             if not retune_same_drive:
                 self._send_stop('bounded action ended or changed',
@@ -2193,7 +2444,7 @@ class RoomberryMission:
 
     @staticmethod
     def _drive_sign(operation, kwargs):
-        """Return 1/-1 for a straight forward/reverse drive, else ``None``."""
+        """Return 1/-1 when both wheels drive forward/reverse, else ``None``."""
         if operation == 'drive_straight':
             values = (int(kwargs.get('velocity', 0)),)
         elif operation == 'drive_direct':
@@ -2222,20 +2473,7 @@ class RoomberryMission:
                          else 'spin_right')
             return operation, {'velocity': int(action['velocity'])}, duration
         if kind == GO_TO_WAYPOINT:
-            if not pose:
-                return None
-            target_x, target_y = action['waypoint']
-            desired = atan2(target_y - pose['y_mm'], target_x - pose['x_mm'])
-            error = self._wrap(desired - pose['heading_rad'])
-            turning = action.get('turn')
-            if turning is None:
-                turning = abs(error) > HEADING_TOLERANCE_RAD
-            if turning:
-                operation = 'spin_left' if error > 0 else 'spin_right'
-                speed = DISCOVERY_TURN_SPEED if self._mode == MODE_DISCOVERY else TURN_SPEED
-                return operation, {'velocity': speed}, min(duration, SPIN_WATCHDOG_SECONDS)
-            speed = DISCOVERY_SPEED if self._mode == MODE_DISCOVERY else NAVIGATION_SPEED
-            return 'drive_straight', {'velocity': speed}, min(duration, DRIVE_WATCHDOG_SECONDS)
+            return self._waypoint_command(action, pose, duration)
         if kind == FOLLOW_WALL:
             velocity = int(action['velocity'])
             steering = float(action['steering'])
@@ -2249,6 +2487,56 @@ class RoomberryMission:
             left = int(velocity * (1.0 - steering))
             return 'drive_direct', {'right_velocity': right, 'left_velocity': left}, duration
         return None
+
+    def _waypoint_command(self, action, pose, duration):
+        """Steer toward a waypoint without stopping for ordinary corrections."""
+        if not pose or not pose.get('localized'):
+            return None
+        dx = action['waypoint'][0] - pose['x_mm']
+        dy = action['waypoint'][1] - pose['y_mm']
+        distance = hypot(dx, dy)
+        if distance <= 35.0:
+            return None
+        error = self._wrap(atan2(dy, dx) - pose['heading_rad'])
+        was_turning = bool(self._active_command and
+                           self._active_command[0] in ('spin_left', 'spin_right'))
+        near = distance < WAYPOINT_NEAR_MM
+        enter = WAYPOINT_NEAR_PIVOT_ENTER_RAD if near else WAYPOINT_PIVOT_ENTER_RAD
+        leave = WAYPOINT_NEAR_PIVOT_EXIT_RAD if near else WAYPOINT_PIVOT_EXIT_RAD
+        pivot = abs(error) > (leave if was_turning else enter)
+        max_speed = DISCOVERY_SPEED if self._mode == MODE_DISCOVERY else NAVIGATION_SPEED
+        if self._mode == MODE_DISCOVERY and getattr(self, '_discovery_ir_proximity', False):
+            max_speed = min(max_speed, 40)
+        if not pivot:
+            # Pure-pursuit curvature, bounded so neither wheel reverses. Slow
+            # down on bends and near the goal instead of overshooting it.
+            steering = (ROBOT.WHEEL_BASE * sin(error) /
+                        max(WAYPOINT_LOOKAHEAD_MM, distance))
+            if abs(error) <= WAYPOINT_HEADING_DEADBAND_RAD:
+                steering = 0.0
+            steering = max(-WAYPOINT_MAX_STEERING, min(WAYPOINT_MAX_STEERING, steering))
+            speed = max(25.0, min(max_speed * max(0.5, cos(error)), distance * 0.8))
+            if not near and not getattr(self, '_discovery_ir_proximity', False):
+                speed = max(speed, 30.0 / (1.0-abs(steering)))
+            # Keep the outside wheel at or below the normal transit speed.
+            speed = min(speed, max_speed / (1.0 + abs(steering)))
+            right, left = int(speed * (1.0 + steering)), int(speed * (1.0 - steering))
+            speed = (right + left) / 2.0
+            yaw = (right - left) / ROBOT.WHEEL_BASE
+            cap = min(duration, DRIVE_WATCHDOG_SECONDS, distance / max(speed, 1))
+            if self.mapper.motion_is_clear(pose, speed, yaw, cap):
+                if right == left:
+                    return 'drive_straight', {'velocity': right}, cap
+                return 'drive_direct', {'right_velocity': right, 'left_velocity': left}, cap
+            # A curve cannot fit here. Align in place, then recheck forward
+            # clearance next tick; never substitute an unchecked straight leg.
+            if abs(error) <= TAG2_ALIGN_TOLERANCE_RAD:
+                self.logger.debug('Waypoint motion blocked by mapped footprint; holding position.')
+                return None
+        operation = 'spin_left' if error > 0 else 'spin_right'
+        limit = DISCOVERY_TURN_SPEED if self._mode == MODE_DISCOVERY else TURN_SPEED
+        speed = min(limit, max(MIN_TURN_SPEED, int(abs(error) * ROBOT.WHEEL_BASE)))
+        return operation, {'velocity': speed}, min(duration, SPIN_WATCHDOG_SECONDS)
 
     def _record_coverage(self, previous, current):
         if previous is None or not current.get('localized'):

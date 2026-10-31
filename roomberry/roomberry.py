@@ -1,10 +1,11 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 2.3.navlink.1 2026/10/30 09:51:08
+# @(#)roomberry.py 2.3.map-log.1 2026/10/30 18:30:00
 import xml.etree.ElementTree as ET
 import logging
 import traceback
 import json
+from math import atan2
 from ast import literal_eval
 from socketserver import ThreadingMixIn
 from pathlib import Path
@@ -22,7 +23,19 @@ from roomberry_mission import RoomberryMission
 from roomberry_navigation import NavigationCoordinator
 from roomberry_sensor_log import SensorCsvRecorder
 from roomberry_navlink import NavLinkReceiver
+from roomberry_map_log import MapPngRecorder
 from irobot.openinterface.constants import MODES
+
+
+def map_tag_markers(landmarks):
+    """Map markers: position, ID, and heading out of the printed tag face."""
+    markers = []
+    for item in landmarks:
+        tag = item['world_from_tag']
+        # In the existing tag convention +Z points into the mounting wall.
+        markers.append((float(tag[0][3])*1000, float(tag[1][3])*1000,
+                        item['id'], atan2(-float(tag[1][2]), -float(tag[0][2]))))
+    return markers
 
 CAM_RESOLUTION = (1296, 972)
 SNAP_RESOLUTION = (640, 480)
@@ -106,6 +119,7 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         )
         self.mission = None
         self.mapper = None
+        self.map_log = None
         self.map_tags_mm = []
         detector = None
         scan_pause = None
@@ -153,12 +167,7 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
             mapper.state_path = state_path
             if mapper.load_state(state_path):
                 self.logger.info('Restored saved map from %s', state_path)
-            self.map_tags_mm = [
-                (float(item['world_from_tag'][0][3]) * 1000.0,
-                 float(item['world_from_tag'][1][3]) * 1000.0,
-                 item['id'])
-                for item in autonomy_config['landmarks']
-            ]
+            self.map_tags_mm = map_tag_markers(autonomy_config['landmarks'])
             navigation = NavigationCoordinator(robot_radius)
             camera_intrinsics = camera_config['intrinsics']
             if isinstance(camera_intrinsics, dict):
@@ -199,6 +208,9 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                 period=autonomy_config.get('mission_period', 0.2),
                 landmarks=autonomy_config['landmarks'],
             )
+            self.map_log = MapPngRecorder.from_config(
+                autonomy_config.get('map_log'), mapper, self.map_tags_mm, self.logger)
+            self.mission.map_log = self.map_log
             detector = AprilTagDetector(
                 family=camera_config.get('family', 'tag16h5'),
                 max_dimension=camera_config.get('max_dimension', 0),
@@ -229,9 +241,16 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         self.navlink = NavLinkReceiver.from_config(
             (autonomy_config or {}).get('navlink'), self.logger,
         )
+        phone_config = (autonomy_config or {}).get('phone_position', {})
+        if self.mission is not None and self.navlink is not None and phone_config.get('enabled', False):
+            from roomberry_phone_position import PhonePositionCorrection
+            self.mission.phone_position = PhonePositionCorrection(
+                self.navlink, self.logger, **{k: v for k, v in phone_config.items() if k != 'enabled'})
 
     def start(self):
         self.logger.info('Roomberry Server correctly started.')
+        if self.map_log is not None:
+            self.map_log.start()
         if self.navlink is not None:
             self.navlink.start()
         self.roomba_control.start()
@@ -249,7 +268,11 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         finally:
             try:
                 if self.mission is not None:
-                    self.mission.close()
+                    try:
+                        self.mission.close()
+                    finally:
+                        if self.map_log is not None:
+                            self.map_log.close()
             finally:
                 try:
                     self.camera_service.close()

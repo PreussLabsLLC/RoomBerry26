@@ -1,4 +1,4 @@
-<!-- @(#)navlink.md 2.3.navlink.5 2026/10/30 10:16:06 -->
+<!-- @(#)navlink.md 2.3.navlink.6 2026/10/30 15:25:00 -->
 # NavLink design review
 
 NavLink v1 recording milestone, October 30, 2026. StarLock emits the binary format below; Roomberry receives and records it without using it for navigation. This replaces the earlier [JSON wire proposal](../ios-app/udp-protocol.md). Room alignment, mount calibration, clock exchange and navigation qualification remain future work.
@@ -8,6 +8,25 @@ NavLink connects StarLock on the iPhone to Roomberry on the Raspberry Pi Zero. S
 Separate frequent motion samples from occasional diagnostics and map updates.
 
 ## Useful measurements
+
+### Measured rear mount, October 30
+
+The user measured the iPhone camera lens 145 mm behind the Roomba center and
+22 mm to its right when viewed from above with the robot heading upward. In
+robot coordinates with X forward and Y left, the camera offset is
+`r_camera = (-145, -22)` mm. This is the lens position, not the phone's center.
+For a calibrated robot heading `theta`, recover the robot center using
+`p_robot = p_camera - R(theta) r_camera`. Equivalently, add 145 mm forward and
+22 mm left to the camera pose. This removes the camera's arc during a pivot.
+
+The horizontal heading projection in the packet is still camera +Y, so mount
+yaw must be determined separately before using the offset. Straight-motion
+intervals from the 15:10:54 ride-along suggest adding about 93° to that camera
+heading to obtain robot forward in session coordinates. This is an offline
+estimate, not a surveyed orientation, and should not be copied from the older
+mount's approximately 180° convention. No camera height was measured here.
+The packet remains session-relative and recording-only; this measurement does
+not set the room/axle calibration-valid flag or enable navigation fusion.
 
 | Data | Value to Roomberry | Processing on iPhone |
 | --- | --- | --- |

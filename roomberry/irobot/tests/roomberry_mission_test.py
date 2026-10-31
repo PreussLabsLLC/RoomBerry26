@@ -1,8 +1,8 @@
-# @(#)roomberry_mission_test.py 2.3.18 2026/10/28 21:40:00
+# @(#)roomberry_mission_test.py 2.3.gentle.1 2026/10/30 18:10:00
 import json
 import logging
 import unittest
-from math import pi
+from math import cos, hypot, pi, sin
 from pathlib import Path
 from time import monotonic, time
 from types import SimpleNamespace
@@ -22,13 +22,15 @@ from roomberry_mission import (
     RoomberryMission,
 )
 from roomberry_navigation import (
-    DRIVE, GO_TO_WAYPOINT, MODE_CLEAN, MODE_DISCOVERY, MODE_IDLE,
+    DRIVE, GO_TO_WAYPOINT, MODE_CLEAN, MODE_DISCOVERY, MODE_IDLE, MODE_RETURN_TO_BASE,
 )
+from roomberry_mapper import RoomberryMapper
 
 class RoomberryMissionTest(unittest.TestCase):
     def setUp(self):
         self.robot = Mock()
         self.mapper = Mock()
+        self.mapper.motion_is_clear.return_value = True
         self.navigation = Mock()
         self.localizer = Mock()
         self.camera = Mock()
@@ -109,6 +111,20 @@ class RoomberryMissionTest(unittest.TestCase):
         tag, heading = mission._choose_scan_heading(dict(x_mm=7000,y_mm=1520,heading_rad=0))
         self.assertEqual(tag,15)
         self.assertAlmostEqual(heading,-pi/2)
+
+    def test_configured_tag16_parks_to_higher_y_and_faces_negative_y(self):
+        config = json.loads((Path(__file__).resolve().parents[2] / 'autonomy.json').read_text())
+        tag = next(v for v in config['landmarks'] if v['id'] == 16)['world_from_tag']
+        self.assertEqual(self.mission._tag_approach_waypoint(tag, 500), (3100.0, 1290.0))
+        self.assertAlmostEqual(self.mission._tag_normal_heading(tag), -pi/2)
+        self.mission.discovery_landmarks = {16: dict(world_from_tag=tag)}
+        self.assertIsNone(self.mission._choose_scan_heading(dict(x_mm=3100,y_mm=500,heading_rad=pi/2)))
+
+    def test_configured_tag15_parks_to_lower_x_and_faces_positive_x(self):
+        config = json.loads((Path(__file__).resolve().parents[2] / 'autonomy.json').read_text())
+        tag = next(v for v in config['landmarks'] if v['id'] == 15)['world_from_tag']
+        self.assertEqual(self.mission._tag_approach_waypoint(tag, 500), (7230.0, 1180.0))
+        self.assertAlmostEqual(self.mission._tag_normal_heading(tag), 0)
 
     def test_scan_debug_names_target_and_planned_heading(self):
         mission = self.mission
@@ -230,6 +246,29 @@ class RoomberryMissionTest(unittest.TestCase):
         self.robot.execute.assert_any_call("_change_mode", mode=MODES.SAFE)
         self.robot.execute.assert_any_call("set_motors", main_brush_on=False, side_brush=False, vacuum=False)
         self.robot.execute.assert_any_call("wake")
+
+    def test_phone_aided_pose_reaches_mapper_before_discovery_planning(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission.phone_position = Mock()
+        aided = dict(x_mm=1001., y_mm=1000., heading_rad=0., localized=True,
+                     accepted_tag_ids=(), localization_age=1)
+        self.mission.phone_position.apply.return_value = aided
+        self.camera.last_detection_time = None
+        self.robot.snapshot.return_value = dict(
+            sensors=self.discovery_sensors(), ready=True, age=0., distance=0.,
+            angle=0., odometry_epoch=4)
+        with patch.object(self.mission, '_discovery_tick') as discovery:
+            self.mission._tick()
+        self.assertTrue(self.mission.phone_position.apply.call_args.kwargs['enabled'])
+        self.mapper.update_pose.assert_called_with(1001., 1000., 0., localized=True)
+        self.assertIs(discovery.call_args.args[1], aided)
+
+    def test_pickup_discards_phone_anchor(self):
+        self.mission.phone_position = Mock()
+        self.robot.snapshot.return_value = dict(oi_stopped=True)
+        self.mission._tick()
+        self.mission.phone_position.reset.assert_called_once()
+        self.mission.phone_position.apply.assert_not_called()
 
     def test_schedule_button_edge_enters_discovery_mode(self):
         sensors = SimpleNamespace(bumps_and_wheel_drops=SimpleNamespace(wheel_drop_left=False, wheel_drop_right=False), cliff_left_sensor=False, cliff_front_left_sensor=False, cliff_front_right_sensor=False, cliff_right_sensor=False)
@@ -390,49 +429,24 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._discovery_tick(state, pose, False, None)
 
         self.robot.execute.assert_any_call("spin_right", velocity=50)
-    def test_retreat_scan_heads_directly_to_tag2_approach_waypoint(self):
+    def test_retreat_scan_skips_tag2_and_visits_tag16_without_requiring_tag2(self):
+        config_path = Path(__file__).resolve().parents[2] / 'autonomy.json'
+        landmarks = json.loads(config_path.read_text())['landmarks']
+        self.mission.discovery_landmarks = {int(t['id']):t for t in landmarks if t['id'] != 2}
         self.mission.set_mode(MODE_DISCOVERY)
-        self.robot.execute.reset_mock()
-        self.mission.discovery_landmarks[2] = {
-            "world_from_tag": [
-                [0, 0, -1, 0.0],
-                [1, 0, 0, 0.535],
-                [0, -1, 0, 0.16],
-                [0, 0, 0, 1],
-            ],
-        }
-        self.mission._discovery_stage = "retreat_scan"
+        self.mission._discovery_stage = 'retreat_scan'
         self.mission._discovery_scan_time = 1.0
-        self.camera.latest_detections = ({"id": 1},)
-        sensors = SimpleNamespace(
-            bumps_and_wheel_drops=SimpleNamespace(
-                wheel_drop_left=False, wheel_drop_right=False,
-            ),
-            cliff_left_sensor=False, cliff_front_left_sensor=False,
-            cliff_front_right_sensor=False, cliff_right_sensor=False,
-        )
-        state = {"sensors": sensors, "age": 0.0, "distance": -500}
-        pose = {
-            "localized": True, "x_mm": 1047.0, "y_mm": 716.0,
-            "heading_rad": -1.65,
-        }
-
-        self.mission._discovery_tick(state, pose, True, 2.0)
-        self.assertEqual(self.mission._discovery_stage, "tag2_approach")
-        self.assertEqual(self.mission._discovery_waypoint, (500.0, 535.0))
+        self.robot.execute.reset_mock()
+        pose = dict(localized=True,x_mm=1060,y_mm=760,heading_rad=-pi/2,
+                    accepted_tag_ids=(('tag16h5',1),))
+        self.mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0,distance=-500),
+                                    pose,True,2.0)
+        self.assertEqual(self.mission._discovery_stage, 'visit_approach')
+        self.assertEqual(self.mission._discovery_visit_tag, 16)
+        self.assertEqual(self.mission._discovery_visit_tags, [16,15])
+        self.assertEqual(self.mission._discovery_waypoint, (3100,1290))
         self.robot.execute.assert_not_called()
 
-        # The approach point is only about 67 degrees clockwise from the retreat
-        # heading, so the robot should turn right toward it instead of making a
-        # full U-turn first.
-        self.mission._discovery_tick(state, pose, False, None)
-        self.assertTrue(self.mission._discovery_turning)
-        self.robot.execute.assert_any_call("spin_right", velocity=50)
-
-        aligned_pose = dict(pose, heading_rad=-2.82)
-        self.mission._discovery_tick(state, aligned_pose, False, None)
-        self.assertFalse(self.mission._discovery_turning)
-        self.robot.execute.assert_any_call("drive_straight", velocity=60)
     def test_stopped_continuous_stage_requests_recovery_scan(self):
         self.mission.set_mode(MODE_DISCOVERY)
         self.mission._discovery_stage = "retreat"
@@ -570,7 +584,7 @@ class RoomberryMissionTest(unittest.TestCase):
 
         self.mission._tick()
 
-        self.robot.beep.assert_called_once_with()
+        self.robot.beep.assert_called_once_with(event='mode_change')
         self.assertEqual(self.mission._mode, MODE_DISCOVERY)
 
     def test_schedule_beep_plays_after_entering_discovery_mode(self):
@@ -580,7 +594,7 @@ class RoomberryMissionTest(unittest.TestCase):
             "sensors": sensors, "ready": True, "age": 0.0,
         }
         modes = []
-        self.robot.beep.side_effect = lambda: modes.append(self.mission._mode)
+        self.robot.beep.side_effect = lambda **kwargs: modes.append(self.mission._mode)
 
         self.mission._tick()
 
@@ -621,7 +635,7 @@ class RoomberryMissionTest(unittest.TestCase):
 
         self.mission._tick()
 
-        self.robot.beep.assert_called_once_with(event='unhappy')
+        self.robot.beep.assert_called_once_with(event='mode_change')
         self.assertEqual(self.mission._mode, MODE_DISCOVERY)
 
     @staticmethod
@@ -643,7 +657,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._dispatch(action, pose)
 
         self.assertGreater(self.mission._active_until, first_deadline)
-        self.robot.execute.assert_called_once_with("drive_straight", velocity=60)
+        self.robot.execute.assert_called_once_with("drive_straight", velocity=80)
 
     def test_continuous_command_reissues_after_heartbeat(self):
         self.mission._mode = MODE_DISCOVERY
@@ -702,6 +716,113 @@ class RoomberryMissionTest(unittest.TestCase):
             if call.args and call.args[0] == "stop"
         ]
         self.assertEqual(stopped, [])
+
+    def test_waypoint_steers_both_directions_with_both_wheels_forward(self):
+        self.mission._mode = MODE_DISCOVERY
+        for heading in (-0.5, 0.5):
+            with self.subTest(heading=heading):
+                pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=heading)
+                operation, wheels, duration = self.mission._command_for(self._waypoint_action(), pose)
+                self.assertEqual(operation, 'drive_direct')
+                self.assertTrue(all(30 <= v <= 80 for v in wheels.values()))
+                self.assertEqual(wheels['right_velocity'] > wheels['left_velocity'], heading < 0)
+                self.assertLessEqual(duration, 1.0)
+
+    def test_waypoint_large_turn_hands_off_to_arc_without_precise_alignment(self):
+        pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=-1.5)
+        action = self._waypoint_action()
+        self.mission._dispatch(action, pose)
+        self.assertEqual(self.robot.execute.call_args.args, ('spin_left',))
+        # Keep turning through the hysteresis band, then resume forward travel
+        # with a substantial remaining bearing error rather than hunting zero.
+        self.mission._dispatch(action, dict(pose, heading_rad=-0.9))
+        self.assertEqual(self.mission._active_command[0], 'spin_left')
+        self.mission._dispatch(action, dict(pose, heading_rad=-0.7))
+        self.assertEqual(self.robot.execute.call_args.args, ('drive_direct',))
+
+    def test_waypoint_straight_and_arc_changes_do_not_brake(self):
+        pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=0)
+        action = self._waypoint_action()
+        for heading in (0, -0.3, -0.2, 0, 0.2):
+            self.mission._dispatch(action, dict(pose, heading_rad=heading))
+        operations = [c.args[0] for c in self.robot.execute.call_args_list]
+        self.assertIn('drive_straight', operations)
+        self.assertIn('drive_direct', operations)
+        self.assertNotIn('stop', operations)
+        self.assertNotIn('soft_stop', operations)
+
+    def test_changed_steering_cannot_skip_expired_watchdog(self):
+        pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=0)
+        action = self._waypoint_action()
+        self.mission._dispatch(action, pose)
+        self.mission._active_until = 0
+        self.mission._dispatch(action, dict(pose, heading_rad=-0.3))
+        self.robot.execute.assert_any_call('stop', timeout=2)
+        self.assertIsNone(self.mission._active_command)
+
+    def test_blocked_arc_aligns_or_stops_without_unchecked_forward_command(self):
+        self.mapper.motion_is_clear.return_value = False
+        pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=-0.5)
+        self.assertEqual(self.mission._command_for(self._waypoint_action(), pose)[0], 'spin_left')
+        self.assertIsNone(self.mission._command_for(self._waypoint_action(), dict(pose, heading_rad=0)))
+
+    def test_near_goal_slows_down_and_arrival_stops(self):
+        pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=0)
+        command = self.mission._command_for(self._waypoint_action((50, 0)), pose)
+        self.assertEqual(command[0], 'drive_straight')
+        self.assertLessEqual(command[1]['velocity'], 40)
+        self.assertIsNone(self.mission._command_for(self._waypoint_action((30, 0)), pose))
+        self.assertEqual(self.mission._command_for(
+            self._waypoint_action((100, 0)), dict(pose, heading_rad=-0.7))[0], 'spin_left')
+
+    def test_proximity_limits_outer_wheel_without_flattening_arc(self):
+        self.mission._mode = MODE_DISCOVERY
+        self.mission._discovery_ir_proximity = True
+        pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=-0.5)
+        operation, wheels, _ = self.mission._command_for(self._waypoint_action(), pose)
+        self.assertEqual(operation, 'drive_direct')
+        self.assertGreater(wheels['right_velocity'], wheels['left_velocity'])
+        self.assertLessEqual(max(wheels.values()), 40)
+
+    def test_alignment_pivot_slows_as_error_shrinks(self):
+        self.assertLess(self.mission._turn_action('align', 0.13)['velocity'],
+                        self.mission._turn_action('align', 1.0)['velocity'])
+
+    def test_sweeping_approach_reaches_goal_with_acceleration_limits_without_pivots(self):
+        self.mission.mapper = RoomberryMapper(60, 60, 174, cell_size_mm=87)
+        self.mission._mode = MODE_DISCOVERY
+        pose = dict(localized=True, x_mm=1000.0, y_mm=1000.0, heading_rad=-0.4)
+        action = self._waypoint_action((2200.0, 1300.0))
+        left = right = 0.0
+        reached = False
+        for tick in range(180):
+            with patch('roomberry_mission.monotonic', return_value=100.0 + tick * 0.2):
+                self.mission._dispatch(action, pose)
+            command = self.mission._active_command
+            if command is None:
+                reached = hypot(pose['x_mm']-2200, pose['y_mm']-1300) <= 35
+                break
+            operation, values = command
+            wheels = dict(values)
+            self.assertIn(operation, ('drive_straight', 'drive_direct'))
+            target_left = wheels.get('left_velocity', wheels.get('velocity'))
+            target_right = wheels.get('right_velocity', wheels.get('velocity'))
+            # Retune paired wheel speeds with the configured acceleration /
+            # deceleration limits, rather than applying commands instantly.
+            fraction = 1.0
+            for actual, target in ((left, target_left), (right, target_right)):
+                if actual != target:
+                    rate = 100 if abs(target) > abs(actual) else 200
+                    fraction = min(fraction, rate * 0.2 / abs(target-actual))
+            left += (target_left-left) * fraction
+            right += (target_right-right) * fraction
+            angle = (right-left) / 235 * 0.2
+            distance = (left+right) / 2 * 0.2
+            middle = pose['heading_rad'] + angle/2
+            pose['x_mm'] += distance*cos(middle)
+            pose['y_mm'] += distance*sin(middle)
+            pose['heading_rad'] += angle
+        self.assertTrue(reached, pose)
 
     def test_contact_mapping_is_gated_to_active_mission_stages(self):
         state = {"ready": True, "battery_status": "normal"}
@@ -772,7 +893,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._discovery_tick(state, aligned, False, None)
         self.camera.request_scan.assert_called_once_with()
 
-    def test_tag2_missing_scan_retries_left_and_right_then_restores_heading(self):
+    def test_tag2_missing_scan_retries_yaw_in_place_then_stops(self):
         self.mission.set_mode(MODE_DISCOVERY)
         self.mission.discovery_landmarks[2] = {'world_from_tag': [
             [0, 0, -1, 0.0], [1, 0, 0, 0.535],
@@ -783,16 +904,386 @@ class RoomberryMissionTest(unittest.TestCase):
         self.camera.latest_detections = []
         pose = dict(localized=True, x_mm=500.0, y_mm=535.0, heading_rad=3.14)
         state = dict(sensors=self.discovery_sensors(), age=0.0)
+        self.mission._discovery_waypoint = (500.0, 535.0)
+        self.robot.execute.reset_mock()
         for attempt, offset in enumerate((0.5, -0.5), 1):
             self.mission._discovery_tick(state, pose, True, 2.0)
-            self.assertEqual(self.mission._discovery_stage, 'tag2_approach')
+            self.assertEqual(self.mission._discovery_stage, 'tag2_align')
             self.assertEqual(self.mission._tag2_heading_offset, offset)
+            self.assertEqual(self.mission._discovery_waypoint, (500.0, 535.0))
+            self.mission._discovery_tick(state, pose, False, None)
+            self.assertEqual(self.robot.execute.call_args.args,
+                             ('spin_left',) if offset > 0 else ('spin_right',))
+            # Completing the requested yaw leads straight back to scanning,
+            # without a lateral waypoint move or a forward contact approach.
+            aimed = dict(pose, heading_rad=self.mission._wrap(pi+offset))
+            self.mission._discovery_tick(state, aimed, False, None)
+            self.assertEqual(self.mission._discovery_stage, 'tag2_approach_scan')
             self.mission._discovery_stage = 'tag2_approach_scan'
             self.mission._discovery_scan_time = 1.0
         pose['heading_rad'] = 2.64
         self.mission._discovery_tick(state, pose, True, 2.0)
-        self.assertEqual(self.mission._discovery_stage, 'tag2_approach')
+        self.assertEqual(self.mission._mode, MODE_IDLE)
         self.assertEqual(self.mission._discovery_waypoint, (500.0, 535.0))
+        self.assertFalse(any(c.args[0] in ('drive_straight', 'drive_direct')
+                             for c in self.robot.execute.call_args_list))
+
+    def test_tag2_accepted_retry_restores_normal_before_contact(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission.discovery_landmarks[2] = {'world_from_tag': [
+            [0, 0, -1, 0.0], [1, 0, 0, 0.535],
+            [0, -1, 0, 0.16], [0, 0, 0, 1],
+        ]}
+        self.mission._discovery_stage = 'tag2_approach_scan'
+        self.mission._discovery_scan_time = 1.0
+        self.mission._tag2_retry_index = 1
+        self.mission._tag2_heading_offset = 0.5
+        pose = dict(localized=True, x_mm=500, y_mm=535, heading_rad=-pi+0.5,
+                    accepted_tag_ids=(('tag16h5', 2),))
+        state = dict(sensors=self.discovery_sensors(), age=0.0)
+        self.mission._discovery_tick(state, pose, True, 2.0)
+        self.assertEqual(self.mission._discovery_stage, 'tag2_contact_align')
+        self.assertEqual(self.mission._tag2_heading_offset, 0)
+        self.mission._discovery_tick(state, dict(pose, heading_rad=pi), False, None)
+        self.assertEqual(self.mission._discovery_stage, 'tag2_contact')
+
+    def test_retreat_without_new_tag_fix_never_starts_tag_two_transit(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage = 'retreat_scan'
+        # Reproduce a still-localized pose with only the old dock tag retained.
+        pose = dict(localized=True, x_mm=1359.5, y_mm=696.8,
+                    heading_rad=-2.375, localization_age=30.75,
+                    tag_ids=(('tag16h5', 1),), accepted_tag_ids=())
+        state = dict(sensors=self.discovery_sensors(), age=0.0)
+        self.robot.execute.reset_mock()
+        for i in range(3):
+            self.mission._discovery_scan_time = 1.0
+            self.mission._discovery_tick(state, pose, True, 2.0)
+            if i < 2:
+                self.assertEqual(self.mission._discovery_stage, 'retreat_scan')
+                self.mission._discovery_tick(state, pose, False, None)
+        self.assertEqual(self.camera.request_scan.call_count, 2)
+        self.assertEqual(self.mission._mode, MODE_IDLE)
+        self.assertFalse(any(c.args[0] in ('drive_straight', 'drive_direct', 'spin_left', 'spin_right')
+                             for c in self.robot.execute.call_args_list))
+
+    def test_real_contact_map_starts_recovery_instead_of_idle(self):
+        self.mission.mapper = RoomberryMapper(103, 92, 174, cell_size_mm=87)
+        self.mission.mapper.mark_obstacle(483, 298)
+        self.mission._mode = MODE_DISCOVERY
+        pose = dict(localized=True, x_mm=651.079, y_mm=467.265, heading_rad=-3.0147)
+        self.mission._dispatch(self._waypoint_action((500, 435)), pose)
+        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
+        self.assertEqual(self.mission._blocked_waypoint['goal'],(500,435))
+        self.assertIsNone(self.mission._active_command)
+
+    def test_tag_two_detour_uses_mapped_route_or_pauses_for_recovery(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage = 'tag2_approach'
+        self.mission._discovery_waypoint = (500, 435)
+        self.mission._discovery_avoid_attempts = 1
+        self.mapper.plan_to.return_value = None
+        pose = dict(localized=True, x_mm=651.079, y_mm=467.265, heading_rad=-3.0147)
+        self.mission._discovery_tick(dict(sensors=self.discovery_sensors(), age=0), pose, False, None)
+        self.mapper.plan_to.assert_called_once_with(500, 435)
+        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
+        self.assertEqual(self.mission._blocked_waypoint['goal'],(500,435))
+
+    def start_bump_go(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage = 'visit_approach'
+        self.mission._discovery_waypoint = (1800, 600)
+        with patch('roomberry_mission.monotonic', return_value=100):
+            self.mission._begin_blocked_waypoint_recovery((900, 600))
+        return self.mission._blocked_waypoint['wander']
+
+    def test_blocked_scans_stop_repeating_until_viewpoint_changes(self):
+        self.start_bump_go()
+        self.mission._scan_pose = dict(x_mm=750, y_mm=600, heading_rad=0)
+        self.assertTrue(self.mission.scan_pause())
+        self.mission.scan_complete()
+        self.assertTrue(self.mission.scan_pause())
+        self.mission.scan_complete()
+        self.assertFalse(self.mission.scan_pause())
+        self.mission._scan_pose['x_mm'] += 101
+        self.assertTrue(self.mission.scan_pause())
+        self.mission.scan_complete()
+        self.assertTrue(self.mission.scan_pause())
+        self.mission.scan_complete()
+        self.assertFalse(self.mission.scan_pause())
+        self.mission._scan_pose['heading_rad'] += pi/10
+        self.assertTrue(self.mission.scan_pause())
+
+    def test_bump_go_contact_uses_short_retreat_and_small_away_turn(self):
+        for left, right, sign in ((False, True, 1), (True, False, -1)):
+            with self.subTest(left=left, right=right):
+                roam = self.start_bump_go()
+                state = dict(sensors=self.discovery_sensors(bump_left=left, bump_right=right),
+                             distance=1000, angle=0)
+                pose = dict(localized=True, x_mm=750, y_mm=600, heading_rad=0)
+                self.mapper.robot_radius_mm = 174
+                self.mapper.cell_size_mm = 87
+                self.mapper.motion_is_clear.return_value = True
+                with patch('roomberry_mission.monotonic', return_value=101), patch.object(self.mission, '_dispatch') as dispatch:
+                    self.mission._bump_go_tick(state, pose, roam)
+                    self.assertEqual(dispatch.call_args.args[0]['velocity'], -30)
+                    state.update(distance=965, sensors=self.discovery_sensors())
+                    self.mission._bump_go_tick(state, pose, roam)
+                    self.assertEqual(roam['phase'], 'choose')
+                    self.mission._bump_go_tick(state, pose, roam)
+                self.assertGreaterEqual(sign*roam['target'], pi/18-1e-9)
+                self.assertLessEqual(sign*roam['target'], pi/9+1e-9)
+
+    def test_bump_go_filters_random_headings_and_keeps_original_goal(self):
+        roam = self.start_bump_go()
+        pose = dict(localized=True, x_mm=750, y_mm=600, heading_rad=0)
+        state = dict(sensors=self.discovery_sensors(), angle=0, distance=0)
+        self.mapper.motion_is_clear.side_effect = lambda p, v, w, t: abs(self.mission._wrap(p['heading_rad'])) < 0.01
+        with patch('roomberry_mission.monotonic', return_value=101), patch('roomberry_mission.uniform', return_value=0):
+            self.assertTrue(self.mission._bump_go_tick(state, pose, roam))
+        self.assertEqual(roam['phase'], 'drive')
+        self.assertEqual(self.mission._blocked_waypoint['goal'], (1800, 600))
+        self.assertEqual(roam['until'], 220)
+        self.assertGreaterEqual(self.mapper.motion_is_clear.call_count, 24)
+
+    def test_bump_go_cruises_until_obstacle_without_scan_turns(self):
+        roam = self.start_bump_go()
+        roam.update(phase='drive', progress=0, progress_at=100, next_scan=1000)
+        pose = dict(localized=True, x_mm=750, y_mm=600, heading_rad=0)
+        self.mapper.motion_is_clear.return_value = True
+        with patch.object(self.mission, '_dispatch') as dispatch:
+            for now in (101, 110, 130, 180, 219):
+                state = dict(sensors=self.discovery_sensors(), distance=(now-100)*60)
+                with patch('roomberry_mission.monotonic', return_value=now):
+                    self.mission._bump_go_tick(state, pose, roam)
+            self.assertEqual(dispatch.call_count, 5)
+            self.assertTrue(all(c.args[0]['steering'] == 0 for c in dispatch.call_args_list))
+            self.mapper.motion_is_clear.return_value = False
+            with patch('roomberry_mission.monotonic', return_value=219):
+                self.mission._bump_go_tick(state, pose, roam)
+            self.assertEqual(dispatch.call_count, 5)
+        self.assertEqual(roam['phase'], 'choose')
+        self.mission._active_command = ('drive_direct', ())
+        self.mission._active_until = float('inf')
+        self.assertFalse(self.mission.scan_pause())
+        self.assertFalse(self.mission._aim_scan_pending)
+
+    def test_bump_go_contact_retreat_is_bounded_and_does_not_extend_deadline(self):
+        roam = self.start_bump_go()
+        state = dict(sensors=self.discovery_sensors(bump_right=True), distance=1000)
+        with patch.object(self.mission, '_dispatch') as dispatch:
+            with patch('roomberry_mission.monotonic', return_value=110):
+                self.mission._bump_go_tick(state, None, roam)
+            self.assertLess(dispatch.call_args.args[0]['velocity'], 0)
+            # Even a stuck encoder and held bumper cannot reverse indefinitely.
+            with patch('roomberry_mission.monotonic', return_value=116):
+                self.mission._bump_go_tick(state, None, roam)
+            self.assertEqual(roam['phase'], 'release')
+            self.assertEqual(dispatch.call_count, 1)
+            with patch('roomberry_mission.monotonic', return_value=117):
+                self.mission._bump_go_tick(state, None, roam)
+            self.assertEqual(dispatch.call_count, 1)
+        self.assertEqual(roam['until'], 220)
+
+    def test_bump_go_deadline_replans_original_target_from_new_position(self):
+        self.start_bump_go()
+        pose = dict(localized=True, x_mm=900, y_mm=700, heading_rad=0)
+        state = dict(sensors=self.discovery_sensors(), age=0)
+        with patch('roomberry_mission.monotonic', return_value=220), patch.object(
+                self.mission, '_discovery_route_target', return_value=(1800, 600)) as route, patch.object(
+                self.mission, '_command_for', return_value=('drive_direct', {}, 1)), patch.object(
+                self.mission, '_dispatch') as dispatch:
+            self.assertTrue(self.mission._blocked_waypoint_tick(state, pose, False))
+        route.assert_called_once_with((1800, 600), pose)
+        self.assertNotIn('wander', self.mission._blocked_waypoint)
+        self.assertEqual(dispatch.call_args.args[0]['waypoint'], (1800, 600))
+        self.assertEqual(self.mission._discovery_stage, 'visit_approach')
+
+    def test_bump_go_finishes_contact_release_before_retrying_goal(self):
+        roam = self.start_bump_go()
+        contact = dict(sensors=self.discovery_sensors(bump_right=True), distance=1000)
+        with patch('roomberry_mission.monotonic', return_value=219):
+            self.assertTrue(self.mission._bump_go_tick(contact, None, roam))
+        contact['distance'] = 900
+        with patch('roomberry_mission.monotonic', return_value=221):
+            self.assertTrue(self.mission._bump_go_tick(contact, None, roam))
+        self.assertEqual(roam['phase'], 'release')
+        contact['sensors'] = self.discovery_sensors()
+        with patch('roomberry_mission.monotonic', return_value=222):
+            self.assertTrue(self.mission._bump_go_tick(contact, None, roam))
+            self.assertFalse(self.mission._bump_go_tick(contact, None, roam))
+        self.assertEqual(self.mission._blocked_waypoint['goal'], (1800, 600))
+        self.assertEqual(roam['until'], 220)
+
+    def test_bump_go_no_clear_heading_holds_without_blind_motion(self):
+        roam = self.start_bump_go()
+        self.mapper.motion_is_clear.return_value = False
+        with patch('roomberry_mission.monotonic', return_value=101), patch.object(self.mission, '_dispatch') as dispatch:
+            self.mission._bump_go_tick(dict(sensors=self.discovery_sensors()),
+                dict(localized=True, x_mm=750, y_mm=600, heading_rad=0), roam)
+        dispatch.assert_not_called()
+        self.assertEqual(roam['phase'], 'choose')
+        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
+
+    def test_blocked_route_replans_around_obstacle_and_keeps_goal(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission.mapper=RoomberryMapper(40,30,174,cell_size_mm=87)
+        self.mission.mapper.mark_obstacle(1000,600)
+        pose=dict(localized=True,x_mm=750,y_mm=600,heading_rad=0)
+        self.mission.mapper.update_pose(750,600,0)
+        self.mission._discovery_stage='visit_approach'
+        self.mission._discovery_waypoint=(1800,600)
+        self.robot.execute.reset_mock()
+        self.mission._dispatch(self._waypoint_action((1800,600)),pose)
+        self.mission._blocked_waypoint.pop('wander', None)
+        self.assertIsNotNone(self.mission._blocked_waypoint)
+        self.mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0),pose,False,None)
+        self.assertEqual(self.mission._mode,MODE_DISCOVERY)
+        self.assertEqual(self.mission._blocked_waypoint['goal'],(1800,600))
+        self.assertIsNotNone(self.mission._active_command)
+        self.assertNotEqual(self.mission._discovery_route_step,(1800,600))
+
+    def test_unlocalized_blocked_route_waits_without_blind_motion(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage='visit_approach'
+        self.mission._discovery_waypoint=(1800,600)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.mission._blocked_waypoint.pop('wander', None)
+        self.mission._blocked_waypoint.update(searches=2,next_try=0)
+        self.mapper.plan_to.return_value=None
+        state=dict(sensors=self.discovery_sensors(),age=0)
+        pose=dict(localized=False,x_mm=750,y_mm=600,heading_rad=0)
+        self.robot.execute.reset_mock()
+        for now in (100,105,111):
+            with patch('roomberry_mission.monotonic',return_value=now):
+                self.mission._discovery_tick(state,pose,False,None)
+        self.assertEqual(self.camera.request_scan.call_count,2)
+        self.assertEqual(self.mission._mode,MODE_DISCOVERY)
+        self.assertIsNone(self.mission._active_command)
+        self.assertFalse(any(c.args[0] in ('drive_straight','drive_direct','spin_left','spin_right')
+                             for c in self.robot.execute.call_args_list))
+
+    def test_blocked_route_restarts_exploration_without_erasing_obstacles(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._begin_blocked_waypoint_recovery((1800, 600))
+        blocked = self.mission._blocked_waypoint
+        blocked.pop('wander', None)
+        blocked.update(searches=2, next_try=0)
+        state = dict(sensors=self.discovery_sensors(), age=0)
+        pose = dict(localized=True, x_mm=750, y_mm=600, heading_rad=0)
+        with patch.object(self.mission, '_discovery_route_target', return_value=None), \
+                patch('roomberry_mission.monotonic', return_value=100):
+            self.mission._blocked_waypoint_tick(state, pose, False)
+        self.mapper.clear_nearby_obstacles.assert_not_called()
+        self.assertEqual(blocked['wander']['until'], 220)
+        self.assertEqual(blocked['goal'], (1800, 600))
+        self.robot.set_drive_display.assert_called_with(MODE_DISCOVERY, 'bump', False)
+
+    def test_blocked_search_timeout_pauses_instead_of_ending_discovery(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.mission._blocked_waypoint.pop('wander', None)
+        self.mission._aim_scan_pending=True
+        self.mission._localization_recovery=dict(origin=0,index=0,phase='scan',captured_after=0,deadline=99)
+        with patch('roomberry_mission.monotonic',return_value=100):
+            self.mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0),None,False,None)
+        self.assertEqual(self.mission._mode,MODE_DISCOVERY)
+        self.assertFalse(self.mission._aim_scan_pending)
+        self.assertIsNotNone(self.mission._blocked_waypoint)
+        self.assertGreater(self.mission._blocked_waypoint['next_try'],100)
+
+    def test_fresh_fix_can_resume_blocked_route_before_retry_timer(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        mapper=RoomberryMapper(40,30,174,cell_size_mm=87)
+        self.mission.mapper=mapper
+        self.mission._discovery_stage='visit_approach'
+        self.mission._discovery_waypoint=(1800,600)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.mission._blocked_waypoint.pop('wander', None)
+        self.mission._blocked_waypoint.update(searches=2,next_try=200)
+        pose=dict(localized=True,x_mm=750,y_mm=600,heading_rad=0,
+                  accepted_tag_ids=(('tag16h5',1),))
+        mapper.update_pose(750,600,0)
+        with patch('roomberry_mission.monotonic',return_value=100):
+            self.mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0),pose,True,1)
+        self.assertIsNotNone(self.mission._active_command)
+        self.assertEqual(self.mission._blocked_waypoint['next_try'],0)
+        self.assertEqual(self.mission._mode,MODE_DISCOVERY)
+
+    def test_hard_hazard_still_aborts_blocked_recovery(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        sensors=self.discovery_sensors();sensors.cliff_left_sensor=True
+        self.mission._discovery_tick(dict(sensors=sensors,age=0),None,False,None)
+        self.assertEqual(self.mission._mode,MODE_IDLE)
+        self.assertIsNone(self.mission._blocked_waypoint)
+
+    def test_manual_takeover_cancels_blocked_recovery(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.mission.take_manual_control()
+        self.assertEqual(self.mission._mode,MODE_REMOTE)
+        self.assertIsNone(self.mission._blocked_waypoint)
+
+    def test_blocked_stationary_retry_does_not_restart_automatic_aiming(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage='visit_approach'
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.mission._blocked_waypoint.pop('wander', None)
+        self.mission._blocked_waypoint.update(searches=2,next_try=200)
+        with patch.object(self.mission,'_choose_scan_heading',return_value=(1,0))as choose:
+            self.assertTrue(self.mission.scan_pause())
+        choose.assert_not_called()
+        self.assertFalse(self.mission._aim_scan_pending)
+
+    def test_fix_during_blocked_search_keeps_stage_until_replanning(self):
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage='visit_approach'
+        self.mission._discovery_waypoint=(1800,600)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.mission._blocked_waypoint.pop('wander', None)
+        self.mission._aim_scan_pending=True
+        self.mapper.plan_to.return_value=None
+        pose=dict(localized=True,x_mm=750,y_mm=600,heading_rad=0,
+                  accepted_tag_ids=(('tag16h5',1),))
+        self.mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0),pose,True,1)
+        self.assertEqual(self.mission._discovery_stage,'visit_approach')
+        self.assertIsNotNone(self.mission._blocked_waypoint)
+        self.assertEqual(self.mission._blocked_waypoint['next_try'],0)
+        self.assertFalse(self.mission._aim_scan_pending)
+
+    def test_recovered_goal_arrival_resumes_normal_tag_alignment(self):
+        self.use_visit_landmarks()
+        mission=self.mission
+        mission._discovery_stage='visit_approach'
+        mission._discovery_visit_tag=16
+        mission._discovery_waypoint=(3100,450)
+        mission._begin_blocked_waypoint_recovery((3100,450))
+        mission._blocked_waypoint.pop('wander', None)
+        pose=dict(localized=True,x_mm=3100,y_mm=450,heading_rad=0)
+        mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0),pose,False,None)
+        self.assertIsNone(mission._blocked_waypoint)
+        self.assertEqual(mission._discovery_stage,'visit_align')
+        self.assertEqual(mission._mode,MODE_DISCOVERY)
+
+    def test_contact_preempts_blocked_search_and_preserves_original_target(self):
+        self.use_visit_landmarks()
+        mission=self.mission
+        mission.mapper=RoomberryMapper(40,30,174,cell_size_mm=87)
+        mission._discovery_stage='visit_approach'
+        mission._discovery_visit_tag=16
+        mission._discovery_waypoint=(3100,1450)
+        mission._begin_blocked_waypoint_recovery((3100,1450))
+        mission._blocked_waypoint.pop('wander', None)
+        mission._aim_scan_pending=True
+        state=dict(sensors=self.discovery_sensors(bump_right=True),age=0,
+                   ready=True,battery_status='normal',travelled_distance=1000)
+        mission._discovery_tick(state,dict(localized=True,x_mm=1000,y_mm=600,heading_rad=0),False,None)
+        self.assertEqual(mission._blocked_waypoint['goal'], (3100,1450))
+        self.assertEqual(mission._blocked_waypoint['wander']['phase'], 'back')
+        self.assertFalse(mission._aim_scan_pending)
+        self.assertEqual(mission._discovery_stage,'visit_approach')
+        self.assertEqual(mission._mode,MODE_DISCOVERY)
 
     def test_tag2_contact_does_not_scan_and_starts_reverse(self):
         self.mission.set_mode(MODE_DISCOVERY)
@@ -908,7 +1399,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual((tag15[0][2], tag15[1][2]), (1, 0))
         self.assertEqual(
             self.mission._tag_approach_waypoint(tag15, 500),
-            (7230.0, 1520.0),
+            (7230.0, 1180.0),
         )
         self.assertAlmostEqual(self.mission._tag_normal_heading(tag15), 0)
 
@@ -947,7 +1438,8 @@ class RoomberryMissionTest(unittest.TestCase):
         self.camera.latest_detections = [dict(id=15, family='tag16h5', hamming=0,
                                              decision_margin=50)]
         pose = dict(localized=True, x_mm=7000, y_mm=1000, heading_rad=0,
-                    accepted_tag_ids=(), tag_ids=(('tag16h5', 15),))
+                    accepted_tag_ids=(), tag_ids=(('tag16h5', 15),),
+                    rejected_tags=((('tag16h5',15),'large relocation needs another consistent scan'),))
         state = dict(sensors=self.discovery_sensors(), age=0.0, travelled_distance=5000)
         self.mission._discovery_tick(state, pose, True, 2.0)
         self.assertEqual(self.mission._discovery_stage, 'visit_approach')
@@ -958,6 +1450,49 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual(self.mission._discovery_waypoint, (3100.0, 450.0))
         self.mission._discovery_tick(state, pose, True, 3.0)
         self.assertEqual(self.mission._discovery_stage, 'wall_follow')
+
+    def test_good_fix_or_bad_geometry_never_diverts_tag16_transit_back_to_dock(self):
+        cases = [
+            ((('tag16h5',1),), 'reprojection error=430.4', 2),
+            ((), 'reprojection error=430.4', 2),
+            ((), 'large relocation needs another consistent scan', 2),
+            ((), 'reprojection error=430.4', 15),
+        ]
+        for accepted, reason, tag_id in cases:
+            with self.subTest(accepted=accepted,reason=reason,tag_id=tag_id):
+                self.use_visit_landmarks()
+                mission=self.mission
+                mission._discovery_visit_tags=[16,15]
+                mission._discovery_visit_tag=16
+                mission._discovery_stage='visit_approach'
+                mission._discovery_waypoint=(3100,1450)
+                self.camera.latest_detections=[dict(id=tag_id,family='tag16h5',hamming=0,
+                                                    decision_margin=28.99)]
+                pose=dict(localized=True,x_mm=1700,y_mm=500,heading_rad=.5,
+                          accepted_tag_ids=accepted,rejected_tags=((('tag16h5',tag_id),reason),))
+                state=dict(sensors=self.discovery_sensors(),age=0,travelled_distance=5000)
+                with patch.object(mission,'_dispatch')as dispatch:
+                    mission._discovery_tick(state,pose,True,2)
+                self.assertIsNone(mission._discovery_scan_resume)
+                self.assertEqual(mission._discovery_visit_tag,16)
+                self.assertEqual(mission._discovery_waypoint,(3100,1450))
+                self.assertEqual(dispatch.call_args.args[0]['waypoint'],(3100,1450))
+
+    def test_fresh_known_fix_prevents_chasing_an_unvisited_rejected_tag(self):
+        self.use_visit_landmarks()
+        mission=self.mission
+        mission._discovery_visit_tags=[16,15]
+        mission._discovery_visit_tag=16
+        mission._discovery_stage='visit_approach'
+        mission._discovery_waypoint=(3100,1450)
+        self.camera.latest_detections=[dict(id=15,family='tag16h5',hamming=0,decision_margin=50)]
+        pose=dict(localized=True,x_mm=1700,y_mm=500,heading_rad=.5,
+                  accepted_tag_ids=(('tag16h5',1),),
+                  rejected_tags=((('tag16h5',15),'large relocation needs another consistent scan'),))
+        with patch.object(mission,'_dispatch'):
+            mission._discovery_tick(dict(sensors=self.discovery_sensors(),age=0),pose,True,2)
+        self.assertIsNone(mission._discovery_scan_resume)
+        self.assertEqual(mission._discovery_visit_tag,16)
 
     def test_scan_result_sound_uses_fresh_acceptance(self):
         self.mission.set_mode(MODE_REMOTE)
@@ -978,6 +1513,85 @@ class RoomberryMissionTest(unittest.TestCase):
                 self.robot.beep.assert_called_once_with()
             else:
                 self.robot.beep.assert_called_once_with(event='unhappy')
+
+    def test_return_bumper_contact_preempts_tag_search_before_timeout(self):
+        self.mapper.robot_radius_mm = 174
+        self.mapper.cell_size_mm = 87
+        self.mission.set_mode(MODE_DISCOVERY)
+        self.mission._discovery_stage = 'return'
+        self.mission._discovery_waypoint = (3100,1290)
+        self.mission._aim_scan_pending = True
+        self.mission._localization_recovery = dict(phase='turn', deadline=99)
+        pose = dict(localized=True,x_mm=6200,y_mm=1150,heading_rad=-pi/2)
+        with patch('roomberry_mission.monotonic', return_value=100):
+            self.mission._discovery_tick(dict(sensors=self.discovery_sensors(bump_right=True),
+                age=0,distance=0,angle=0),pose,False,None)
+        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
+        self.assertEqual(self.mission._blocked_waypoint['goal'], (3100,1290))
+        self.assertEqual(self.mission._blocked_waypoint['wander']['phase'], 'back')
+        self.assertFalse(self.mission._aim_scan_pending)
+        self.mapper.clear_nearby_obstacles.assert_not_called()
+
+    def test_cruise_bends_keep_both_wheels_out_of_crawl_range(self):
+        self.mission._mode = MODE_DISCOVERY
+        for heading in (-.9, -.5, .5, .9):
+            command = self.mission._command_for(self._waypoint_action(),
+                dict(localized=True,x_mm=0,y_mm=0,heading_rad=heading))
+            self.assertEqual(command[0], 'drive_direct')
+            self.assertTrue(all(30 <= speed <= 80 for speed in command[1].values()))
+
+    def test_mode_melody_occurs_once_per_main_or_bump_mode_change(self):
+        for mode in (MODE_IDLE, MODE_REMOTE, MODE_CLEAN, MODE_RETURN_TO_BASE, MODE_DISCOVERY):
+            self.mission.set_mode(mode)
+            self.robot.beep.assert_called_with(event='mode_change')
+        self.assertEqual(self.robot.beep.call_count, 5)
+        self.mission._announce_mode()
+        self.assertEqual(self.robot.beep.call_count, 5)
+        self.mission._begin_blocked_waypoint_recovery((1800,600))
+        self.assertEqual(self.robot.beep.call_count, 6)
+        self.robot.set_drive_display.assert_called_with(MODE_DISCOVERY, 'bump', False)
+        self.mission._blocked_waypoint.pop('wander')
+        self.mission._announce_mode()
+        self.assertEqual(self.robot.beep.call_count, 7)
+
+    def test_bump_go_stops_for_periodic_scan_and_resumes(self):
+        roam = self.start_bump_go()
+        roam.update(phase='drive', progress=0, progress_at=100, next_scan=101)
+        pose = dict(localized=True, x_mm=750, y_mm=600, heading_rad=0)
+        state = dict(sensors=self.discovery_sensors(), distance=0)
+        with patch('roomberry_mission.monotonic', return_value=101), \
+                patch.object(self.mission, '_dispatch') as dispatch:
+            self.mission._bump_go_tick(state, pose, roam)
+        dispatch.assert_not_called()
+        self.assertEqual(roam['phase'], 'scan')
+        self.camera.request_scan.assert_called_once()
+        self.camera.last_detection_time = roam['scan_after']+1
+        with patch('roomberry_mission.monotonic', return_value=105):
+            self.mission._bump_go_tick(state, pose, roam)
+        self.assertEqual(roam['phase'], 'choose')
+
+    def test_bump_go_rejoins_route_before_two_minutes_elapse(self):
+        roam = self.start_bump_go()
+        roam.update(phase='drive', next_route_try=101)
+        pose = dict(localized=True, x_mm=750, y_mm=600, heading_rad=0)
+        with patch('roomberry_mission.monotonic', return_value=101), \
+                patch.object(self.mission, '_discovery_route_target', return_value=(900,600)), \
+                patch.object(self.mission, '_command_for', return_value={'kind': DRIVE}), \
+                patch.object(self.mission, '_dispatch') as dispatch:
+            self.mission._blocked_waypoint_tick(dict(sensors=self.discovery_sensors()), pose, False)
+        self.assertNotIn('wander', self.mission._blocked_waypoint)
+        self.assertEqual(dispatch.call_args.args[0]['waypoint'], (900,600))
+        self.mapper.clear_nearby_obstacles.assert_not_called()
+
+    def test_fridge_contact_allows_wider_escape_when_small_turns_are_blocked(self):
+        roam = self.start_bump_go()
+        roam.update(phase='choose', contact_side=1)
+        self.mapper.motion_is_clear.side_effect = lambda p,*args: abs(p['heading_rad']-pi/2)<.01
+        with patch('roomberry_mission.monotonic', return_value=101):
+            self.mission._bump_go_tick(dict(sensors=self.discovery_sensors(),angle=0),
+                dict(localized=True,x_mm=750,y_mm=600,heading_rad=0),roam)
+        self.assertEqual(roam['phase'], 'turn')
+        self.assertAlmostEqual(roam['target'], pi/2)
 
     def test_scan_start_plays_neutral_tone(self):
         self.mission.scan_pause()
@@ -1080,13 +1694,13 @@ class RoomberryMissionTest(unittest.TestCase):
             for line in captured.output
         ))
 
-    def test_return_route_uses_earlier_visit_parking_then_retreat(self):
+    def test_return_route_goes_directly_to_tag1_without_revisiting_tag16(self):
         self.use_visit_landmarks()
         self.mission._discovery_visit_tags = [16, 15]
 
         self.assertEqual(
             self.mission._discovery_return_route(),
-            [(3100.0, 450.0), (1060.0, 760.0)],
+            [(1060.0, 760.0)],
         )
 
     def test_return_stage_advances_checkpoints_then_completes(self):
@@ -1507,8 +2121,8 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual(self.mission._discovery_stage, "avoid_back")
         self.assertEqual(self.mission._discovery_avoid_attempts, 1)
         self.assertEqual(self.mission._discovery_avoid_side, "right")
-        self.assertGreaterEqual(self.mission._discovery_avoid_turn_target, pi / 7)
-        self.assertLessEqual(self.mission._discovery_avoid_turn_target, pi / 3)
+        self.assertGreaterEqual(self.mission._discovery_avoid_turn_target, pi / 18)
+        self.assertLessEqual(self.mission._discovery_avoid_turn_target, pi / 9)
         self.assertTrue(any(
             "bumper contact during visit_approach" in line
             for line in captured.output
@@ -1601,11 +2215,13 @@ class RoomberryMissionTest(unittest.TestCase):
         pose = dict(localized=True, x_mm=2000, y_mm=600, heading_rad=0)
         mission._discovery_tick(state, pose, False, None)
         self.assertEqual(mission._mode, MODE_DISCOVERY)
-        self.assertEqual(mission._discovery_stage, 'wall_follow')
+        self.assertEqual(mission._discovery_stage, 'visit_approach')
+        self.assertEqual(mission._blocked_waypoint['goal'], (3100,450))
         for _ in range(5):
             mission._discovery_tick(state, pose, False, None)
         self.mapper.plan_to.assert_called_once()
-        self.assertEqual(mission._discovery_stage, 'wall_follow')
+        self.assertEqual(mission._discovery_stage, 'visit_approach')
+        self.assertEqual(mission._blocked_waypoint['goal'], (3100,450))
 
     def test_discovery_reaches_goal_around_real_mapped_obstacle(self):
         from roomberry_mapper import RoomberryMapper

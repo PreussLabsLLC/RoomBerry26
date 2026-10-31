@@ -3,4 +3,4 @@
 set -x
 
 cd ..
-rsync -Lave ssh autonomy.json roomb*.py pi@pi://home/pi/Projects/Roomberry/roomberry
+rsync -Lave ssh autonomy.json roomb*.py irobot pi@pi://home/pi/Projects/Roomberry/roomberry

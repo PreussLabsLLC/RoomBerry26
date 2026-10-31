@@ -271,7 +271,8 @@ class RobotCommandArbiter:
         """Play a short button-feedback tone; failures must not stop a mission."""
         notes = {'happy': BUTTON_BEEP_NOTES,
                  'unhappy': ((84, 8), (79, 12)),
-                 'neutral': ((79, 8),)}[event]
+                 'neutral': ((79, 8),),
+                 'mode_change': ((72, 8), (76, 8), (79, 12), (84, 16))}[event]
         if self._wheel_drop_stopped:
             return
         try:
@@ -284,7 +285,9 @@ class RobotCommandArbiter:
         label = {'idle': 'IdLE', 'discovery': 'dISC', 'clean': 'CLn ',
                  'return_to_base': 'HOME', 'remote_control': 'rEM '}.get(mode, 'IdLE')
         if mode == 'discovery':
-            if stage in ('return', 'dock_approach'):
+            if stage == 'bump':
+                label = 'bUMP'
+            elif stage in ('return', 'dock_approach'):
                 label = 'HOME'
             elif stage == 'wall_follow':
                 label = 'WALL'

@@ -1,12 +1,24 @@
-# @(#)roomberry_server_test.py 2.3.10 2026/10/28 17:00:00
+# @(#)roomberry_server_test.py 2.3.tag-facing.3 2026/10/30 16:10:00
 import unittest
 import io
 import json
+from math import cos, sin
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 from irobot.openinterface.constants import MODES
-from roomberry import RoomberryHandler
+from roomberry import RoomberryHandler, map_tag_markers
+
+
+class MapTagFacingTest(unittest.TestCase):
+    def test_configured_faces_point_into_room_not_robot_viewing_heading(self):
+        config = json.loads((Path(__file__).resolve().parents[2]/'autonomy.json').read_text())
+        markers = {m[2]: m for m in map_tag_markers(config['landmarks'])}
+        for tag_id, vector in {1:(0,1),2:(1,0),15:(-1,0),16:(0,1)}.items():
+            with self.subTest(tag_id=tag_id):
+                self.assertAlmostEqual(cos(markers[tag_id][3]),vector[0])
+                self.assertAlmostEqual(sin(markers[tag_id][3]),vector[1])
 
 
 class RoomberryManualControlTest(unittest.TestCase):

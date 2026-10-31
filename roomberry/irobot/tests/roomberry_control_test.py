@@ -352,10 +352,13 @@ class RobotCommandArbiterTest(unittest.TestCase):
         controller = RobotCommandArbiter(None, 0, logging.getLogger('SoundTest'), robot=robot)
         controller.execute = Mock()
         sounds = []
-        for event in ('neutral', 'happy', 'unhappy'):
+        for event in ('neutral', 'happy', 'unhappy', 'mode_change'):
             controller.beep(event=event)
             sounds.append(controller.execute.call_args_list[-1].kwargs['notes'])
-        self.assertEqual(len({str(notes) for notes in sounds}), 3)
+        self.assertEqual(len({str(notes) for notes in sounds}), 4)
+        self.assertEqual(len(sounds[3]), 4)
+        controller.set_drive_display('discovery', 'bump')
+        self.assertEqual(controller._drive_display, 'bUMP')
         self.assertEqual(sounds[1], [list(note) for note in ((79, 8), (84, 12))])
         controller.execute.reset_mock()
         controller._wheel_drop_stopped = True

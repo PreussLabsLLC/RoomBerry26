@@ -1,4 +1,4 @@
-# @(#)roomberry_navlink_test.py 2.3.navlink.1 2026/10/30 09:51:08
+# @(#)roomberry_navlink_test.py 2.3.map-log.1 2026/10/30 18:30:00
 import csv
 import io
 import math
@@ -30,7 +30,7 @@ class NavLinkTest(unittest.TestCase):
     def test_roomberry_lifecycle_and_cleanup_after_serial_close_failure(self):
         from roomberry import RoomberryServer
         server = SimpleNamespace(
-            logger=Mock(), navlink=Mock(), roomba_control=Mock(),
+            logger=Mock(), navlink=Mock(), map_log=None, roomba_control=Mock(),
             camera_service=Mock(), mission=None, serve_forever=Mock(),
             server_close=Mock(),
         )

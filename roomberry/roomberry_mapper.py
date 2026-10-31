@@ -8,9 +8,9 @@ Coordinates are millimeters in a fixed room frame. The map origin is the lower
 left corner; heading is radians counter-clockwise from +X.
 """
 
-# @(#)roomberry_mapper.py 2.6 2026/10/26
+# @(#)roomberry_mapper.py 2.3.recovery.1 2026/10/30 17:25:00
 from collections import deque
-from math import hypot, floor
+from math import ceil, cos, hypot, floor, isfinite, sin
 from threading import Lock, RLock
 from time import monotonic
 import json
@@ -18,12 +18,33 @@ import os
 
 
 PERSIST_INTERVAL_S = 30.0
+MOTION_PADDING_MM = 20.0
+MOTION_SAMPLE_FRACTION = 0.25
 
 FREE = 'free'
 BLOCKED = 'blocked'
 COOKIE_PENDING = 'pending'
 COOKIE_MOWED = 'mowed'
 COOKIE_EXCLUDED = 'excluded'
+
+
+def footprint_clearance_radius(robot_radius_mm, pitch):
+    return robot_radius_mm + MOTION_PADDING_MM + pitch*MOTION_SAMPLE_FRACTION/2
+
+
+def obstacle_clearance_cells(cols, rows, pitch, robot_radius_mm, obstacles):
+    """Inflate whole blocked squares by the same radius as motion checking."""
+    radius = footprint_clearance_radius(robot_radius_mm, pitch)
+    reach = ceil(radius/pitch)+1
+    clearance = set()
+    for col,row in obstacles:
+        for yy in range(max(0,row-reach),min(rows,row+reach+1)):
+            for xx in range(max(0,col-reach),min(cols,col+reach+1)):
+                cx,cy=(xx+.5)*pitch,(yy+.5)*pitch
+                dx=max(col*pitch-cx,0,cx-(col+1)*pitch)
+                dy=max(row*pitch-cy,0,cy-(row+1)*pitch)
+                if hypot(dx,dy)<=radius:clearance.add((xx,yy))
+    return clearance
 
 
 class RoomberryMapper:
@@ -36,7 +57,8 @@ class RoomberryMapper:
     vacuum covering several nearby targets in one pass.
 
     The default cell spacing is half the Roomba radius. For obstacle safety,
-    cells within one robot radius of a marked obstacle are excluded from paths.
+    whole blocked squares are inflated by the robot footprint and motion margin
+    before choosing path cells, matching the short-motion clearance checks.
     ``plan_next`` returns a waypoint only; it never drives the robot.
     """
 
@@ -70,6 +92,7 @@ class RoomberryMapper:
         self._obstacle_cells = set()
         self._clearance_cells = set()
         self._trail = []
+        self._trail_session_start = 0
         self.state_path = None
 
     def save_state(self, filename=None):
@@ -80,7 +103,8 @@ class RoomberryMapper:
             state = {"cols":self.cols,"rows":self.rows,"cell_size_mm":self.cell_size_mm,
                      "origin_x":self.origin_x,"origin_y":self.origin_y,
                      "robot_radius_mm":self.robot_radius_mm,"occupancy":self._occupancy,
-                     "cookies":self._cookies,"trail":self._trail}
+                     "cookies":self._cookies,"trail":list(self._trail),
+                     "trail_session_start":self._trail_session_start}
         temp=filename+".tmp"
         with open(temp,"w") as f:
             json.dump(state,f,separators=(",",":")); f.flush(); os.fsync(f.fileno())
@@ -101,13 +125,12 @@ class RoomberryMapper:
         with self._lock:
             self._occupancy,self._cookies=occ,cookies
             self._obstacle_cells={(x,y) for y in range(self.rows) for x in range(self.cols) if occ[y][x]==BLOCKED}
-            self._clearance_cells=set()
-            for x,y in self._obstacle_cells:
-                reach=int(floor(self.robot_radius_mm/self.cell_size_mm))+1
-                for yy in range(max(0,y-reach),min(self.rows,y+reach+1)):
-                    for xx in range(max(0,x-reach),min(self.cols,x+reach+1)):
-                        if hypot(xx-x,yy-y)*self.cell_size_mm<=self.robot_radius_mm: self._clearance_cells.add((xx,yy))
+            self._clearance_cells=obstacle_clearance_cells(
+                self.cols,self.rows,self.cell_size_mm,self.robot_radius_mm,self._obstacle_cells)
             self._trail=[tuple(v) for v in state.get("trail",[])][-2000:]
+            # Loading begins a new recording session. Retained points belong
+            # to previous runs even if the prior file marked them current.
+            self._trail_session_start = len(self._trail)
             self._pose=None; self._localized=False
             self._dirty=False
             self._last_persist=None
@@ -118,8 +141,10 @@ class RoomberryMapper:
         with self._lock:
             return {"cols":self.cols,"rows":self.rows,"cell_size_mm":self.cell_size_mm,
                     "origin_x":self.origin_x,"origin_y":self.origin_y,
+                    "robot_radius_mm":self.robot_radius_mm,
                     "occupancy":[list(r) for r in self._occupancy],"cookies":[list(r) for r in self._cookies],
-                    "pose":None if self._pose is None else dict(self._pose),"trail":list(self._trail)}
+                    "pose":None if self._pose is None else dict(self._pose),"trail":list(self._trail),
+                    "trail_session_start":self._trail_session_start}
 
     def _persist(self, force=False):
         """Write pending changes, at most once per ``persist_interval_s``.
@@ -187,8 +212,10 @@ class RoomberryMapper:
             self._localized = bool(localized and cell is not None)
             if self._localized:
                 pt=(float(x_mm),float(y_mm))
-                if not self._trail or hypot(pt[0]-self._trail[-1][0],pt[1]-self._trail[-1][1])>=self.cell_size_mm*0.5:
-                    self._trail=(self._trail+[pt])[-2000:]
+                if (len(self._trail) == self._trail_session_start or
+                        hypot(pt[0]-self._trail[-1][0],pt[1]-self._trail[-1][1])>=self.cell_size_mm*0.5):
+                    # Bound only loaded history, never truncate this session.
+                    self._trail.append(pt)
                     self._dirty = True
                     recorded = True
         if recorded: self._persist()
@@ -212,6 +239,27 @@ class RoomberryMapper:
             self._dirty = True
         self._persist()
         return True
+
+    def clear_nearby_obstacles(self, x_mm, y_mm, radius_mm=500.0):
+        """Forget local map observations for a bounded blocked-route retry."""
+        if not all(isfinite(float(v)) for v in (x_mm, y_mm, radius_mm)) or radius_mm < 0:
+            raise ValueError('Obstacle clearing requires finite coordinates and a nonnegative radius')
+        with self._lock:
+            removed = {cell for cell in self._obstacle_cells
+                       if hypot(self.cell_center(cell)[0] - x_mm,
+                                self.cell_center(cell)[1] - y_mm) <= radius_mm}
+            for col, row in removed:
+                self._occupancy[row][col] = FREE
+                self._cookies[row][col] = COOKIE_PENDING
+            self._obstacle_cells.difference_update(removed)
+            if removed:
+                self._clearance_cells = obstacle_clearance_cells(
+                    self.cols, self.rows, self.cell_size_mm,
+                    self.robot_radius_mm, self._obstacle_cells)
+                self._dirty = True
+        if removed:
+            self._persist()
+        return len(removed)
 
     def mark_free(self, x_mm, y_mm):
         """Mark an observed cell free; an obstacle observation remains authoritative."""
@@ -300,6 +348,68 @@ class RoomberryMapper:
                 'path': path,
             }
 
+    def motion_is_clear(self, pose, velocity_mm_s, yaw_rad_s, duration_s):
+        """Check a short commanded arc's footprint against known map geometry.
+
+        Sample at most a quarter-cell apart and pad the robot footprint by
+        half that spacing plus 20 mm for steering changes. Unknown furniture
+        still requires the controller's independent bumper/cliff protection.
+        """
+        x, y, heading = (float(pose[k]) for k in ('x_mm', 'y_mm', 'heading_rad'))
+        velocity, yaw, duration = map(float, (velocity_mm_s, yaw_rad_s, duration_s))
+        if not all(isfinite(v) for v in (x, y, heading, velocity, yaw, duration)):
+            return False
+        if duration <= 0:
+            return False
+        spacing = self.cell_size_mm * MOTION_SAMPLE_FRACTION
+        steps = max(1, ceil(abs(velocity) * duration / spacing))
+        footprint_radius = self.robot_radius_mm + spacing / 2.0
+        radius = footprint_radius + MOTION_PADDING_MM
+        pitch, ox, oy = self.cell_size_mm, self.origin_x, self.origin_y
+        initial_edges = (x-ox, ox+self.cols*pitch-x,
+                         y-oy, oy+self.rows*pitch-y)
+        with self._lock:
+            def obstacle_distance(px, py, col, row):
+                dx = max(ox + col * pitch - px, 0.0, px - (ox + (col + 1) * pitch))
+                dy = max(oy + row * pitch - py, 0.0, py - (oy + (row + 1) * pitch))
+                return hypot(dx, dy)
+
+            obstacles = [(col, row, obstacle_distance(x, y, col, row))
+                         for col, row in self._obstacle_cells]
+            for step in range(steps + 1):
+                t = duration * step / steps
+                if abs(yaw) < 1e-6:
+                    px, py = x + velocity * t * cos(heading), y + velocity * t * sin(heading)
+                else:
+                    px = x + velocity / yaw * (sin(heading + yaw * t) - sin(heading))
+                    py = y - velocity / yaw * (cos(heading + yaw * t) - cos(heading))
+                edges = (px-ox, ox+self.cols*pitch-px,
+                         py-oy, oy+self.rows*pitch-py)
+                for clearance, initial in zip(edges, initial_edges):
+                    if clearance <= footprint_radius:
+                        return False
+                    if initial <= radius:
+                        if clearance < initial-1e-6:
+                            return False
+                    elif clearance < radius:
+                        return False
+                for col, row, initial_distance in obstacles:
+                    # Distance from the center to the entire blocked square,
+                    # rather than just its center, protects obstacle corners.
+                    distance = obstacle_distance(px, py, col, row)
+                    if distance <= footprint_radius:
+                        return False
+                    # A new contact or pose correction can leave the robot
+                    # inside just the extra comfort padding. Permit an escape
+                    # without reducing its starting clearance, preserving the
+                    # actual footprint and sampling margin throughout.
+                    if initial_distance <= radius:
+                        if distance < initial_distance - 1e-6:
+                            return False
+                    elif distance <= radius:
+                        return False
+        return True
+
     def status(self):
         """Return a compact mission/map summary suitable for a UI or logger."""
         with self._lock:
@@ -359,11 +469,8 @@ class RoomberryMapper:
         self._obstacle_cells.add(cell)
         self._occupancy[row][col] = BLOCKED
         self._cookies[row][col] = COOKIE_EXCLUDED
-        reach = int(floor(self.robot_radius_mm / self.cell_size_mm)) + 1
-        for clear_row in range(max(0, row - reach), min(self.rows, row + reach + 1)):
-            for clear_col in range(max(0, col - reach), min(self.cols, col + reach + 1)):
-                if hypot(clear_col - col, clear_row - row) * self.cell_size_mm <= self.robot_radius_mm:
-                    self._clearance_cells.add((clear_col, clear_row))
+        self._clearance_cells.update(obstacle_clearance_cells(
+            self.cols,self.rows,self.cell_size_mm,self.robot_radius_mm,[(col,row)]))
 
     def _neighbors(self, col, row):
         for dy in (-1, 0, 1):
@@ -376,6 +483,13 @@ class RoomberryMapper:
 
     def _is_traversable(self, cell):
         col, row = cell
+        # A free grid cell is not a valid center waypoint if the robot would
+        # extend outside the room. Match the short-motion boundary allowance.
+        inset = footprint_clearance_radius(self.robot_radius_mm,self.cell_size_mm)
+        x, y = (col+0.5)*self.cell_size_mm, (row+0.5)*self.cell_size_mm
+        if not (inset <= x <= self.cols*self.cell_size_mm-inset and
+                inset <= y <= self.rows*self.cell_size_mm-inset):
+            return False
         return (self._occupancy[row][col] == FREE and
                 cell not in self._clearance_cells)
 

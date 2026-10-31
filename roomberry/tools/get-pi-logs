@@ -1,4 +1,4 @@
-# @(#)sync-from-pi 2.3.navlink.1 2026/10/30 09:51:08
+# @(#)sync-from-pi 2.3.map-log.1 2026/10/30 18:30:00
 
 set -x
 
@@ -6,4 +6,6 @@ rsync -Lave ssh pi@pi:/var/log/roomberry.log ../logs
 rsync -Lave ssh pi@pi:/var/log/roomberry-sensors/ ../logs/sensors/
 rsync -Lave ssh pi@pi:/var/log/roomberry-navlink/ ../logs/navlink/
 rsync -Lave ssh pi@pi:/home/pi/Projects/Roomberry/roomberry/rb.log ../logs
-rsync -Lave ssh pi@pi:/home/pi/Projects/Roomberry/roomberry/roomberry/map-state.json ../logs
+rsync -Lave ssh "pi@pi:/home/pi/Projects/Roomberry/roomberry/roomberry/map-state*.json" ../logs
+
+rsync -Lave ssh pi@pi:/var/log/roomberry-maps/ ../logs/maps/
