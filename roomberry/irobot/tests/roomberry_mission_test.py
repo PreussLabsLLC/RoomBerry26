@@ -1,4 +1,4 @@
-# @(#)roomberry_mission_test.py 2.3.gentle.1 2026/10/30 18:10:00
+# @(#)roomberry_mission_test.py 3.1.cal.1 2026/10/31 12:30:00
 import json
 import logging
 import unittest
@@ -16,7 +16,7 @@ from roomberry_mission import (
     DISCOVERY_DOCK_HAZARD_GRACE_SECONDS,
     DISCOVERY_PARK_DISTANCE_MM,
     DISCOVERY_PROXIMITY_CONFIRM_TICKS,
-    MODE_REMOTE,
+    MODE_REMOTE, MODE_CALIBRATION,
     RELEASE_MAX_DISTANCE_MM, RELEASE_MIN_DISTANCE_MM,
     VISIT_RETRY_LATERAL_OFFSETS_MM,
     RoomberryMission,
@@ -285,7 +285,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual(self.mission._discovery_stage, "initial_scan")
         self.assertIsNotNone(self.mission._discovery_scan_time)
 
-    def test_clock_button_redirects_discovery_to_dock_staging(self):
+    def test_clock_button_replaces_discovery_with_calibration(self):
         self.mission.set_mode(MODE_DISCOVERY)
         self.mission._active_command = ('drive_straight', (('velocity', -50),))
         sensors = SimpleNamespace(
@@ -306,10 +306,10 @@ class RoomberryMissionTest(unittest.TestCase):
         with self.assertLogs(self.logger, level="INFO") as captured:
             self.mission._tick()
 
-        self.assertIn("returning to dock staging", captured.output[-1])
-        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
-        self.assertEqual(self.mission._discovery_stage, 'dock_approach')
-        self.assertEqual(self.mission._discovery_waypoint, (1060.0, 560.0))
+        self.assertIn("starting tag 15 calibration", captured.output[-1])
+        self.assertEqual(self.mission._mode, MODE_CALIBRATION)
+        self.assertEqual(self.mission.calibration.stage, 'start_scan')
+        self.localizer.invalidate_pose.assert_called_once()
         self.robot.execute.assert_any_call("stop", timeout=2)
 
     def test_discovery_tick_preserves_start_travelled(self):
@@ -617,14 +617,14 @@ class RoomberryMissionTest(unittest.TestCase):
     def test_clock_is_processed_during_active_scan_and_remote_control(self):
         self.mission.set_mode(MODE_REMOTE)
         self.mission._scan_active = True
-        self.robot.snapshot.return_value = {'clock_button': True}
+        self.robot.snapshot.return_value = dict(clock_button=True,ready=True,age=0,
+            sensors=self.discovery_sensors())
         self.mission._shutdown = Mock()
         self.mission._shutdown.is_set.side_effect = [False, True]
         self.mission._run()
         self.assertTrue(self.mission._scan_active)
-        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
-        self.assertEqual(self.mission._discovery_stage, 'dock_approach')
-        self.assertEqual(self.mission._discovery_waypoint, (1060, 560))
+        self.assertEqual(self.mission._mode, MODE_CALIBRATION)
+        self.assertEqual(self.mission.calibration.stage, 'start_scan')
 
     def test_clock_button_edge_beeps(self):
         sensors = self.discovery_sensors()
@@ -636,7 +636,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._tick()
 
         self.robot.beep.assert_called_once_with(event='mode_change')
-        self.assertEqual(self.mission._mode, MODE_DISCOVERY)
+        self.assertEqual(self.mission._mode, MODE_CALIBRATION)
 
     @staticmethod
     def _waypoint_action(waypoint=(1000.0, 0.0)):

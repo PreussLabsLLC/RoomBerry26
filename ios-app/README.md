@@ -1,5 +1,7 @@
-<!-- @(#)ios-app/README.md 2.3.navlink.1 2026/10/30 10:01:30 -->
+<!-- @(#)ios-app/README.md 3.1 2026/10/31 11:30:00 -->
 # iPhone localization for Roomberry
+
+[GroundHog 3.1](GroundHog/README.md) is the new floor-facing relative odometer, using AVFoundation, Vision and Core Motion. Open `GroundHog/GroundHog.xcodeproj` to build the separate app. NavLink now supports cumulative relative-motion summaries alongside StarLock observations. The ceiling-facing StarLock design below is retained for reference.
 
 Design outline for an iPhone mounted rigidly on the Roomba with its rear camera facing the ceiling. ARKit estimates motion on the phone; compact UDP messages deliver robot position and heading to the Pi Zero. The Pi retains navigation, wheel odometry, obstacle handling, and all motor authority.
 

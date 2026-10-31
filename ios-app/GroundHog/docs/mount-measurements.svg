@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1280" viewBox="0 0 1800 1280">
+<!-- @(#)mount-measurements.svg 3.1.docs.1 2026/10/31 12:15:00 -->
+<rect width="1800" height="1280" fill="#f3f6fa"/>
+<text x="40" y="62.839999999999996" font-family="Arial, sans-serif" font-size="44" fill="#172b46" font-weight="700" text-anchor="start">GroundHog: the four mount measurements</text>
+<text x="42" y="104.5" font-family="Arial, sans-serif" font-size="25" fill="#53657a" font-weight="400" text-anchor="start">Park on a level floor. Measure to the camera lens center, not the phone body. All distances in mm.</text>
+<rect x="30" y="140" width="1085" height="815" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<rect x="1140" y="140" width="630" height="815" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<text x="60" y="189.07999999999998" font-family="Arial, sans-serif" font-size="28" fill="#172b46" font-weight="700" text-anchor="start">TOP VIEW</text>
+<text x="60" y="223.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Illustrative mount; not to scale.</text>
+<ellipse cx="420.0" cy="450.0" rx="210.0" ry="210.0" fill="#e7edf4" stroke="#698099" stroke-width="4"/>
+<rect x="218" y="420" width="30" height="60" rx="5" fill="#52657b" stroke="#52657b" stroke-width="2"/>
+<rect x="592" y="420" width="30" height="60" rx="5" fill="#52657b" stroke="#52657b" stroke-width="2"/>
+<polyline points="248,450 592,450" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="420,450 420,260" fill="none" stroke="#176cbd" stroke-width="4"/>
+<polygon points="420,260 414.0,274.0 426.0,274.0" fill="#176cbd"/>
+<text x="420" y="249.78" font-family="Arial, sans-serif" font-size="23" fill="#176cbd" font-weight="700" text-anchor="middle">FRONT / FORWARD (+)</text>
+<polyline points="420,450 275,450" fill="none" stroke="#176cbd" stroke-width="4"/>
+<polygon points="275,450 289.0,456.0 289.0,444.0" fill="#176cbd"/>
+<text x="100" y="488.92" font-family="Arial, sans-serif" font-size="22" fill="#176cbd" font-weight="700" text-anchor="start">ROBOT LEFT (+)</text>
+<ellipse cx="420.0" cy="450.0" rx="9.0" ry="9.0" fill="#172b46" stroke="#172b46" stroke-width="2"/>
+<text x="450" y="433.22" font-family="Arial, sans-serif" font-size="27" fill="#172b46" font-weight="700" text-anchor="start">C</text>
+<text x="655" y="328.64" font-family="Arial, sans-serif" font-size="24" fill="#172b46" font-weight="700" text-anchor="start">C = turn center</text>
+<text x="655" y="361.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Midpoint between</text>
+<text x="655" y="391.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">the drive wheels.</text>
+<polyline points="644,368 605,395 430,445" fill="none" stroke="#9baabd" stroke-width="2"/>
+<rect x="385" y="480" width="170" height="310" rx="24" fill="#d9ebfa" stroke="#176cbd" stroke-width="3"/>
+<rect x="401" y="525" width="138" height="245" rx="14" fill="#f0f7fc" stroke="#f0f7fc" stroke-width="2"/>
+<ellipse cx="470.0" cy="502.0" rx="10.0" ry="10.0" fill="white" stroke="#9baabd" stroke-width="2"/>
+<polyline points="450,655 450,735" fill="none" stroke="#176cbd" stroke-width="4"/>
+<polygon points="450,735 456.0,721.0 444.0,721.0" fill="#176cbd"/>
+<text x="378" y="818.92" font-family="Arial, sans-serif" font-size="22" fill="#176cbd" font-weight="700" text-anchor="start">Phone top edge</text>
+<text x="350" y="849.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">(opposite Home button)</text>
+<ellipse cx="520.0" cy="760.0" rx="12.0" ry="12.0" fill="#b73535" stroke="#b73535" stroke-width="2"/>
+<ellipse cx="520.0" cy="760.0" rx="5.0" ry="5.0" fill="white" stroke="white" stroke-width="2"/>
+<polyline points="530,752 585,698 630,698" fill="none" stroke="#b73535" stroke-width="2"/>
+<text x="630" y="688.92" font-family="Arial, sans-serif" font-size="22" fill="#b73535" font-weight="700" text-anchor="start">LENS CENTER</text>
+<text x="630" y="722.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Rear camera points down.</text>
+<polyline points="420,450 810,450" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="520,760 810,760" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="805,450 805,760" fill="none" stroke="#b73535" stroke-width="3"/>
+<polygon points="805,760 811.0,746.0 799.0,746.0" fill="#b73535"/>
+<polygon points="805,450 799.0,464.0 811.0,464.0" fill="#b73535"/>
+<text x="835" y="537.64" font-family="Arial, sans-serif" font-size="24" fill="#b73535" font-weight="700" text-anchor="start">3. Forward</text>
+<text x="835" y="570.5" font-family="Arial, sans-serif" font-size="25" fill="#b73535" font-weight="700" text-anchor="start">offset = −A</text>
+<text x="835" y="608.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Lens behind C:</text>
+<text x="835" y="638.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">enter negative.</text>
+<polyline points="420,450 420,885" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="520,760 520,885" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="420,880 520,880" fill="none" stroke="#16735d" stroke-width="3"/>
+<polygon points="520,880 506.0,874.0 506.0,886.0" fill="#16735d"/>
+<polygon points="420,880 434.0,886.0 434.0,874.0" fill="#16735d"/>
+<text x="610" y="876.5" font-family="Arial, sans-serif" font-size="25" fill="#16735d" font-weight="700" text-anchor="start">4. Left offset = −B</text>
+<text x="610" y="910.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Lens to robot’s right: negative.</text>
+<text x="1170" y="189.07999999999998" font-family="Arial, sans-serif" font-size="28" fill="#172b46" font-weight="700" text-anchor="start">SIDE VIEW</text>
+<text x="1170" y="223.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Measure vertically to the floor.</text>
+<rect x="1180" y="485" width="355" height="115" rx="30" fill="#e7edf4" stroke="#698099" stroke-width="3"/>
+<ellipse cx="1390.0" cy="600.0" rx="45.0" ry="50.0" fill="#52657b" stroke="#52657b" stroke-width="2"/>
+<rect x="1460" y="500" width="220" height="22" rx="7" fill="#d9ebfa" stroke="#176cbd" stroke-width="3"/>
+<polyline points="1480,500 1480,470 1505,470" fill="none" stroke="#9baabd" stroke-width="5"/>
+<ellipse cx="1647.0" cy="524.0" rx="8.0" ry="8.0" fill="#b73535" stroke="#b73535" stroke-width="2"/>
+<text x="1210" y="439.78" font-family="Arial, sans-serif" font-size="23" fill="#176cbd" font-weight="700" text-anchor="start">Screen up</text>
+<polyline points="1370,447 1500,496" fill="none" stroke="#176cbd" stroke-width="2"/>
+<polyline points="1165,650 1740,650" fill="none" stroke="#172b46" stroke-width="4"/>
+<text x="1170" y="686.92" font-family="Arial, sans-serif" font-size="22" fill="#172b46" font-weight="700" text-anchor="start">FLOOR</text>
+<polyline points="1647,545 1647,610" fill="none" stroke="#176cbd" stroke-width="3"/>
+<polygon points="1647,610 1653.0,596.0 1641.0,596.0" fill="#176cbd"/>
+<text x="1485" y="383.06" font-family="Arial, sans-serif" font-size="21" fill="#176cbd" font-weight="400" text-anchor="start">Camera looks down</text>
+<polyline points="1647,524 1730,524" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="1720,524 1720,650" fill="none" stroke="#b73535" stroke-width="3"/>
+<polygon points="1720,650 1726.0,636.0 1714.0,636.0" fill="#b73535"/>
+<polygon points="1720,524 1714.0,538.0 1726.0,538.0" fill="#b73535"/>
+<text x="1480" y="586.22" font-family="Arial, sans-serif" font-size="27" fill="#b73535" font-weight="700" text-anchor="start">1. H</text>
+<text x="1450" y="615.78" font-family="Arial, sans-serif" font-size="23" fill="#b73535" font-weight="700" text-anchor="start">Lens height</text>
+<polyline points="1390,450 1390,748" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="1680,522 1680,748" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="1390,742 1680,742" fill="none" stroke="#16735d" stroke-width="3"/>
+<polygon points="1680,742 1666.0,736.0 1666.0,748.0" fill="#16735d"/>
+<polygon points="1390,742 1404.0,748.0 1404.0,736.0" fill="#16735d"/>
+<text x="1450" y="725.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Outer phone edge</text>
+<text x="1170" y="810.64" font-family="Arial, sans-serif" font-size="24" fill="#16735d" font-weight="700" text-anchor="start">195 mm = center → outer edge</text>
+<text x="1170" y="848.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">This is clearance, not the lens offset.</text>
+<text x="1170" y="903.92" font-family="Arial, sans-serif" font-size="22" fill="#b73535" font-weight="700" text-anchor="start">Use H = 85 only if measured at the lens.</text>
+<rect x="30" y="980" width="1740" height="270" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<text x="60" y="1025.22" font-family="Arial, sans-serif" font-size="27" fill="#172b46" font-weight="700" text-anchor="start">2. PHONE TOP ANGLE</text>
+<text x="60" y="1065.78" font-family="Arial, sans-serif" font-size="23" fill="#53657a" font-weight="400" text-anchor="start">Look down from above.</text>
+<text x="60" y="1099.78" font-family="Arial, sans-serif" font-size="23" fill="#53657a" font-weight="400" text-anchor="start">Use the end opposite</text>
+<text x="60" y="1133.78" font-family="Arial, sans-serif" font-size="23" fill="#53657a" font-weight="400" text-anchor="start">the Home button.</text>
+<text x="60" y="1208.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Top view example above: top edge faces rear → 180°.</text>
+<text x="470" y="1076.12" font-family="Arial, sans-serif" font-size="42" fill="#176cbd" font-weight="700" text-anchor="middle">↑</text>
+<text x="470" y="1118.06" font-family="Arial, sans-serif" font-size="21" fill="#172b46" font-weight="700" text-anchor="middle">Toward robot FRONT</text>
+<text x="470" y="1167.52" font-family="Arial, sans-serif" font-size="32" fill="#176cbd" font-weight="700" text-anchor="middle">0°</text>
+<text x="790" y="1076.12" font-family="Arial, sans-serif" font-size="42" fill="#176cbd" font-weight="700" text-anchor="middle">←</text>
+<text x="790" y="1118.06" font-family="Arial, sans-serif" font-size="21" fill="#172b46" font-weight="700" text-anchor="middle">Toward robot LEFT</text>
+<text x="790" y="1167.52" font-family="Arial, sans-serif" font-size="32" fill="#176cbd" font-weight="700" text-anchor="middle">+90°</text>
+<text x="1110" y="1076.12" font-family="Arial, sans-serif" font-size="42" fill="#176cbd" font-weight="700" text-anchor="middle">↓</text>
+<text x="1110" y="1118.06" font-family="Arial, sans-serif" font-size="21" fill="#172b46" font-weight="700" text-anchor="middle">Toward robot REAR</text>
+<text x="1110" y="1167.52" font-family="Arial, sans-serif" font-size="32" fill="#176cbd" font-weight="700" text-anchor="middle">180°</text>
+<text x="1430" y="1076.12" font-family="Arial, sans-serif" font-size="42" fill="#176cbd" font-weight="700" text-anchor="middle">→</text>
+<text x="1430" y="1118.06" font-family="Arial, sans-serif" font-size="21" fill="#172b46" font-weight="700" text-anchor="middle">Toward robot RIGHT</text>
+<text x="1430" y="1167.52" font-family="Arial, sans-serif" font-size="32" fill="#176cbd" font-weight="700" text-anchor="middle">−90°</text>
+<text x="1760" y="1271.62" font-family="Arial, sans-serif" font-size="17" fill="#53657a" font-weight="400" text-anchor="end">Schematic only — measure your actual mount.</text>
+</svg>

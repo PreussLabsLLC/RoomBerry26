@@ -1,6 +1,6 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 2.3.map-log.1 2026/10/30 18:30:00
+# @(#)roomberry.py 3.1.web.1 2026/10/31 14:00:00
 import xml.etree.ElementTree as ET
 import logging
 import traceback
@@ -24,6 +24,7 @@ from roomberry_navigation import NavigationCoordinator
 from roomberry_sensor_log import SensorCsvRecorder
 from roomberry_navlink import NavLinkReceiver
 from roomberry_map_log import MapPngRecorder
+from roomberry_web import ASSET_ROOT, ASSETS, command_index, groundhog_snapshot
 from irobot.openinterface.constants import MODES
 
 
@@ -241,6 +242,8 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         self.navlink = NavLinkReceiver.from_config(
             (autonomy_config or {}).get('navlink'), self.logger,
         )
+        if self.mission is not None:
+            self.mission.navlink = self.navlink
         phone_config = (autonomy_config or {}).get('phone_position', {})
         if self.mission is not None and self.navlink is not None and phone_config.get('enabled', False):
             from roomberry_phone_position import PhonePositionCorrection
@@ -463,14 +466,63 @@ class RoomberryHandler(BaseHTTPRequestHandler):
                 'Unable to enter Safe mode for remote-control motion.',
             )
             
+    def _mission_operation(self, operation, kwargs):
+        """Mission commands belong to the coordinator, not the serial driver."""
+        operations = ('calibrate','cal','calibration','discovery','discover',
+                      'idle','cancel_calibration','stop','emergency_stop')
+        if operation not in operations:
+            return False
+        if kwargs:
+            raise ValueError('Mission commands do not accept operation parameters')
+        mission = getattr(self.server, 'mission', None)
+        if operation in ('stop','emergency_stop'):
+            # Brake manual motion before mode-change feedback or map flushing.
+            self.server.roomba_control.execute(operation)
+            if mission is not None:
+                mission.set_mode('idle')
+            return True
+        if mission is None:
+            raise RuntimeError('Calibration unavailable: autonomy is not configured'
+                               if operation in ('calibrate','cal','calibration') else
+                               'Mission unavailable: autonomy is not configured')
+        if operation in ('calibrate','cal','calibration'):
+            mission.start_calibration()
+        elif operation in ('discovery','discover'):
+            if self.server.roomba_control.snapshot().get('oi_stopped') is True:
+                raise RuntimeError('OI is stopped; use restart_oi explicitly before discovery')
+            mission.set_mode('discovery',wake_robot=False)
+        else:
+            mission.set_mode('idle')
+            self.server.roomba_control.execute('stop')
+        return True
+
+    def request_scan(self):
+        self.server.camera_service.request_scan()
+
     def _serve_vision(self):
         parsed = urlparse(self.path)
-        if parsed.path == '/status.json':
+        if parsed.path in ASSETS:
+            filename,content_type = ASSETS[parsed.path]
+            payload = (ASSET_ROOT/filename).read_bytes()
+        elif parsed.path == '/commands.json':
+            payload = json.dumps(command_index(),allow_nan=False).encode('utf-8')
+            content_type = 'application/json'
+        elif parsed.path == '/groundhog.json':
+            payload = json.dumps(groundhog_snapshot(getattr(self.server,'navlink',None)),
+                                 allow_nan=False).encode('utf-8')
+            content_type = 'application/json'
+        elif parsed.path == '/status.json':
             state = self.server.roomba_control.snapshot()
             keys = ('firmware_version', 'firmware_release', 'age', 'ready', 'oi_stopped', 'sensor_fault', 'battery_status',
                     'hard_hazard_reasons', 'button_diagnostics', 'reverse_current_monitor',
                     'applied_left_velocity_mm_s', 'applied_right_velocity_mm_s')
-            payload = json.dumps({key: state.get(key) for key in keys}, allow_nan=False).encode('utf-8')
+            status = {key: state.get(key) for key in keys}
+            mission = getattr(self.server, 'mission', None)
+            if mission is not None:
+                mission_status = mission.status_snapshot()
+                if isinstance(mission_status, dict):
+                    status.update(mission_status)
+            payload = json.dumps(status, allow_nan=False).encode('utf-8')
             content_type = 'application/json'
         elif parsed.path in ('/cam/tags.json', '/cam/scans.json'):
             try:
@@ -555,7 +607,8 @@ class RoomberryHandler(BaseHTTPRequestHandler):
                     self.send_reply()                   
                 self.server.last_camera_operation = time()
                     
-            elif self.path.startswith(PATH_TO_ROOMBA):
+            elif (self.path.startswith(PATH_TO_ROOMBA) or
+                  urlparse(self.path).path == PATH_TO_ROOMBA.rstrip('/')):
                 if self.path == PATH_TO_ROOMBA_XML:
                     self.get_roomba_xml()                
                     self.send_reply(mimetype='text/xml')
@@ -564,7 +617,9 @@ class RoomberryHandler(BaseHTTPRequestHandler):
                     operation = dict_qs['op'][0]
                     dict_qs = dict([key, self._dictionary_Parser(key,value[0])] for key, value in dict_qs.items() if key!='op')
                     
-                    if operation == 'reset_roomba_distance_angle':
+                    if self._mission_operation(operation, dict_qs):
+                        pass
+                    elif operation == 'reset_roomba_distance_angle':
                         self.reset_roomba_distance_angle()
                     else:
                         if operation in MANUAL_ROOMBA_OPERATIONS:

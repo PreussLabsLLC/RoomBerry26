@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- @(#)Info.plist 3.1 2026/10/31 11:30:00 -->
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
+<key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+<key>CFBundleName</key><string>GroundHog</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
+<key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
+<key>LSRequiresIPhoneOS</key><true/>
+<key>NSCameraUsageDescription</key><string>GroundHog tracks floor texture to measure Roomberry movement.</string>
+<key>NSMotionUsageDescription</key><string>GroundHog removes camera rotation from measured floor movement.</string>
+<key>NSLocalNetworkUsageDescription</key><string>GroundHog sends NavLink relative motion to Roomberry on your local network.</string>
+<key>UILaunchScreen</key><dict/>
+<key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string></array>
+<key>UIRequiredDeviceCapabilities</key><array><string>arm64</string><string>gyroscope</string><string>video-camera</string></array>
+</dict></plist>

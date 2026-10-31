@@ -1,5 +1,5 @@
 {
-  "_sccsid": "@(#)autonomy.json 2.3.map-log.1 2026/10/30 18:30:00",
+  "_sccsid": "@(#)autonomy.json 3.1.map-reset.1 2026/10/31 13:10:00",
   "_note": "Room dimensions and tag positions are surveyed. Intrinsics and camera mount are illustrative placeholders. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
   "start_mode": "idle",
   "motion_ramp": {
@@ -14,7 +14,7 @@
     "origin_mm": [0, 0],
     "cell_size_mm": 87,
     "cleaning_radius_mm": 87,
-    "state_path": "roomberry/map-state-reset-20261030-01.json",
+    "state_path": "roomberry/map-state-reset-20261031-01.json",
     "persist_interval_s": 30
   },
   "reverse_current_monitor": {

@@ -1,5 +1,5 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 2.3.map-log.1 2026/10/30 18:30:00
+# @(#)roomberry_mission.py 3.1.cal.2 2026/10/31 13:00:00
 
 from math import atan2, cos, hypot, pi, sin
 from random import uniform, choice
@@ -8,6 +8,7 @@ from time import monotonic, time
 
 from irobot.openinterface.constants import MODES, ROBOT
 
+from roomberry_calibration import CalibrationDrive, MODE_CALIBRATION
 from roomberry_control import LIGHT_BUMPER_PROXIMITY_THRESHOLD
 from roomberry_navigation import (
     BACK_UP, DOCK, DRIVE, FOLLOW_WALL, GO_TO_WAYPOINT, MODE_CLEAN,
@@ -138,6 +139,8 @@ class RoomberryMission:
         self.navigation = navigation
         self.localizer = localizer
         self.phone_position = None
+        self.navlink = None
+        self.calibration = None
         self._announced_mode = None
         self.logger = logger
         self.dock_waypoint_mm = dock_waypoint_mm
@@ -213,7 +216,7 @@ class RoomberryMission:
 
     def set_mode(self, mode, wake_robot=True):
         if mode not in (MODE_IDLE, MODE_CLEAN, MODE_RETURN_TO_BASE,
-                        MODE_DISCOVERY, MODE_REMOTE):
+                        MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION):
             raise ValueError('Unsupported mission mode: ' + str(mode))
         with self._coord_lock:
             self._send_stop('mission mode transition')
@@ -224,7 +227,18 @@ class RoomberryMission:
             self._aim_scan_pending = False
             self._localization_recovery = None
             self._blocked_waypoint = None
+            if self._mode == MODE_CALIBRATION and mode != MODE_CALIBRATION and self.calibration.result is None:
+                self.calibration.result = dict(status='cancelled', reason='mode changed to '+mode)
+                self.calibration.stage = 'cancelled'
+                self.logger.info('Calibration cancelled by mode change to %s.', mode)
             self._mode = mode
+            if mode == MODE_CALIBRATION:
+                self.calibration = CalibrationDrive(self)
+                self._manual_motion_until = 0.0
+                self.localizer.invalidate_pose()
+                self._detections_after_restart = time()
+                if self.phone_position is not None:
+                    self.phone_position.reset()
             if mode == MODE_DISCOVERY:
                 self._localization_recovery = None
                 self._wall_clear_start = None
@@ -265,7 +279,7 @@ class RoomberryMission:
                 self._discovery_avoid_grace_start = None
                 self._discovery_proximity_ticks = 0
             self.navigation.set_mode(
-                MODE_IDLE if mode in (MODE_DISCOVERY, MODE_REMOTE) else mode
+                MODE_IDLE if mode in (MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION) else mode
             )
             if mode != MODE_CLEAN:
                 self._circumvent_pending = False
@@ -279,17 +293,35 @@ class RoomberryMission:
                     self.logger.info('Roomba Open Interface entered Safe mode for %s.', mode)
                 except Exception:
                     self.logger.exception('Unable to enter Safe mode; motion remains inhibited.')
-            if mode == MODE_DISCOVERY:
+            if mode in (MODE_DISCOVERY, MODE_CALIBRATION):
                 self.robot_control.execute('set_motors', main_brush_on=False,
                                            side_brush=False, vacuum=False)
                 self._cleaning_motors_on = False
-                if wake_robot:
+                if wake_robot and mode == MODE_DISCOVERY:
                     self.robot_control.execute('wake')
 
             self.logger.info('Mission mode changed to %s', mode)
             if leaving_active:
                 self._flush_map('leaving active mode')
             self._announce_mode()
+
+    def start_calibration(self):
+        """Web entry point: idempotent while running; never rearm an OI stop."""
+        with self._coord_lock:
+            state = self.robot_control.snapshot()
+            if state.get('oi_stopped') or self._hard_hazard_reasons(state) or not state.get('ready'):
+                raise RuntimeError('Calibration requires grounded, ready Roomba sensors and no safety stop')
+            if self._mode != MODE_CALIBRATION:
+                self.set_mode(MODE_CALIBRATION, wake_robot=False)
+
+    def status_snapshot(self):
+        """Read-only mission state for HTTP diagnostics."""
+        with self._coord_lock:
+            run = self.calibration
+            return dict(mission_mode=self._mode, calibration=None if run is None else dict(
+                stage=run.stage, result=run.result, checkpoints=len(run.records),
+                waiting_for_sensors=run.sensor_wait_since is not None,
+                latest_checkpoint=run.records[-1] if run.records else None))
 
     def _announce_mode(self):
         """Announce real mode transitions, including the bump-and-go submode."""
@@ -388,6 +420,8 @@ class RoomberryMission:
                     self._discovery_stage,
                 )
                 return False
+            if self._mode == MODE_CALIBRATION and not self.calibration.stage.endswith('_scan'):
+                return False  # Calibration scans only at explicit stopped checkpoints.
             recovery = self._localization_recovery
             if self._mode == MODE_DISCOVERY and recovery is not None and recovery['phase'] != 'scan':
                 return False
@@ -425,6 +459,8 @@ class RoomberryMission:
                     target_id = DISCOVERY_INITIAL_TAG_ID
                 elif self._discovery_stage and self._discovery_stage.startswith('tag2'):
                     target_id = DISCOVERY_TAG_ID
+            if self._mode == MODE_CALIBRATION:
+                target_id = 15
             target_heading = None
             if recovery is not None and recovery.get('target') is not None and pose is not None:
                 target_heading = self._wrap(pose['heading_rad'] + recovery['target'] -
@@ -468,20 +504,23 @@ class RoomberryMission:
     def _run(self):
         while not self._shutdown.is_set():
             started = monotonic()
-            if self._scan_active:
+            try:
                 with self._coord_lock:
-                    self._handle_clock(self.robot_control.snapshot())
-            else:
-                try:
-                    with self._coord_lock:
-                        if not self._scan_active:
-                            self._tick()
-                            if self.map_log is not None and self._mode != MODE_IDLE:
-                                self.map_log.request(mode=self._mode)
-                except Exception:
-                    self.logger.exception('Mission update failed; stopping the robot.')
-                    with self._coord_lock:
-                        self._send_stop('mission update error')
+                    if self._scan_active:
+                        state = self.robot_control.snapshot()
+                        self._handle_clock(state)
+                        if self._mode == MODE_CALIBRATION:
+                            self.calibration.guard(self.robot_control.snapshot())
+                    else:
+                        self._tick()
+                        if self.map_log is not None and self._mode != MODE_IDLE:
+                            self.map_log.request(mode=self._mode)
+            except Exception:
+                self.logger.exception('Mission update failed; stopping the robot.')
+                with self._coord_lock:
+                    self._send_stop('mission update error')
+                    if self._mode == MODE_CALIBRATION:
+                        self.calibration.abort('mission update error')
             try:
                 self._announce_mode()
             except Exception:
@@ -491,7 +530,7 @@ class RoomberryMission:
             self._shutdown.wait(max(0.0, self.period - elapsed))
 
     def _handle_clock(self, state):
-        """Keep the physical return-to-staging button armed, even during scans."""
+        """Start/cancel calibration on Clock, including during a stationary scan."""
         if state.get('oi_stopped') is True:
             return False
         pressed = bool(state.get('clock_button', False))
@@ -501,18 +540,12 @@ class RoomberryMission:
         latched = bool(consume()) if callable(consume) else False
         if not (edge or latched):
             return False
-        self.set_mode(MODE_DISCOVERY)
-        target = self.discovery_landmarks.get(DISCOVERY_INITIAL_TAG_ID)
-        self._discovery_waypoint = (
-            self._tag_approach_waypoint(target['world_from_tag'], DOCK_APPROACH_MM)
-            if target is not None else (DOCK_X_MM, DOCK_Y_MM + DOCK_APPROACH_MM)
-        )
-        self._discovery_scan_resume = None
-        self._discovery_stage = 'dock_approach'
-        self._manual_motion_until = 0.0
-        self.logger.info('Clock button pressed; returning to dock staging point %s '
-                         '(%.0f mm in front of dock).',
-                         self._discovery_waypoint, DOCK_APPROACH_MM)
+        if self._mode == MODE_CALIBRATION:
+            self.calibration.abort('Clock button cancelled calibration')
+        else:
+            self.set_mode(MODE_CALIBRATION)
+            self.logger.info('Clock button pressed; starting tag 15 calibration: '
+                             'three 500 mm reverse legs, return scan and gentle bumper touch.')
         return True
 
     def _tick(self):
@@ -549,6 +582,9 @@ class RoomberryMission:
             return
         sensors = state['sensors']
         if not state.get('ready') or sensors is None:
+            if self._mode == MODE_CALIBRATION:
+                self.calibration.abort('Roomba sensors not ready')
+                return
             self._send_stop('waiting for Roomba sensor startup')
             return
         if state.get('battery_status') == 'low' and self._mode == MODE_CLEAN:
@@ -587,6 +623,8 @@ class RoomberryMission:
                     detections = ()
                     new_detections = False
 
+        if self._mode == MODE_CALIBRATION:
+            detections = tuple(item for item in detections if int(item.get('id', -1)) == 15)
         pose = None
         if sensors is not None:
             pose = self.localizer.update(
@@ -595,7 +633,7 @@ class RoomberryMission:
                 detection_timestamp=localization_timestamp,
                 odometry_epoch=state.get('odometry_epoch'),
             )
-        if self.phone_position is not None:
+        if self.phone_position is not None and self._mode != MODE_CALIBRATION:
             pose = self.phone_position.apply(
                 self.localizer, pose, monotonic(), state.get('odometry_epoch'),
                 enabled=(self._mode in (MODE_DISCOVERY, MODE_CLEAN, MODE_RETURN_TO_BASE)
@@ -645,6 +683,10 @@ class RoomberryMission:
                 )
                 self.camera.request_scan()
             self._remote_was_moving = moving
+            return
+
+        if self._mode == MODE_CALIBRATION:
+            self.calibration.tick(state, pose, new_detections, detection_timestamp)
             return
 
         if self._mode == MODE_DISCOVERY:

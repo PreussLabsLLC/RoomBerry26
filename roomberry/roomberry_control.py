@@ -1,5 +1,5 @@
 """Single-owner Roomba command and sensor-polling service."""
-# @(#)roomberry_control.py 2.3.18 2026/10/28 21:40:00
+# @(#)roomberry_control.py 3.1.cal.1 2026/10/31 12:30:00
 
 from math import isfinite
 from roomberry_reverse_monitor import ReverseCurrentMonitor
@@ -283,7 +283,7 @@ class RobotCommandArbiter:
     def set_drive_display(self, mode, stage=None, scanning=False):
         """Publish a display label; only the I/O owner writes the serial port."""
         label = {'idle': 'IdLE', 'discovery': 'dISC', 'clean': 'CLn ',
-                 'return_to_base': 'HOME', 'remote_control': 'rEM '}.get(mode, 'IdLE')
+                 'return_to_base': 'HOME', 'remote_control': 'rEM ', 'calibration': 'CAL '}.get(mode, 'IdLE')
         if mode == 'discovery':
             if stage == 'bump':
                 label = 'bUMP'
@@ -295,7 +295,7 @@ class RobotCommandArbiter:
                 label = 'bACK'
             elif stage == 'avoid_turn':
                 label = 'turn'
-        self._drive_display = 'SCAn' if scanning else label
+        self._drive_display = 'SCAn' if scanning and mode != 'calibration' else label
 
     def _update_drive_display(self, sensors):
         label = self._drive_display

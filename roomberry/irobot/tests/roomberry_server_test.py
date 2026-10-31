@@ -1,4 +1,4 @@
-# @(#)roomberry_server_test.py 2.3.tag-facing.3 2026/10/30 16:10:00
+# @(#)roomberry_server_test.py 3.1.web.1 2026/10/31 14:00:00
 import unittest
 import io
 import json
@@ -89,6 +89,53 @@ class RoomberryManualControlTest(unittest.TestCase):
         )
 
 
+class CalibrationHttpTest(unittest.TestCase):
+    def setUp(self):
+        self.mission=Mock()
+        self.control=Mock()
+        self.handler=RoomberryHandler.__new__(RoomberryHandler)
+        self.handler.server=SimpleNamespace(mission=self.mission,roomba_control=self.control,logger=Mock())
+        self.handler.wfile=io.BytesIO()
+        self.handler.send_reply=Mock()
+        self.handler.send_error=Mock()
+        self.handler.send_error_reply=Mock()
+        self.handler._serve_vision=Mock(return_value=False)
+
+    def test_calibration_aliases_route_to_mission_with_and_without_slash(self):
+        for path in ('/roomba/?op=calibrate','/roomba/?op=cal','/roomba?op=calibrate','/roomba?op=cal',
+                     '/roomba/?op=calibration'):
+            with self.subTest(path=path):
+                self.handler.path=path
+                self.handler.do_GET()
+        self.assertEqual(self.mission.start_calibration.call_count,5)
+        self.assertEqual(self.handler.send_reply.call_count,5)
+        self.handler.send_error_reply.assert_not_called()
+        self.control.execute.assert_not_called()
+        self.mission.take_manual_control.assert_not_called()
+
+    def test_calibration_requires_configured_autonomy(self):
+        self.handler.server.mission=None
+        self.handler.path='/roomba/?op=cal'
+        self.handler.do_GET()
+        self.handler.send_error_reply.assert_called_once_with('Calibration unavailable: autonomy is not configured')
+        self.control.execute.assert_not_called()
+
+    def test_calibration_cannot_accept_wheel_parameters(self):
+        self.handler.path='/roomba/?op=cal&velocity=100'
+        self.handler.do_GET()
+        self.handler.send_error_reply.assert_called_once_with('Mission commands do not accept operation parameters')
+        self.mission.start_calibration.assert_not_called()
+        self.control.execute.assert_not_called()
+
+    def test_calibration_oi_stop_rejection_reaches_http_client(self):
+        self.mission.start_calibration.side_effect=RuntimeError('explicit rearm required')
+        self.handler.path='/roomba/?op=cal'
+        self.handler.do_GET()
+        self.handler.send_error_reply.assert_called_once_with('explicit rearm required')
+        self.control.execute.assert_not_called()
+
+
+
 class VisionDownloadTest(unittest.TestCase):
     def setUp(self):
         self.camera = Mock()
@@ -115,6 +162,20 @@ class VisionDownloadTest(unittest.TestCase):
         status=json.loads(self.handler.wfile.getvalue())
         self.assertEqual(status['reverse_current_monitor']['mode'],'report_only')
         self.assertTrue(status['reverse_current_monitor']['candidate'])
+        self.handler.server.roomba_control.execute.assert_not_called()
+
+    def test_status_reports_calibration_stage_and_abort_reason_without_actions(self):
+        self.handler.server.roomba_control=Mock()
+        self.handler.server.roomba_control.snapshot.return_value=dict(ready=True)
+        mission=Mock()
+        mission.status_snapshot.return_value=dict(mission_mode='idle',calibration=dict(
+            stage='aborted',result=dict(reason='heading -12.8 deg'),waiting_for_sensors=False))
+        self.handler.server.mission=mission
+        self.handler.path='/status.json'
+        self.assertTrue(self.handler._serve_vision())
+        status=json.loads(self.handler.wfile.getvalue())
+        self.assertEqual(status['calibration']['result']['reason'],'heading -12.8 deg')
+        mission.start_calibration.assert_not_called()
         self.handler.server.roomba_control.execute.assert_not_called()
 
     def test_zero_detection_scans_can_be_listed(self):

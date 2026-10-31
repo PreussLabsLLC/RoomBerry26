@@ -1,5 +1,7 @@
-<!-- @(#)navlink.md 2.3.navlink.6 2026/10/30 15:25:00 -->
+<!-- @(#)navlink.md 3.1.compass.1 2026/10/31 12:10:00 -->
 # NavLink design review
+
+Version 3.1 adds GroundHog floor-relative motion as wire version 1, message type 2. Type 1 retains its original meaning and layout. See the GroundHog specification below and [app instructions](../ios-app/GroundHog/README.md). Existing receivers must be upgraded before they can accept type 2.
 
 NavLink v1 recording milestone, October 30, 2026. StarLock emits the binary format below; Roomberry receives and records it without using it for navigation. This replaces the earlier [JSON wire proposal](../ios-app/udp-protocol.md). Room alignment, mount calibration, clock exchange and navigation qualification remain future work.
 
@@ -219,3 +221,146 @@ Motion packets can discard old samples; map updates need recovery from packet lo
 - A separate mapping channel, developed after motion telemetry.
 
 This provides localization and motion diagnostics while leaving room surveying open for experimentation. Existing freshness, explicit alignment binding and receiver watchdog requirements from the earlier proposal remain relevant even though the encoding changes.
+
+
+## GroundHog relative motion (3.1, wire v1/type 2)
+
+GroundHog sends to the same UDP endpoint at 10 Hz. The datagram is exactly 128 bytes, little-endian, with explicit Swift serialization. Physical values are finite IEEE 754 float32. This is relative robot-center odometry, not a surveyed room position. Type 1's flag definitions, tracking reasons and field semantics must not be applied to type 2.
+
+Python layout: `struct.Struct('<4sBBHQQIHBBQQQIII12fHHBBHI')`.
+
+| Offset | Type | Meaning |
+| ---: | --- | --- |
+| 0 | 4 bytes | `NVLK` |
+| 4 | u8 | Wire version 1 |
+| 5 | u8 | Message type 2 |
+| 6 | u16 | Length 128 |
+| 8 | u64 | Random nonzero session, changed on each Start |
+| 16 | u64 | Nonzero saved mount-calibration identity; changes when calibration changes |
+| 24 | u32 | Emission sequence, increasing within session |
+| 28 | u16 | Flags: bit 0 last frame interval valid; bit 1 mount calibration supplied; bit 2 cumulative segment valid. Other bits zero |
+| 30 | u8 | State: 0 unavailable, 1 limited, 2 tracking, 3 interrupted |
+| 31 | u8 | Reason: 0 none, 1 initializing/focusing, 2 excessive motion, 3 tilt/IMU/timestamp invalid, 4 stale/missing frame or frame gap, 5 capture interruption/error, 6 Vision failure, 7 insufficient texture/agreement |
+| 32 | u64 | Last accepted frame interval start, phone uptime microseconds; zero before first accepted interval |
+| 40 | u64 | Last accepted frame interval end, same clock; zero before first accepted interval |
+| 48 | u64 | Packet assembly uptime microseconds |
+| 56 | u32 | Continuity segment, increments on a break after a valid segment |
+| 60 | u32 | Session accepted-frame count, saturating |
+| 64 | u32 | Session rejected-frame count, saturating; heartbeat failures are excluded |
+| 68 | 3 × f32 | Cumulative segment X/Y in mm and unwrapped yaw in radians |
+| 80 | 3 × f32 | Last frame interval forward/left displacement in mm and yaw increment in radians |
+| 92 | f32 | Translation-fit RMS residual in mm; diagnostic, not statistical uncertainty |
+| 96 | f32 | Configured camera lens height above floor, mm |
+| 100 | f32 | Segment path length, sum of accepted robot-center translation magnitudes, mm |
+| 104 | f32 | Segment sum of accepted interval durations, seconds |
+| 108 | 2 × f32 | Last frame interval forward/left speed in mm/s |
+| 116 | u16 | Translation-fit inliers |
+| 118 | u16 | Candidate translation samples passing image/geometric checks |
+| 120 | u8 | Battery percent, 0–100 or 255 unknown |
+| 121 | u8 | Battery state: 0 unknown, 1 unplugged, 2 charging, 3 full |
+| 122 | u16 | Reserved, zero |
+| 124 | u32 | Last accepted frame's processing duration, microseconds |
+
+Forward is robot +X, left is robot +Y, yaw is positive left/counterclockwise viewed from above. Frame deltas are expressed in the robot axes at the interval start. Cumulative X/Y are expressed in the robot axes at the beginning of the continuous segment. They are composed as `p_next = p + R(yaw) delta`, `yaw_next = yaw + deltaYaw`. Translation has already been corrected from lens to robot center using the supplied mount offset. Consumers must not apply that correction again.
+
+Flags 0 and 2 require bit 1. A valid interval has flags 7, state 2, reason 0, nonzero increasing start/end, a duration at most 150 ms, capture age at assembly at most 250 ms, at least 24 inliers, and positive accumulated valid duration. Unknown/reserved encodings are rejected. A supplied calibration means measured mount parameters were entered; it does not certify tracking accuracy or room alignment.
+
+On tracking loss, cumulative values reset, flags 0/2 clear, and continuity increments if the previous segment was valid. Initial failures do not continually advance continuity. Invalid packets retain the last accepted capture timestamps for diagnostics, so an old timestamp must never be interpreted as a new zero-motion sample. A new valid segment starts from zero before its first accepted increment. Sequence and continuity exhaustion create a fresh session before reuse. Starts/restarts reset all accumulation. Accepted/rejected counts are session totals; path and duration are segment totals.
+
+A sender repeats the latest snapshot at each emission tick without changing its capture timestamps. Last-frame deltas are diagnostics, not a command to add that delta once per datagram. To tolerate packet loss, a consumer differences cumulative transforms from two fresh snapshots with the same session, calibration and continuity:
+
+```
+delta_translation = R(-previous_yaw) * (current_position - previous_position)
+delta_yaw = current_yaw - previous_yaw
+```
+
+Duplicate/reordered emissions and repeated capture end times contribute no new motion. A continuity, calibration or session change establishes a new baseline; never bridge it. A missed invalid datagram is still detectable by the continuity change in the next valid datagram. Lost visual intervals cannot be recovered from tallies. No acknowledgement/retry is needed for motion snapshots.
+
+The Pi receiver retains type 1 and type 2 unchanged in the existing `NVLLOG1` log, since both payloads remain 128 bytes. CSV export adds `type` and relative-motion columns, leaving inapplicable values empty. Older exporters cannot decode type 2. The existing AR pose snapshot and optional position aider remain separate; `latest_ground_observation()` returns an ordered GroundHog snapshot and, when possible, `recovered_delta` between received cumulative snapshots. The first snapshot only establishes a baseline. Consumers must also deduplicate snapshot reads. Recovered deltas remain telemetry and are not automatically fused into navigation.
+
+Capture timestamps, Core Motion and packet assembly are checked against phone uptime. Pi receive monotonic time is recorded separately; there is no phone/Pi synchronization or bounded capture freshness at the Pi. Arrival time alone does not prove a packet is fresh. Geometry, flow processing and tally composition stay on the phone.
+
+
+## GroundHog sensor/health heartbeat (3.1 build 2, wire v1/type 3)
+
+A separate 128-byte type-3 packet runs at 10 Hz independently of capture/Vision, with an additional immediate best-effort emission at impact onset. Types 1/2 and the `NVLLOG1` log container remain unchanged. Total nominal application payload for types 2+3 is 2.56 KB/s, plus occasional impact emissions. Update the Pi receiver/exporter before using type 3.
+
+Python layout: `struct.Struct('<4sBBHQQIHBBQQQIHBB12fQHHI')`.
+
+| Offset | Type | Meaning |
+| ---: | --- | --- |
+| 0 | 4 bytes | `NVLK` |
+| 4 | u8 | Wire version 1 |
+| 5 | u8 | Message type 3 |
+| 6 | u16 | Length 128 |
+| 8 | u64 | Nonzero tracking session token at Start |
+| 16 | u64 | Nonzero mount calibration token |
+| 24 | u32 | Independent health emission sequence |
+| 28 | u16 | Health validity flags below |
+| 30 | u8 | Thermal state: 0 nominal, 1 fair, 2 serious, 3 critical, 255 unknown |
+| 31 | u8 | Battery state: 0 unknown, 1 unplugged, 2 charging, 3 full |
+| 32 | u64 | Health packet assembly uptime, microseconds |
+| 40 | u64 | Latest Core Motion uptime, microseconds, zero if absent |
+| 48 | u64 | Latest impact-candidate onset uptime, microseconds, zero if none |
+| 56 | u32 | Cumulative impact episode count since Start, saturating |
+| 60 | u16 | IMU samples since previous health emission, saturating |
+| 62 | u8 | Battery percent 0–100, or 255 unknown |
+| 63 | u8 | Reserved zero |
+| 64 | 3 × f32 | Latest user acceleration in native device X/Y/Z, mm/s² |
+| 76 | 3 × f32 | Latest angular rate in native device X/Y/Z, rad/s |
+| 88 | 3 × f32 | Latest gravity vector in native device X/Y/Z, g |
+| 100 | f32 | Peak user-acceleration magnitude since previous health emission, mm/s² |
+| 104 | f32 | Latest episode peak magnitude in its first 150 ms, mm/s² |
+| 108 | f32 | Own-process CPU percent, 100% = one full CPU core; may exceed 100% |
+| 112 | u64 | Own-process physical memory footprint, bytes |
+| 120 | u16 | Actual delivered camera buffer width, pixels; zero if unknown |
+| 122 | u16 | Actual delivered camera buffer height, pixels; zero if unknown |
+| 124 | u32 | Age of CPU/memory sampling attempt at assembly, ms; 0xffffffff if unavailable |
+
+Flags: bit 0 latest IMU usable (age ≤100 ms); bit 1 interval peak/sample count valid; bit 2 app CPU valid; bit 3 app memory valid; bit 4 latest impact episode exists; bit 5 battery percentage known; bit 6 actual image dimensions known. Bits 7–15 are reserved zero. Measurement values with clear flags may retain diagnostic history and must not be treated as current observations. All floats must be finite. Impact count/time/peak and their bit agree; absent impacts have zero values. CPU/memory validity requires resource age ≤2000 ms. Battery, dimension and interval count validity must agree with their fields.
+
+Native device X points toward the phone's right edge, Y toward its top, Z out of its screen. In this screen-up mount, gravity is approximately (0,0,-1). Unlike type-2 translation, acceleration/angular-rate vectors are not converted to robot axes or corrected to robot center. They include rotation's lever-arm effects at the phone. They must not be interpreted as a measured collision direction or contact location. Gravity permits consumers to derive tilt if desired.
+
+Impact inference uses gravity-separated acceleration and jerk with provisional thresholds, warmup and quiet/cooldown rearming; see [GroundHog detector details](../ios-app/GroundHog/README.md). A candidate is an observed jolt after contact or other disturbance, not proximity sensing or verified contact. It cannot guarantee phone protection. No automatic navigation or motor policy consumes these packets in this change.
+
+The most recent event count, onset and episode peak are repeated in every later heartbeat. A receiver differences counts only within the same health session/calibration and increasing sequence. Missing event datagrams are recoverable from later counts. If multiple events were missed, the count recovers their number, but only the newest onset/peak is available. Repeated counts are not new impacts. A new session establishes a baseline. `latest_health_observation()` is independent of AR pose/ground motion and exposes `new_bumps`; callers must also deduplicate sequence reads. Logs retain raw duplicates/reordering for analysis.
+
+CPU and memory are app-local, sampled about once per second, and do not describe device-wide load or GPU utilization. CPU is unavailable until a second successful counter reading. Battery repeats cached UIKit readings refreshed once per second. Thermal state is a categorical Foundation reading. Camera dimensions are cached from actual output buffers, and do not certify that frames are currently arriving. The configured VGA preset is normally delivered as 480×640 portrait at a requested 30 fps; actual FPS is not encoded here.
+
+Health transmission does not wait for optical-flow processing. The shared UDP sender prioritizes the newest pending health record, with at most one pending record per message type and no stale backlog. This is best-effort telemetry, not an acknowledged safety channel. Sensor and packet timestamps use phone uptime; no synchronized Pi clock is claimed. Receiver arrival time alone cannot bound capture/event age. Stopping/backgrounding stops this heartbeat as well as capture.
+
+
+## GroundHog compass heartbeat (3.1 build 3, wire v1/type 4)
+
+Core Location supplies magnetic compass observations separately from gyro-relative odometry. Type 4 is a 128-byte packet emitted once per second, including when heading is unsupported, unreliable or stale. It uses the same Start session/calibration identity, its own emission sequence, and the same receiver/log container. Existing message types are unchanged. Python format: `struct.Struct('<4sBBHQQIHBBQQ8fQ40s')`.
+
+| Offset | Type | Meaning |
+| ---: | --- | --- |
+| 0 | 4 bytes | `NVLK` |
+| 4 | u8 | Wire version 1 |
+| 5 | u8 | Message type 4 |
+| 6 | u16 | Length 128 |
+| 8 | u64 | Nonzero session token |
+| 16 | u64 | Nonzero mount calibration identity |
+| 24 | u32 | Compass emission sequence |
+| 28 | u16 | Bit 0 phone magnetic bearing usable; bit 1 device field vector fresh/finite; bit 2 mount-corrected robot magnetic bearing usable; other bits zero |
+| 30 | u8 | State: 0 unsupported, 1 acquiring, 2 usable, 3 unreliable, 4 stale, 5 error |
+| 31 | u8 | Reserved zero |
+| 32 | u64 | Assembly uptime, microseconds |
+| 40 | u64 | Estimated heading sample uptime, microseconds; zero if absent/error |
+| 48 | f32 | Phone top-edge magnetic bearing, radians clockwise from magnetic north |
+| 52 | f32 | Robot-forward magnetic bearing, radians clockwise from magnetic north |
+| 56 | f32 | Apple-reported heading accuracy in radians; negative means invalid |
+| 60 | 3 × f32 | Device-axis magnetic field X/Y/Z, microteslas |
+| 72 | f32 | Field magnitude, microteslas |
+| 76 | f32 | Supplied mount yaw, radians counterclockwise from robot forward to phone top |
+| 80 | u64 | Original Core Location sample wall-clock timestamp, Unix microseconds; zero if absent/error |
+| 88 | 40 bytes | Reserved zeros |
+
+Phone/robot bearings are north-referenced **clockwise**, not type-2 positive-left yaw or room-aligned heading. Robot bearing is `wrap_2pi(phone_bearing + mount_yaw)`. The mount conversion is already applied. Raw field vectors retain native device axes. Bits 0/2 are set together only with state 2, sample age ≤1 second, and reported accuracy between 0 and 20° inclusive. Bit 1 can remain set with state 3 to record the field despite unreliable heading. States 0/1/4/5 have no validity bits. Invalid measurements may retain finite diagnostic values. Zero bearing is a real north reading only when its validity bit is set. A small float32 rounding tolerance is allowed at angular bounds.
+
+Core Location's heading timestamps are wall-clock Dates. The sender estimates sample uptime from callback uptime minus the observed wall-clock sample age, and retains the source Unix timestamp separately. Negative age, samples older than one second, and callbacks predating the current Start are discarded. Wall-clock anomalies can invalidate compass observations; these timestamps do not establish synchronized Pi capture time. Repeated heartbeats retain the source timestamp and become stale rather than acquiring a new apparent capture time.
+
+The sender uses heading updates only: no GPS/location updates, authorization request or true-north bearing. Hardware availability, bad accuracy and errors are explicit. Calibration overlays are suppressed on the mounted phone. Magnetic interference from the robot can bias even apparently accurate readings; validity represents source quality/freshness checks, not surveyed heading accuracy. Compass data is recorded/displayed without changing gyro integration, floor odometry, navigation or motor control.
+
+`latest_compass_observation()` provides a separate ordered snapshot; duplicate/reordered sequences and retired sessions are excluded from that snapshot while raw logs retain them. CSV includes named compass columns and excludes reserved padding. The UDP sender retains one latest compass packet in addition to one health and one motion packet. Health has first priority, followed by motion and compass; stale pending snapshots are discarded. Consumers must qualify freshness and deduplicate reads before any future use.

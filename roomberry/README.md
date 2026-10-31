@@ -1,4 +1,4 @@
-﻿<!-- @(#)README.md 2.3.map-log.1 2026/10/30 18:30:00 -->
+﻿<!-- @(#)README.md 3.1.web.1 2026/10/31 14:00:00 -->
 # Roomberry
 
 **Roomberry 26** follows the original roomberry project (Pi Zero W with picam riding on
@@ -177,8 +177,8 @@ without injecting stops between them. Wheel odometry and AprilTag localization
 continue in remote mode, so the map trail follows the drive and accepted tags
 re-anchor the pose. If the robot was left in Passive mode, the next manual drive
 command switches it back to Safe automatically. Pressing the physical Clock
-button ends remote control and returns to idle; Schedule still starts
-discovery.
+button ends remote control and starts tag-15 calibration; pressing Clock again
+cancels calibration and returns to idle. Schedule still starts discovery.
 
 The Roomba Open Interface is allowed 1.5 seconds to settle after startup before
 motion is accepted. While the robot is stationary on its home base, transient
@@ -489,3 +489,70 @@ planning approximation. If the pose itself conflicts with obstacle clearance,
 reachability is labeled unknown rather than marking the room unreachable.
 
 Normal discovery cruise is capped at 80 mm/s. Minimum pivot speed is 30 mm/s. Ordinary transit bends keep the inner wheel at least 30 mm/s; near-goal and proximity motion retains slower limits.
+
+
+## Clock-button calibration drive (`CAL`)
+
+The physical Clock button now starts the dedicated `calibration` mode, replacing its old dock-staging shortcut. Clock again cancels to idle, including during a scan. The four-character display stays `CAL ` throughout the run, including stationary scans. Schedule continues to start discovery; manual web driving cancels calibration and takes remote control. Startup remains idle; no calibration run starts automatically.
+
+Start GroundHog tracking on the mounted iPhone. Place the robot on hard floor facing tag 15, with a clear reverse path toward room −X. The initial scan must accept surveyed tag 15 with heading within 0.30 rad (about 17.2°) of +X, center 100–1600 mm before the tag plane, and center within 200 mm laterally of the tag. The robot does not pivot or search by turning. If the initial pose fails these checks, it stops in idle for repositioning. A fresh, valid GroundHog snapshot is required to establish the phone baseline; after the initial scan it waits at most ten seconds for one.
+
+The sequence is:
+
+1. Stop and request a new stationary tag-15 scan. Discard earlier captures. Verify the start pose and anchor independent wheel and GroundHog estimates to it.
+2. Reverse to −500 mm of signed wheel distance from the start; stop, scan and log tag/wheel/iPhone positions and residuals.
+3. Repeat at −1000 mm and −1500 mm. Missing/rejected tag fixes at any outbound checkpoint are recorded as unavailable, without inventing a tag position or starting a search turn. The fixed, bounded reverse sequence continues.
+4. Drive forward on the same heading to the starting wheel-distance mark. Stop and request a fresh return scan. Tag 15 must be accepted again within the same heading/range/lateral envelope and within 400 mm of the original room position before contact is allowed.
+5. Approach at 15 mm/s for a gentle **physical bumper touch**. This is not merely an IR light-bumper reading. Approach distance is bounded by the return scan's tag-plane gap minus the robot radius plus 30 mm, with a time limit; contact more than 50 mm before its expected point is treated as an unexpected obstacle. The ordinary Roomba safety stop remains active and brakes on contact. Successful contact is recorded and the mission goes idle, without releasing by reversing or continuing discovery.
+
+Reverse and return use a nominal 50 mm/s cruise speed, slowing toward each stopping mark; differential trims can change individual wheel speeds. Small differential-wheel trims hold the initial heading; a heading deviation over 0.30 rad aborts rather than starting a pivot. Each reverse target is cumulative from the start, so a small stopping overshoot is not added three times. Cleaning motors stay off. Calibration scans are skipped during moving stages so a periodic camera scan cannot interrupt a leg. The existing stationary-camera settle period applies at requested checkpoints.
+
+The wheel-only estimate integrates cumulative encoder-derived distance/angle from the initial anchor and is **never reset by later tag fixes**. Only tag 15 contributes to localization while this mode is active. The old ARKit phone position corrector is bypassed for the whole run. GroundHog's cumulative transform is independently aligned to the starting tag pose, with translation already corrected to robot center on the phone. Lost UDP snapshots can be bridged by the cumulative transform, but a phone session, calibration or continuity change permanently invalidates the phone comparison for the rest of the run. No position is invented across a visual tracking gap. Capture/arrival age checks are diagnostic; phone/Pi clocks remain unsynchronized. Neither phone nor tag corrections alter the wheel-controlled stopping marks.
+
+Each checkpoint writes one machine-readable `Calibration checkpoint: { ... }` JSON record to the normal Roomberry log. It contains checkpoint name, target and actual wheel distance, tag pose (or null), independent wheel pose, independent iPhone pose (or null with reason), three pairwise position/heading residuals, scan timestamp, phone identity/timestamps, and bumper state. Records are `start`, `reverse_1`, `reverse_2`, `reverse_3`, `return`, and `contact` on a successful run. Contact records have no new optical fix: the preceding `return` record is the fresh tag verification. In-process results remain at `mission.calibration.records` and `.result` until the next run; logs preserve the history. This mode gathers measurements; it does not automatically change wheel scale, camera calibration, map geometry or phone calibration.
+
+Fresh sensor data, normal battery, unchanged odometry epoch, and the existing cliff/wheel-drop safeguards are required. Unexpected bumper contact, a newly reported phone impact, a safety latch, excessive heading drift, wrong-way motion, a discontinuous encoder reading, three seconds without wheel progress, or a stage/scan timeout aborts to idle. A brief sensor-poll delay at a stopped scan/anchor checkpoint instead holds the run stopped and waits up to five seconds for a fresh poll. It preserves a completed scan while waiting, so the result is not lost if consumed during the delay. Movement still requires sensor age at most 500 ms, and hard hazards/faults still abort immediately. Scan guards also run while image processing is busy. Each scan is bounded to 120 seconds, each normal movement stage to 60 seconds, and the whole run to 15 minutes. The intentional final bumper touch is the only expected collision; no safety sensor is disabled for calibration.
+
+Implemented in `roomberry_calibration.py`, with mission integration, `CAL` display and the shared NavLink receiver supplied directly by `roomberry.py`. The Pi must have the updated NavLink receiver (GroundHog message types 2/3/4), even when the old `phone_position.enabled` option is false. The new mode is covered by deterministic sequence/independence/failure tests and the existing mission/control/server suites. Hardware calibration and contact-force measurements still require an operator-supervised run. Implementation alone does not deploy files or trigger robot movement.
+
+
+### Web calibration commands and run status
+
+After installing the updated Python files and restarting Roomberry, these equivalent commands start calibration:
+
+```
+http://pi:8080/roomba/?op=calibrate
+http://pi:8080/roomba/?op=cal
+```
+
+The `/roomba` spelling without the trailing slash is also accepted, as is `op=calibration`. These operations are handled by the mission coordinator, never sent to the Open Interface driver. They accept no wheel/speed parameters. Repeated start requests while calibration is already running do not reset the experiment. An unavailable autonomy coordinator, unready sensors, hard hazard or latched OI stop returns an HTTP error instead of rearming motion. Clock remains the physical start/cancel control. Starting calibration no longer issues the three-second GPIO wake command: Safe mode is explicitly selected without blocking normal sensor polling for that wake delay.
+
+`http://pi:8080/status.json` is read-only and now includes `mission_mode` and a `calibration` object with stage, result/abort reason, checkpoint count, latest checkpoint and `waiting_for_sensors`. This makes stopped scan waits and failed start verification visible without guessing from the LEDs. Start rejection logs/results include the measured heading, tag-plane gap and lateral displacement. The current acceptance limits are listed below; the separate cliff/wheel-drop, stale-moving-sensor, speed and progress protections remain active.
+
+
+## Local web console and doubled calibration acceptance
+
+Open `http://pi:8080/` for the local console. The root and `/index.html` serve the new page; `/ui/app.js` and `/ui/style.css` provide its assets. It runs offline using system fonts and same-origin JSON. The existing separate `web-app/` frontend is unchanged.
+
+- **Robot:** current mission, sensor age, safety, calibration stage/result/latest checkpoint, plus explicit Stop/idle, calibration, discovery and scan-request buttons. Opening the page or refreshing status never starts a mission. Stop cancels autonomous planning before braking, so a mission does not immediately resume the stopped command.
+- **GroundHog:** segment X/Y/yaw and continuity, flow quality/processing time, frame counts, phone battery/charging, impact episodes, app CPU/memory, thermal state, image dimensions, acceleration/gyro/gravity, and compass field/bearing/accuracy. Packet receipt freshness and sensor validity are distinct; unavailable/stale measurements display dashes. Original data is available in a collapsed raw snapshot. The endpoint is `/groundhog.json`.
+- **Recent scans:** the latest eight archived scans, including missing tags and skipped detections by default. A filter shows only scans with detections. Thumbnails link to the full camera image and JSON report, with tag IDs, range, decision margin and hamming. This reads the existing `/cam/scans.json` and `/cam/tags.json` archive APIs without forcing a camera capture on page load.
+- **Command index:** searchable names, aliases, GET routes and parameters, also at `/commands.json`. Direct-driver signatures are extracted from the installed Create2 source without importing GPIO or opening hardware. Read routes are links; mutating command examples are plain text. The available action buttons send commands only when clicked.
+
+Additional mission aliases: `/roomba/?op=discovery` (`discover`), `/roomba/?op=idle` (`cancel_calibration`), and `/roomba/?op=stop` (`emergency_stop`). Existing calibration aliases remain `calibrate`, `cal`, and `calibration`. `/cam/?op=request_scan` requests a stationary scan subject to the mission's motion/scan policy. An active calibration is not restarted by repeated calibration-start requests. Query parameters are not accepted on mission commands.
+
+Calibration-specific geometric acceptance has been widened at the user's request:
+
+| Check | Previous | Current |
+| --- | --- | --- |
+| Starting/return heading and wheel-heading drift | ±0.15 rad / 8.6° | ±0.30 rad / 17.2° |
+| Surveyed tag-face heading check | ±0.05 rad | ±0.10 rad |
+| Lateral starting/return offset | ±100 mm | ±200 mm |
+| Return position discrepancy | 200 mm | 400 mm |
+| Starting/return center-to-tag-plane gap | 200–800 mm | 100–1600 mm |
+| Phone packet receipt age for calibration comparison | 0.5 s | 1.0 s |
+| Source frame-age gate for calibration comparison | 250 ms | 500 ms (sender validity still applies) |
+
+The minimum gap is halved and maximum doubled to widen the accepted range. A pose estimating the robot center closer than its bumper radius to the tag plane can be logged at the start but cannot authorize a negative-distance final contact approach. Contact travel remains bounded by the newly verified gap minus radius plus 30 mm, now up to the enlarged accepted range. Cruise/contact speeds, the three 500 mm reverse targets, physical cliff/wheel-drop protection, moving-sensor freshness and no-progress checks are unchanged. GroundHog continuity loss still invalidates the independent iPhone position comparison; wider calibration tolerances cannot reconstruct lost visual motion. None of these changes relax the general AprilTag localizer or the iPhone's optical-flow fit acceptance.
+
+For deployment, copy the updated Python modules **including `roomberry_web.py`**, and the entire `roomberry/web/` directory alongside `roomberry.py`, then restart the manually managed Roomberry process. No new Python package or external hosting service is required. Tests cover the routes, command catalog, precise 64-bit JSON identities, validity/receipt age, stop cancellation and widened limits. Headless browser checks use simulated controls/recorded telemetry at desktop and a 390-pixel mobile viewport; they verify filtering, HTTP error feedback, no horizontal overflow and no automatic robot commands.
