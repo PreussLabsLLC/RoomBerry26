@@ -1,0 +1,5 @@
+kind,elapsed_s,wheel_distance_from_start_m,score,channels,peak_mm_s2,peak_g
+IR dip candidate,51.26467990875244,3.0575,2.842496772079937,Front-right floor IR; Right floor IR,,
+phone bump 8,75.30847430229187,4.561093089272364,,,4813.35888671875,0.4908260095668501
+IR dip candidate,92.45367980003357,3.691,3.2881424524484015,Front-left floor IR; Front-right floor IR,,
+phone bump 9,111.49947834014893,2.4828473551801067,,,6223.24072265625,0.6345939462157056

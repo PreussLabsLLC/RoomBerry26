@@ -519,3 +519,34 @@ Position filter and map presentation (implemented after this analysis):
 The odometry scale correction is deliberately **not** applied until the tape
 test confirms the tile pitch in both directions. No cleaning/planner changes
 were made. The Pi deployment/restart is not confirmed in this workspace.
+
+## Appendix: overhead ground-truth harness
+
+Added after this analysis, to remove the manual tape-and-eyeball step:
+
+* `roomberry/roomberry_overhead.py` — tile-grid homography, colour-marker
+  detection, marker pose, ffmpeg video decode, track/wheel comparison, and
+  stop-to-stop leg splitting. Depends only on numpy and Pillow.
+* `roomberry/tools/overhead-track.py` — `frame`, `calibrate` (click four tile
+  intersections with a magnifier), `check` (grid overlay), `swatch`, `track`,
+  `legs`, and `compare`.
+* `roomberry/docs/overhead-ground-truth.md` — camera setup, marker rig,
+  recording protocol, commands, acceptance criteria, and failure modes.
+
+How it settles the one-tile question:
+
+* `legs --expected-tiles 1` reports the actual grid distance between every pair
+  of scan stops. If the legs are 304.8 mm, the robot really moved one tile and
+  the only correction is the wheel scale. If they are systematically ~289 mm,
+  the robot did not reach the next tile and the earlier `1.056` ratio was
+  partly a stopping-point artefact.
+* `compare` aligns the overhead track with the Pi sensor log by speed
+  correlation and reports the wheel-scale ratio (`overhead / wheels`) with a
+  `PASS`/`CHECK` verdict at 1 %.
+
+The synthetic end-to-end check moved the robot four tiles (1219.2 mm) and
+recovered a 5 %-short wheel log as a 1.0526 scale, so the pipeline arithmetic
+is verified. The real calibration still needs the overhead recording and the
+tape-measured marker baseline. Changing camera intrinsics invalidates tag
+landmarks but not the wheel scale, because the tile grid supplies the metric
+reference.

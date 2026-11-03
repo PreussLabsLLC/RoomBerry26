@@ -1,0 +1,138 @@
+{
+  "interval_epoch": [
+    1793480437.374,
+    1793480449.331
+  ],
+  "wheel_distance_mm": -487.2,
+  "wheel_yaw_deg": -1.95,
+  "wheel_endpoint": [
+    6965.876009514426,
+    1321.485865625159,
+    -0.24179216934114903
+  ],
+  "wheel_last_progress": "2026-10-31T14:00:46.401",
+  "tag_first_after_stop": {
+    "x_mm": 7023.872450605297,
+    "y_mm": 1256.053707122803,
+    "heading_rad": -0.27532484558570713,
+    "localized": true,
+    "localization_age": 0.1002636520715896,
+    "tag_ids": [
+      [
+        "tag16h5",
+        15
+      ]
+    ],
+    "accepted_tag_ids": [
+      [
+        "tag16h5",
+        15
+      ]
+    ],
+    "rejected_tags": [
+      [
+        [
+          "tag16h5",
+          14
+        ],
+        "unknown landmark"
+      ]
+    ]
+  },
+  "tag_static_median": {
+    "x_mm": 7020.338940720951,
+    "y_mm": 1235.1227920086267,
+    "heading_rad": -0.24534987294639765
+  },
+  "tag_static_ranges": {
+    "x_mm": [
+      7015.787460393027,
+      7023.872450605297
+    ],
+    "y_mm": [
+      1217.905960981853,
+      1256.053707122803
+    ],
+    "heading_rad": [
+      -0.27532484558570713,
+      -0.2218738525280317
+    ]
+  },
+  "tag_count": 10,
+  "ground_packets": 2,
+  "ground_valid": 1,
+  "ground_reasons": {
+    "7": 1,
+    "0": 1
+  },
+  "ground_continuities": {
+    "8": 1,
+    "16": 1
+  },
+  "ground_first": {
+    "continuity": 8,
+    "segment_x_mm": 0.0,
+    "segment_y_mm": 0.0,
+    "segment_yaw_rad": 0.0,
+    "reason": 7
+  },
+  "ground_last": {
+    "continuity": 16,
+    "segment_x_mm": -74.73709106445312,
+    "segment_y_mm": -1.5524415969848633,
+    "segment_yaw_rad": 0.04333951324224472,
+    "reason": 0
+  },
+  "gyro_yaw_deg": -0.23785130322826736,
+  "gyro_coverage_s": 11.894049999999996,
+  "compass_packets": 12,
+  "compass_valid": 0,
+  "compass_accuracy_deg_range": [
+    25.92274331544904,
+    26.117866452110672
+  ],
+  "health": {
+    "battery_pct": [
+      88,
+      88
+    ],
+    "app_cpu_pct": [
+      60.60846710205078,
+      64.71432495117188
+    ],
+    "app_footprint_bytes": [
+      18760424,
+      45187816
+    ],
+    "image_width": [
+      480,
+      480
+    ],
+    "image_height": [
+      640,
+      640
+    ],
+    "bump_count": [
+      0,
+      0
+    ],
+    "thermal_state": [
+      0,
+      0
+    ]
+  },
+  "tag_first_displacement": {
+    "distance_mm": 417.11655554959225,
+    "dx_mm": -412.9207635446164,
+    "dy_mm": 59.014099563469244,
+    "yaw_deg": -3.871280824591763,
+    "wheel_endpoint_error_mm": 87.43543072167179
+  },
+  "tag_median_displacement": {
+    "distance_mm": 418.19193057141115,
+    "dx_mm": -416.45427342896255,
+    "dy_mm": 38.08318444929296,
+    "yaw_deg": -2.1538414013392115,
+    "wheel_endpoint_error_mm": 102.10186756421844
+  }
+}

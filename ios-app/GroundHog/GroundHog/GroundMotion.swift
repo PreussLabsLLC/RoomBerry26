@@ -1,4 +1,4 @@
-// @(#)GroundMotion.swift 3.1.threading.1 2026/10/31 14:30:00
+// @(#)GroundMotion.swift 3.1.floor.5 2026/11/02 22:00:00
 import Foundation
 import simd
 
@@ -54,18 +54,43 @@ struct FloorGeometry {
     static func median(_ values: [Double]) -> Double {
         let v = values.sorted(); return v[v.count / 2]
     }
-    static func fit(_ candidates: [SIMD2<Double>]) -> (delta: SIMD2<Double>, rms: Double, inliers: Int)? {
-        guard candidates.count >= 24 else { return nil }
+    static func fit(_ candidates: [SIMD2<Double>], failure: ((String) -> Void)? = nil) -> (delta: SIMD2<Double>, rms: Double, inliers: Int, indices: [Int])? {
+        guard candidates.count >= 24 else { failure?("too few candidates=\(candidates.count)"); return nil }
         let median = SIMD2(Self.median(candidates.map(\.x)), Self.median(candidates.map(\.y)))
         let distances = candidates.map { simd_length($0 - median) }
         let limit = min(5.0, max(0.5, 3 * Self.median(distances)))
-        let good = candidates.filter { simd_length($0 - median) <= limit }
-        guard good.count >= 24, Double(good.count) / Double(candidates.count) >= 0.65 else { return nil }
+        let indices = candidates.indices.filter { simd_length(candidates[$0] - median) <= limit }
+        let good = indices.map { candidates[$0] }
+        guard good.count >= 24, Double(good.count) / Double(candidates.count) >= 0.65 else {
+            failure?("inlier agreement candidates=\(candidates.count) inliers=\(good.count)"); return nil
+        }
         let mean = good.reduce(SIMD2<Double>(repeating: 0), +) / Double(good.count)
         let rms = sqrt(good.map { simd_length_squared($0 - mean) }.reduce(0,+) / Double(good.count))
-        guard rms <= 2 else { return nil }
-        return (mean, rms, good.count)
+        guard rms <= 2 else { failure?("residual rms=\(rms) inliers=\(good.count)"); return nil }
+        return (mean, rms, good.count, indices)
     }
+    // Normalized full-frame pixel locations of robust inliers, not raw matches.
+    // Accept a missing quadrant, but reject small patches and nearly collinear
+    // support. Central-75% sampling remains unchanged.
+    static func spatialCoverage(_ points: [SIMD2<Double>]) -> (valid: Bool, detail: String) {
+        guard points.count >= 24 else { return (false, "coverage: fewer than 24 inliers") }
+        guard points.allSatisfy({ $0.x.isFinite && $0.y.isFinite && (0...1).contains($0.x) && (0...1).contains($0.y) }) else {
+            return (false, "coverage: invalid pixel positions")
+        }
+        let xs = points.map(\.x), ys = points.map(\.y)
+        let spanX = xs.max()! - xs.min()!, spanY = ys.max()! - ys.min()!
+        let cells = Set(points.map { min(3, max(0, Int($0.x*4))) + 4*min(3, max(0, Int($0.y*4))) })
+        let quadrants = Set(points.map { ($0.x >= 0.5 ? 1 : 0) + ($0.y >= 0.5 ? 2 : 0) }).count
+        let mean = points.reduce(SIMD2<Double>(repeating: 0), +) / Double(points.count)
+        var xx = 0.0, yy = 0.0, xy = 0.0
+        for point in points {
+            let d = point-mean; xx += d.x*d.x; yy += d.y*d.y; xy += d.x*d.y
+        }
+        let areaRatio = xx*yy > 0 ? max(0, 1-xy*xy/(xx*yy)) : 0
+        let valid = spanX >= 0.30 && spanY >= 0.30 && cells.count >= 4 && areaRatio >= 0.10
+        return (valid, String(format: "coverage quadrants=%d cells=%d span=%.2f/%.2f area=%.2f", quadrants, cells.count, spanX, spanY, areaRatio))
+    }
+
 }
 
 /// NavLink v1/type 2. Tallies describe a continuous segment, never room position.

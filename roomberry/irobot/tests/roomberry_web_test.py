@@ -1,4 +1,4 @@
-# @(#)roomberry_web_test.py 3.1.web.1 2026/10/31 14:00:00
+# @(#)roomberry_web_test.py 3.1.overhead.2 2026/11/02 20:30:00
 """Local console routes, precise JSON identities and safe mission command routing."""
 import io
 import json
@@ -42,6 +42,11 @@ class LocalConsoleTest(unittest.TestCase):
         self.assertNotIn('auto_wake',commands)
         self.assertIn('request_scan',commands)
         self.assertAlmostEqual(catalog['calibration_acceptance']['heading_rad'],.3)
+        acceptance=catalog['calibration_acceptance']
+        self.assertEqual(acceptance['endpoint_tolerance_mm'],15)
+        self.assertFalse(acceptance['scans'])
+        self.assertTrue(acceptance['manual_start_alignment'])
+        self.assertNotIn('start_gap_mm',acceptance)
         self.handler.path='/commands.json';self.handler.do_GET()
         self.assertEqual(json.loads(self.handler.wfile.getvalue()),catalog)
         self.handler.server.roomba_control.execute.assert_not_called()

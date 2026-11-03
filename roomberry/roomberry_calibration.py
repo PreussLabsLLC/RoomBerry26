@@ -1,62 +1,61 @@
-"""Stationary tag / independent wheel / GroundHog comparison on tag 15's axis."""
-# @(#)roomberry_calibration.py 3.1.carpet.1 2026/10/31 15:00:00
+"""Scan-free threshold out-and-back with GroundHog heading feedback."""
+# @(#)roomberry_calibration.py 3.1.threshold.2 2026/11/03 09:20:00
 
 import json
+import os
 from math import cos, sin, hypot, isfinite, pi
 from time import monotonic, time
 
 
 MODE_CALIBRATION = 'calibration'
-TAG_ID = 15
-STEP_MM = 500.0
-REVERSE_STEPS = 4
+# Reverse until a new phone bump detects the threshold, or this travel limit.
+DEFAULT_DISTANCE_MM = 5000.0
+MAX_MOVE_SPEED_MM_S = 50
+DEFAULT_TURNAROUND_HOLD_S = 1.0
 PHONE_BUMP_RECORD_ONLY_MAX_MM_S2 = 0.5 * 9806.65
 ENDPOINT_TOLERANCE_MM = 15.0
 MIN_MOVE_SPEED_MM_S = 25
-SCAN_TIMEOUT_S = 120.0
 HEADING_LIMIT_RAD = 0.30
-TAG_FACE_LIMIT_RAD = 0.10
-START_GAP_MIN_MM = 100.0
-START_GAP_MAX_MM = 1600.0
-LATERAL_LIMIT_MM = 200.0
-RETURN_ERROR_LIMIT_MM = 400.0
+HEADING_GAIN = 4.0
+MAX_STEERING = 0.35
 PHONE_RECEIPT_MAX_AGE_S = 1.0
 PHONE_FRAME_MAX_AGE_US = 500000
 
 
 class CalibrationDrive:
-    """A bounded straight out-and-back experiment; no gain changes or fusion."""
+    """A local-frame experiment: wheel distance and GroundHog heading control."""
     def __init__(self, mission):
         self.mission = mission
-        self.stage = 'start_scan'
+        self.stage = 'phone_anchor'
         self.started = monotonic()
-        self.deadline = self.started + SCAN_TIMEOUT_S
-        self.requested_after = None
-        self.step = 0
+        self.deadline = self.started + 10.0
+        self.distance_mm = float(os.environ.get('ROOMBERRY_CALIBRATION_DISTANCE_MM', DEFAULT_DISTANCE_MM))
+        self.hold_s = float(os.environ.get('ROOMBERRY_CALIBRATION_HOLD_S', DEFAULT_TURNAROUND_HOLD_S))
+        if not isfinite(self.distance_mm) or not 100 <= self.distance_mm <= 5000:
+            raise ValueError('Calibration distance must be finite and between 100 and 5000 mm')
+        if not isfinite(self.hold_s) or not 0 <= self.hold_s <= 30:
+            raise ValueError('Calibration turnaround hold must be between 0 and 30 seconds')
+        self.hold_until = None
         self.origin = self.wheels = None
         self.last_odom = None
         self.epoch = None
         self.phone_anchor = None
         self.phone_lost = None
-        self.pending_start = None
-        self.start_captured_at = None
         self.phone_wait_logged = False
         self.health_baseline = None
         self.phone_bumps = []
         self.pending_impact = None
+        self.threshold_bump = False
+        self.turnaround_reason = None
         self.records = []
         self.result = None
         self.progress = None
         self.progress_at = self.started
-        self.contact_start = None
-        self.contact_limit = None
-        self.contact_expected = None
         self.sensor_wait_since = None
-        self.pending_scan = None
 
     @property
     def moving(self):
-        return self.stage in ('reverse', 'return', 'contact')
+        return self.stage in ('reverse', 'return')
 
     def _row(self, method):
         receiver = self.mission.navlink
@@ -70,13 +69,19 @@ class CalibrationDrive:
             return None, 'GroundHog unavailable'
         identity = (row['session'], row['calibration'], row['continuity'])
         if self.phone_anchor is not None and identity != self.phone_anchor['identity']:
-            self.phone_lost = 'GroundHog session/calibration/continuity changed'
+            self.phone_lost = ('GroundHog session/calibration/continuity changed: '
+                               '{} -> {}; seq={} flags={} tracking={} reason={} rejected_frames={}'
+                               .format(self.phone_anchor['identity'], identity, row.get('seq'),
+                                       row.get('flags'), row.get('tracking'), row.get('reason'),
+                                       row.get('rejected_frames')))
         if self.phone_lost:
             return None, self.phone_lost
         age = monotonic() - row.get('received_monotonic', -1e9)
         if not (0 <= age <= PHONE_RECEIPT_MAX_AGE_S and row['flags'] == 7 and
                 0 <= row['send_us']-row['end_us'] <= PHONE_FRAME_MAX_AGE_US):
             return None, 'GroundHog stale or tracking invalid'
+        if not all(isfinite(row[key]) for key in ('segment_x_mm', 'segment_y_mm', 'segment_yaw_rad')):
+            return None, 'GroundHog nonfinite pose'
         return row, None
 
     def _phone_pose(self):
@@ -103,15 +108,15 @@ class CalibrationDrive:
         self.mission.set_mode('idle')
 
     def _finish(self, state):
-        self.mission._send_stop('calibration gentle bumper contact')
-        self._record('contact', state, None, None)
+        self.mission._send_stop('calibration complete')
+        self._record('finish', state, None, None)
         self.result = dict(status='complete', checkpoints=len(self.records))
         self.stage = 'complete'
         self.mission.logger.info('Calibration complete: %s', json.dumps(self.result, sort_keys=True))
         self.mission.set_mode('idle')
 
     def guard(self, state):
-        """Also called during a slow stationary scan: no safety/timeout blind spot."""
+        """Also called while the coordinator waits: no safety/timeout blind spot."""
         now = monotonic()
         reasons = self.mission._hard_hazard_reasons(state)
         if (not state.get('ready') or state.get('age') is None
@@ -133,7 +138,7 @@ class CalibrationDrive:
         if state.get('safety_latched') and not contact:
             self.abort('Roomba safety stop latched')
             return False
-        if contact and self.stage != 'contact':
+        if contact:
             self.abort('unexpected physical bumper contact during ' + self.stage)
             return False
         health = self._row('latest_health_observation')
@@ -148,6 +153,11 @@ class CalibrationDrive:
                              wall_time=time(), peak_mm_s2=health.get('last_bump_peak_mm_s2'))
                 self.phone_bumps.append(event)
                 self.pending_impact = (identity, health['bump_count'], event)
+                if self.stage == 'reverse':
+                    event['action'] = 'threshold-stop'
+                    self.threshold_bump = True
+                    self.mission._send_stop('calibration threshold phone bump')
+                    self.mission.logger.info('Calibration phone bump: %s', json.dumps(event, sort_keys=True))
             pending = self.pending_impact
             if pending is not None and pending[:2] == (identity, health['bump_count']):
                 event = pending[2]
@@ -156,18 +166,22 @@ class CalibrationDrive:
                 previous_action = event.get('action')
                 if known:
                     event['peak_mm_s2'] = max(event.get('peak_mm_s2') or 0, peak)
-                event['action'] = ('record-only' if known and
-                    event['peak_mm_s2'] <= PHONE_BUMP_RECORD_ONLY_MAX_MM_S2 else 'stop')
+                if event.get('action') != 'threshold-stop':
+                    event['action'] = ('record-only' if known and
+                        event['peak_mm_s2'] <= PHONE_BUMP_RECORD_ONLY_MAX_MM_S2 else 'stop')
                 if event['action'] != previous_action:
                     self.mission.logger.info('Calibration phone bump: %s', json.dumps(event, sort_keys=True))
                 # The phone refines the event peak for 150 ms after onset.
                 # Recheck the same counter so a small first report cannot mask
                 # an event that subsequently grows above the stop threshold.
-                if event['action'] == 'stop' and not (self.stage == 'contact' and contact):
+                if event['action'] == 'stop':
                     self.abort('phone reported an impact during ' + self.stage)
                     return False
             self.health_baseline = (identity, health['bump_count'])
-        self._phone()  # Notice invalid continuity even between checkpoints.
+        phone, reason = self._phone()
+        if self.phone_anchor is not None and phone is None:
+            self.abort(reason)
+            return False
         if state['age'] > .5:
             self.mission._send_stop('calibration waiting for fresh stationary sensors')
             if self.moving or state['age'] > 5 or (self.sensor_wait_since is not None and now-self.sensor_wait_since > 5):
@@ -211,12 +225,13 @@ class CalibrationDrive:
             dx, dy = p['x_mm']-reference['x_mm'], p['y_mm']-reference['y_mm']
             return dict(dx_mm=dx, dy_mm=dy, distance_mm=hypot(dx,dy),
                         heading_rad=self.mission._wrap(p['heading_rad']-reference['heading_rad']))
-        record = dict(checkpoint=label, tag_id=TAG_ID, wall_time=time(), captured_at=captured_at,
+        record = dict(checkpoint=label, wall_time=time(), monotonic_s=monotonic(), captured_at=captured_at,
+                      frame='local start: x forward, y left', distance_target_mm=self.distance_mm,
+                      turnaround_reason=self.turnaround_reason,
                       phone_bumps=[dict(event) for event in self.phone_bumps],
-                      target_reverse_mm=self.step*STEP_MM if label.startswith('reverse_') else 0,
+                      target_reverse_mm=self.distance_mm if label == 'turnaround' else 0,
                       wheel_distance_from_start_mm=distance,
                       tag_pose=compact(tag_pose), wheels_pose=compact(self.wheels),
-                      contact_expected_mm=self.contact_expected,
                       bumper=dict(left=bool(state['sensors'].bumps_and_wheel_drops.bump_left),
                                   right=bool(state['sensors'].bumps_and_wheel_drops.bump_right)),
                       iphone_pose=phone, iphone_unavailable=unavailable,
@@ -228,146 +243,74 @@ class CalibrationDrive:
         self.records.append(record)
         self.mission.logger.info('Calibration checkpoint: %s', json.dumps(record, sort_keys=True, allow_nan=False))
 
-    def _scan(self, stage):
-        self.mission._send_stop('calibration stationary checkpoint')
-        self.stage = stage
-        self.requested_after = None
-        self.pending_scan = None
-        self.deadline = monotonic()+SCAN_TIMEOUT_S
-
     def _move(self, stage, state):
         self.stage = stage
         self.progress = float(state['distance'])
         self.progress_at = monotonic()
-        self.deadline = monotonic()+60
+        self.deadline = monotonic() + self.distance_mm / MIN_MOVE_SPEED_MM_S + 15
 
-    def _valid_start(self, pose):
-        tag = self.mission.discovery_landmarks.get(TAG_ID)
-        if tag is None:
-            return False
-        world = tag['world_from_tag']
-        gap = float(world[0][3])*1000-pose['x_mm']
-        lateral = abs(float(world[1][3])*1000-pose['y_mm'])
-        return (abs(self.mission._wrap(pose['heading_rad'])) <= HEADING_LIMIT_RAD
-                and abs(self.mission._tag_normal_heading(world)) < TAG_FACE_LIMIT_RAD
-                and START_GAP_MIN_MM <= gap <= START_GAP_MAX_MM and lateral <= LATERAL_LIMIT_MM)
+    def _turnaround(self, state, reason):
+        self.mission._send_stop('calibration turnaround')
+        self.turnaround_reason = reason
+        self._record('turnaround', state, None, None)
+        self.stage = 'turnaround'
+        self.hold_until = monotonic() + self.hold_s
+        self.deadline = self.hold_until + 5
 
     def tick(self, state, pose, new_detections, captured_at):
+        # Tag results, including a scan already in flight, never anchor this run.
         self.mission._set_cleaning_motors(False)
-        if (new_detections and self.stage.endswith('_scan') and self.requested_after is not None
-                and captured_at is not None and captured_at > self.requested_after):
-            self.pending_scan = (None if pose is None else dict(pose),captured_at)
         if not self.guard(state) or not self._integrate(state):
             return
-        if self.pending_scan is not None and self.stage.endswith('_scan'):
-            pose,captured_at = self.pending_scan
-            new_detections = True
-            self.pending_scan = None
         now = monotonic()
-        tag_pose = (pose if new_detections and pose and pose.get('localized') and
-                    any(int(key[1]) == TAG_ID for key in pose.get('accepted_tag_ids', ())) else None)
-        if self.stage.endswith('_scan'):
-            self.mission._send_stop('calibration waiting for scan')
-            if self.requested_after is None:
-                self.requested_after = time()
-                self.mission.camera.request_scan()
-                return
-            if not new_detections or captured_at is None or captured_at <= self.requested_after:
-                return
-            if self.stage == 'start_scan':
-                if tag_pose is None or not self._valid_start(tag_pose):
-                    tag = self.mission.discovery_landmarks.get(TAG_ID)
-                    detail = 'no fresh accepted tag 15'
-                    if tag_pose is not None and tag is not None:
-                        detail = 'heading {:.1f} deg, gap {:.0f} mm, lateral {:.0f} mm'.format(
-                            tag_pose['heading_rad']*180/pi,
-                            float(tag['world_from_tag'][0][3])*1000-tag_pose['x_mm'],
-                            float(tag['world_from_tag'][1][3])*1000-tag_pose['y_mm'])
-                    self.mission.logger.warning('Calibration start rejected: %s; tag_pose=%s rejected_tags=%s.',
-                        detail,tag_pose,None if pose is None else pose.get('rejected_tags'))
-                    self.abort('start verification failed: '+detail+
-                               '; require tag 15, heading within +/-17.2 deg of +X, '
-                               '100–1600 mm from its plane and within 200 mm laterally')
-                    return
-                self.pending_start = dict(tag_pose)
-                self.start_captured_at = captured_at
-                self.stage = 'phone_anchor'
-                self.deadline = now+10
-            else:
-                label = 'return' if self.stage == 'return_scan' else 'reverse_{}'.format(self.step)
-                self._record(label,state,tag_pose,captured_at)
-                if self.stage == 'return_scan':
-                    if (tag_pose is None or not self._valid_start(tag_pose) or
-                            hypot(tag_pose['x_mm']-self.origin['x_mm'],
-                                  tag_pose['y_mm']-self.origin['y_mm']) > RETURN_ERROR_LIMIT_MM):
-                        self.abort('return scan did not verify tag 15 near the starting point')
-                        return
-                    tag = self.mission.discovery_landmarks[TAG_ID]['world_from_tag']
-                    self.contact_expected = (float(tag[0][3])*1000-tag_pose['x_mm']-
-                                             self.mission.navigation.robot_radius_mm)
-                    self.contact_limit = min(START_GAP_MAX_MM-self.mission.navigation.robot_radius_mm+30,
-                                             self.contact_expected+30)
-                    self.contact_start = float(state['distance'])
-                    if self.contact_limit <= 0:
-                        self.abort('no safe contact approach distance')
-                        return
-                    self._move('contact',state)
-                    self.deadline = now+self.contact_limit/15+10
-                elif self.step == REVERSE_STEPS:
-                    self._move('return',state)
-                else:
-                    self.step += 1
-                    self._move('reverse',state)
-                return
+        if self.stage == 'reverse' and self.threshold_bump:
+            self._turnaround(state, 'phone bump')
+            return
         if self.stage == 'phone_anchor':
+            self.mission._send_stop('calibration waiting for GroundHog baseline')
             row, reason = self._phone()
             if row is None:
                 if not self.phone_wait_logged:
                     self.mission.logger.warning('Calibration waiting for phone baseline: %s', reason)
                     self.phone_wait_logged = True
-                return  # Ten-second bounded wait; wheels remain stopped.
-            self.origin = {k: self.pending_start[k] for k in ('x_mm','y_mm','heading_rad')}
-            self.origin['distance'] = float(state['distance'])
-            self.wheels = {k: self.origin[k] for k in ('x_mm','y_mm','heading_rad')}
+                return
+            self.origin = dict(x_mm=0.0, y_mm=0.0, heading_rad=0.0,
+                               distance=float(state['distance']))
+            self.wheels = dict(x_mm=0.0, y_mm=0.0, heading_rad=0.0)
             self.epoch = state.get('odometry_epoch')
-            self.phone_anchor = dict(identity=(row['session'],row['calibration'],row['continuity']),
-                                     x=row['segment_x_mm'],y=row['segment_y_mm'],
-                                     yaw=row['segment_yaw_rad'],end_us=row['end_us'])
-            self._record('start',state,self.pending_start,self.start_captured_at)
-            self.step = 1
-            self._move('reverse',state)
+            self.phone_anchor = dict(identity=(row['session'], row['calibration'], row['continuity']),
+                                     x=row['segment_x_mm'], y=row['segment_y_mm'],
+                                     yaw=row['segment_yaw_rad'], end_us=row['end_us'])
+            self._record('start', state, None, None)
+            self._move('reverse', state)
             return
+        phone, reason = self._phone_pose()
+        if phone is None:
+            self.abort(reason)
+            return
+        error = self.mission._wrap(-phone['heading_rad'])
+        if abs(error) > HEADING_LIMIT_RAD or abs(self.wheels['heading_rad']) > HEADING_LIMIT_RAD:
+            self.abort('heading drift exceeds straight calibration envelope')
+            return
+        if self.stage == 'turnaround':
+            if now < self.hold_until:
+                return
+            self._move('return', state)
         if not self.moving:
             return
         distance = float(state['distance'])
-        error = self.mission._wrap(self.origin['heading_rad']-self.wheels['heading_rad'])
-        if abs(error) > HEADING_LIMIT_RAD:
-            self.abort('heading drift exceeds straight calibration envelope')
+        target = self.origin['distance'] - (self.distance_mm if self.stage == 'reverse' else 0)
+        remaining = distance-target if self.stage == 'reverse' else target-distance
+        if remaining <= ENDPOINT_TOLERANCE_MM:
+            if self.stage == 'return':
+                self._finish(state)
+            else:
+                self._turnaround(state, 'distance limit')
             return
-        if self.stage == 'contact':
-            bumps = state['sensors'].bumps_and_wheel_drops
-            if bumps.bump_left or bumps.bump_right:
-                if distance-self.contact_start < max(0,self.contact_expected-50):
-                    self.abort('bumper contact before verified tag approach envelope')
-                else:
-                    self._finish(state)
-                return
-            remaining = self.contact_limit-(distance-self.contact_start)
-            if remaining <= 0:
-                self.abort('gentle contact distance limit reached without bumper contact')
-                return
-            speed = 15
-        else:
-            target = self.origin['distance']-(self.step*STEP_MM if self.stage == 'reverse' else 0)
-            remaining = distance-target if self.stage == 'reverse' else target-distance
-            if remaining <= ENDPOINT_TOLERANCE_MM:
-                self._scan('reverse_scan' if self.stage == 'reverse' else 'return_scan')
-                return
-            speed = min(50,max(MIN_MOVE_SPEED_MM_S,int(remaining/2)))
-            if self.stage == 'reverse':
-                speed = -speed
+        speed = min(MAX_MOVE_SPEED_MM_S, max(MIN_MOVE_SPEED_MM_S, int(remaining/2)))
+        if self.stage == 'reverse':
+            speed = -speed
         if abs(distance-self.progress) >= 3:
-            # Wrong-way motion is never counted as progress.
             if (distance-self.progress)*speed < 0:
                 self.abort('wheel movement opposite to commanded direction')
                 return
@@ -376,7 +319,14 @@ class CalibrationDrive:
         elif now-self.progress_at > 3:
             self.abort('no wheel progress for three seconds')
             return
-        steering = max(-.15,min(.15,error*2)) * (1 if speed > 0 else -1)
-        self.mission._dispatch(dict(kind='drive',reason='calibration '+self.stage,
-                                    velocity=speed,steering=steering,
-                                    continuous=True,max_duration_s=1.0),self.wheels)
+        steering = max(-MAX_STEERING, min(MAX_STEERING, error*HEADING_GAIN)) * (1 if speed > 0 else -1)
+        self.mission.logger.info('Calibration sample: %s', json.dumps(dict(
+            wall_time=time(), monotonic_s=now, stage=self.stage,
+            wheel_distance_from_start_mm=distance-self.origin['distance'],
+            wheels_pose=dict(self.wheels), iphone_pose=phone,
+            heading_error_rad=error, velocity_mm_s=speed, steering=steering,
+            right_velocity_mm_s=int(speed*(1+steering)),
+            left_velocity_mm_s=int(speed*(1-steering))), sort_keys=True, allow_nan=False))
+        self.mission._dispatch(dict(kind='drive', reason='calibration '+self.stage,
+                                    velocity=speed, steering=steering,
+                                    continuous=True, max_duration_s=1.0), self.wheels)

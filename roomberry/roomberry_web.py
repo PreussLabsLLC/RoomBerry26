@@ -1,12 +1,11 @@
 """Read-only local dashboard data and a command index from the shipped driver."""
-# @(#)roomberry_web.py 3.1.web.1 2026/10/31 14:00:00
+# @(#)roomberry_web.py 3.1.overhead.2 2026/11/02 20:30:00
 import ast
 from functools import lru_cache
 from pathlib import Path
 from time import monotonic
 
-from roomberry_calibration import (HEADING_LIMIT_RAD, LATERAL_LIMIT_MM,
-    RETURN_ERROR_LIMIT_MM, START_GAP_MIN_MM, START_GAP_MAX_MM)
+from roomberry_calibration import HEADING_LIMIT_RAD, ENDPOINT_TOLERANCE_MM
 
 ASSET_ROOT = Path(__file__).with_name('web')
 ASSETS = {'/': ('index.html','text/html; charset=utf-8'),
@@ -22,7 +21,7 @@ def command_index():
     def add(group, name, url, description, mutates=False, aliases=()):
         commands.append(dict(group=group,name=name,url=url,description=description,
                              mutates=mutates,aliases=list(aliases),parameters=[]))
-    add('Mission','calibrate','/roomba/?op=calibrate','Run tag-15 out-and-back calibration.',True,('cal','calibration'))
+    add('Mission','calibrate','/roomba/?op=calibrate','Run scan-free out-and-back calibration from manual alignment at tag 15.',True,('cal','calibration'))
     add('Mission','discovery','/roomba/?op=discovery','Start the surveyed landmark discovery route.',True,('discover',))
     add('Mission','idle','/roomba/?op=idle','Stop motion and return to idle.',True,('cancel_calibration',))
     add('Mission','stop','/roomba/?op=stop','Brake immediately and cancel the active mission.',True,('emergency_stop',))
@@ -38,7 +37,7 @@ def command_index():
         ('snapshot','/cam/snap.jpg','Capture a current camera snapshot.'),
         ('media XML','/cam/media.xml','Archived media index.')):
         add('Read',name,url,desc)
-    add('Camera','request_scan','/cam/?op=request_scan','Request a scan; moving calibration stages skip scans.',True)
+    add('Camera','request_scan','/cam/?op=request_scan','Request a scan; calibration skips scans throughout the run.',True)
     add('Camera','cam_capture','/cam/?op=cam_capture','Save a full camera snapshot.',True)
     add('Camera','cam_record','/cam/?op=cam_record&duration=5','Record video; duration is in seconds.',True)
     commands[-1]['parameters']=[dict(name='duration',required=True,default=None)]
@@ -65,8 +64,8 @@ def command_index():
         commands[-1]['parameters']=[dict(name=p.arg,required=default is None,
             default=None if default is None else ast.get_source_segment(text,default)) for p,default in zip(params,defaults)]
     return dict(commands=commands,calibration_acceptance=dict(
-        heading_rad=HEADING_LIMIT_RAD,lateral_mm=LATERAL_LIMIT_MM,
-        return_error_mm=RETURN_ERROR_LIMIT_MM,start_gap_mm=[START_GAP_MIN_MM,START_GAP_MAX_MM]))
+        heading_rad=HEADING_LIMIT_RAD,endpoint_tolerance_mm=ENDPOINT_TOLERANCE_MM,
+        scans=False,manual_start_alignment=True))
 
 
 def groundhog_snapshot(receiver, now=None):

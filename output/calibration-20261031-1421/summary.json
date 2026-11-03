@@ -1,0 +1,255 @@
+{
+  "checkpoints": [
+    {
+      "checkpoint": "start",
+      "time": 1793481687.6294916,
+      "wheel_mm": 0.0,
+      "wheel_heading_change_deg": 0.0,
+      "wheel_xy": [
+        0.0,
+        0.0
+      ],
+      "phone": {
+        "xy": [
+          0.0,
+          0.0
+        ],
+        "chord_mm": 0.0,
+        "yaw_change_deg": 0.0
+      },
+      "tag": {
+        "xy": [
+          0.0,
+          0.0
+        ],
+        "chord_mm": 0.0,
+        "yaw_change_deg": 0.0
+      },
+      "phone_wheel_error_mm": 0.0,
+      "phone_wheel_yaw_error_deg": 0.0
+    },
+    {
+      "checkpoint": "reverse_1",
+      "time": 1793481700.2394059,
+      "wheel_mm": -490.57747545797224,
+      "wheel_heading_change_deg": -11.814532316338665,
+      "wheel_xy": [
+        -471.91702907209947,
+        130.9416105426094
+      ],
+      "tag": {
+        "xy": [
+          -409.1195748328455,
+          62.98397960272723
+        ],
+        "chord_mm": 413.93937744312876,
+        "yaw_change_deg": -13.500966925141428
+      }
+    },
+    {
+      "checkpoint": "start",
+      "time": 1793481760.0575128,
+      "wheel_mm": 0.0,
+      "wheel_heading_change_deg": 0.0,
+      "wheel_xy": [
+        0.0,
+        0.0
+      ],
+      "phone": {
+        "xy": [
+          0.0,
+          0.0
+        ],
+        "chord_mm": 0.0,
+        "yaw_change_deg": 0.0
+      },
+      "tag": {
+        "xy": [
+          0.0,
+          0.0
+        ],
+        "chord_mm": 0.0,
+        "yaw_change_deg": 0.0
+      },
+      "phone_wheel_error_mm": 0.0,
+      "phone_wheel_yaw_error_deg": 0.0
+    },
+    {
+      "checkpoint": "reverse_1",
+      "time": 1793481773.3212943,
+      "wheel_mm": -498.80192792373816,
+      "wheel_heading_change_deg": -7.37053392211941,
+      "wheel_xy": [
+        -470.69441257224935,
+        163.70725328806952
+      ],
+      "phone": {
+        "xy": [
+          -446.5948394628849,
+          153.78331563602978
+        ],
+        "chord_mm": 472.3306668033431,
+        "yaw_change_deg": -7.4622826234492345
+      },
+      "tag": {
+        "xy": [
+          -409.4431011576653,
+          176.84836784867048
+        ],
+        "chord_mm": 446.00336130610583,
+        "yaw_change_deg": -12.081797285222544
+      },
+      "phone_wheel_error_mm": 26.062884770784162,
+      "phone_wheel_yaw_error_deg": -0.09174870132982359
+    },
+    {
+      "checkpoint": "reverse_2",
+      "time": 1793481786.3372326,
+      "wheel_mm": -992.0467933706074,
+      "wheel_heading_change_deg": -10.080289040545667,
+      "wheel_xy": [
+        -917.8193724288158,
+        371.43586167653075
+      ],
+      "phone": {
+        "xy": [
+          -868.4521605323098,
+          344.7626370421467
+        ],
+        "chord_mm": 934.3823794536645,
+        "yaw_change_deg": -10.315887847356372
+      },
+      "tag": {
+        "xy": [
+          -677.1342227455489,
+          315.560952294883
+        ],
+        "chord_mm": 747.0538603249915,
+        "yaw_change_deg": -16.487577525517075
+      },
+      "phone_wheel_error_mm": 56.11223149038749,
+      "phone_wheel_yaw_error_deg": -0.23559880681070436
+    },
+    {
+      "checkpoint": "reverse_3",
+      "time": 1793481799.9863362,
+      "wheel_mm": -1496.8503487693629,
+      "wheel_heading_change_deg": -11.489361702127308,
+      "wheel_xy": [
+        -1371.3985831638693,
+        592.7671986089595
+      ],
+      "phone": {
+        "xy": [
+          -1305.8845980766682,
+          551.5689140329994
+        ],
+        "chord_mm": 1417.590508722954,
+        "yaw_change_deg": -11.265459165585625
+      },
+      "phone_wheel_error_mm": 77.39109053378037,
+      "phone_wheel_yaw_error_deg": 0.22390253654168282
+    }
+  ],
+  "intervals": [
+    {
+      "run": "attempt1",
+      "seconds": 18.471508502960205,
+      "motion_packets": 185,
+      "motion_max_gap_s": 0.7684326171875,
+      "motion_valid_fraction": 0.9405405405405406,
+      "continuities": [
+        0,
+        14
+      ],
+      "reasons": {
+        "0": 174,
+        "7": 11
+      },
+      "health_packets": 184,
+      "cpu_range": [
+        62.17448425292969,
+        65.2552261352539
+      ],
+      "memory_MB_range": [
+        16.155168,
+        41.697824
+      ],
+      "battery_range": [
+        100,
+        100
+      ],
+      "compass_valid": 0,
+      "compass_accuracy_deg_range": [
+        31.638242197821125,
+        32.507896033893
+      ]
+    },
+    {
+      "run": "attempt2",
+      "seconds": 40.65748715400696,
+      "motion_packets": 407,
+      "motion_max_gap_s": 0.9925572872161865,
+      "motion_valid_fraction": 1.0,
+      "continuities": [
+        25,
+        25
+      ],
+      "reasons": {
+        "0": 407
+      },
+      "health_packets": 408,
+      "cpu_range": [
+        57.15830993652344,
+        65.4421157836914
+      ],
+      "memory_MB_range": [
+        14.909984,
+        41.714208
+      ],
+      "battery_range": [
+        100,
+        100
+      ],
+      "compass_valid": 7,
+      "compass_accuracy_deg_range": [
+        9.99999970909292,
+        26.74920986539892
+      ]
+    }
+  ],
+  "bump_events": [
+    {
+      "t": 1793481743.6419349,
+      "bump_count": 1,
+      "bump_us": 52239121596,
+      "last_bump_peak_mm_s2": 3160.39013671875,
+      "interval_accel_peak_mm_s2": 3160.39013671875
+    },
+    {
+      "t": 1793481746.1013963,
+      "bump_count": 2,
+      "bump_us": 52241190694,
+      "last_bump_peak_mm_s2": 4073.797119140625,
+      "interval_accel_peak_mm_s2": 4073.797119140625
+    },
+    {
+      "t": 1793481800.5976806,
+      "bump_count": 3,
+      "bump_us": 52296078059,
+      "last_bump_peak_mm_s2": 3383.3125,
+      "interval_accel_peak_mm_s2": 3383.3125
+    }
+  ],
+  "abort_sensor": {
+    "timestamp": "2026-10-31T14:23:20.778",
+    "distance_mm": "-2095.2",
+    "angle_deg": "-21.24",
+    "bump_left": "0",
+    "bump_right": "0",
+    "left_motor_current_a": "0.022",
+    "right_motor_current_a": "0.061",
+    "applied_left_velocity_mm_s": "0",
+    "applied_right_velocity_mm_s": "0"
+  }
+}

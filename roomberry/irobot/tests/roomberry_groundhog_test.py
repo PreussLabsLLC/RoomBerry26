@@ -1,4 +1,4 @@
-# @(#)roomberry_groundhog_test.py 3.1.threading.1 2026/10/31 14:30:00
+# @(#)roomberry_groundhog_test.py 3.1.floor.5 2026/11/02 22:00:00
 """Cross-language wire, packet loss, continuity, and floor geometry checks."""
 import csv
 import io
@@ -168,6 +168,33 @@ let candidates = (0..<40).map { _ in SIMD2<Double>(3,4) } + (0..<8).map { _ in S
 let fit = FloorGeometry.fit(candidates)!
 assert(fit.inliers == 40 && simd_length(fit.delta-SIMD2(3,4)) < 1e-8)
 assert(FloorGeometry.fit(Array(candidates.prefix(10))) == nil)
+// A textured floor with one blank quadrant still provides distributed support.
+var grid: [SIMD2<Double>] = []
+for y in 0..<8 { for x in 0..<8 {
+    grid.append(SIMD2(0.15+Double(x)*0.10, 0.15+Double(y)*0.10))
+} }
+assert(FloorGeometry.spatialCoverage(grid).valid)
+for missing in 0..<4 {
+    let partial = grid.filter { ( $0.y >= 0.5 ? 2 : 0 ) + ( $0.x >= 0.5 ? 1 : 0 ) != missing }
+    assert(FloorGeometry.spatialCoverage(partial).valid)
+}
+assert(!FloorGeometry.spatialCoverage(Array(grid.prefix(10))).valid)
+let patch = grid.map { SIMD2(0.2+$0.x*0.1, 0.2+$0.y*0.1) }
+assert(!FloorGeometry.spatialCoverage(patch).valid)
+let diagonal = (0..<40).map { SIMD2<Double>(0.15+Double($0)*0.018,0.15+Double($0)*0.018) }
+assert(!FloorGeometry.spatialCoverage(diagonal).valid)
+let narrow = grid.map { SIMD2($0.x,0.3+$0.y*0.1) }
+assert(!FloorGeometry.spatialCoverage(narrow).valid)
+// Spatially scattered outliers cannot rescue clustered inliers.
+let deltas = Array(repeating: SIMD2<Double>(3,4),count:40) + Array(repeating: SIMD2<Double>(100,100),count:8)
+let fitted = FloorGeometry.fit(deltas)!
+assert(fitted.indices == Array(0..<40))
+let pixels = Array(patch.prefix(40)) + Array(grid.prefix(8))
+assert(!FloorGeometry.spatialCoverage(fitted.indices.map { pixels[$0] }).valid)
+var rejected = ""
+assert(FloorGeometry.fit(Array(deltas.prefix(10)),failure: { rejected = $0 }) == nil)
+assert(rejected.contains("too few"))
+
 ''')
             exe=str(Path(directory)/'check')
             result=subprocess.run(['swiftc','-module-cache-path',str(Path(directory)/'cache'),str(source),str(main),'-o',exe],capture_output=True,text=True)

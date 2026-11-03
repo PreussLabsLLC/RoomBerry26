@@ -1,4 +1,4 @@
-# @(#)roomberry_camera_test.py 2.3.18 2026/10/28 21:40:00
+# @(#)roomberry_camera_test.py 3.1.scan.1 2026/11/02 21:00:00
 import json
 import tempfile
 from pathlib import Path
@@ -136,8 +136,24 @@ class VisionArchiveTest(unittest.TestCase):
         service._periodic_capture()
         self.assertEqual(requests, [True, True])
         self.assertEqual(service._scan_requested.wait.call_args_list,
-                         [unittest.mock.call(20), unittest.mock.call(20)])
+                         [unittest.mock.call(), unittest.mock.call()])
         self.assertEqual(service._scan_requested.clear.call_count, 2)
+
+    def test_no_scan_without_explicit_request(self):
+        service = CameraService(Mock(), snapshot_interval=0)
+        service._scan_requested = Mock()
+        service._capture_scan = Mock()
+        wakes = iter((False, True))
+        def wait():
+            requested = next(wakes)
+            if requested:
+                service._shutdown.set()
+            return requested
+        service._scan_requested.wait.side_effect = wait
+        service._periodic_capture()
+        service._capture_scan.assert_not_called()
+        self.assertEqual(service._scan_requested.wait.call_count, 2)
+        service._scan_requested.wait.assert_called_with()
 
     def test_configured_capture_resolution_scales_intrinsics_without_compounding(self):
         camera = Mock()

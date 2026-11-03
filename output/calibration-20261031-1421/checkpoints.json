@@ -1,0 +1,300 @@
+[
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793481685.2480993,
+    "checkpoint": "start",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_minus_wheels": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 0,
+      "end_us": 52182929913,
+      "heading_rad": -0.159221300080588,
+      "seq": 720,
+      "session": 6802203999349324711,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 7469.488873931032,
+      "y_mm": 1192.407489489182
+    },
+    "iphone_unavailable": null,
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.159221300080588,
+      "x_mm": 7469.488873931032,
+      "y_mm": 1192.407489489182
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 0,
+    "wall_time": 1793481687.6294916,
+    "wheel_distance_from_start_mm": 0.0,
+    "wheels_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "wheels_pose": {
+      "heading_rad": -0.159221300080588,
+      "x_mm": 7469.488873931032,
+      "y_mm": 1192.407489489182
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793481698.4612236,
+    "checkpoint": "reverse_1",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.3948576251271607,
+      "x_mm": 7060.369299098186,
+      "y_mm": 1255.3914690919091
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 500.0,
+    "wall_time": 1793481700.2394059,
+    "wheel_distance_from_start_mm": -490.57747545797224,
+    "wheels_minus_tag": {
+      "distance_mm": 92.52977824404653,
+      "dx_mm": -62.797454239253966,
+      "dy_mm": 67.95763093988216,
+      "heading_rad": 0.02943383654319076
+    },
+    "wheels_pose": {
+      "heading_rad": -0.36542378858396996,
+      "x_mm": 6997.571844858932,
+      "y_mm": 1323.3491000317913
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793481758.0109582,
+    "checkpoint": "start",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_minus_wheels": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 25,
+      "end_us": 52255349912,
+      "heading_rad": -0.25038050516420096,
+      "seq": 1444,
+      "session": 6802203999349324711,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 6735.389700240365,
+      "y_mm": 1274.831889787768
+    },
+    "iphone_unavailable": null,
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.25038050516420096,
+      "x_mm": 6735.389700240365,
+      "y_mm": 1274.831889787768
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 0,
+    "wall_time": 1793481760.0575128,
+    "wheel_distance_from_start_mm": 0.0,
+    "wheels_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "wheels_pose": {
+      "heading_rad": -0.25038050516420096,
+      "x_mm": 6735.389700240365,
+      "y_mm": 1274.831889787768
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793481771.200043,
+    "checkpoint": "reverse_1",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": {
+      "distance_mm": 43.72926128659578,
+      "dx_mm": -37.151738305219624,
+      "dy_mm": -23.065052212640694,
+      "heading_rad": 0.08062574069209649
+    },
+    "iphone_minus_wheels": {
+      "distance_mm": 26.062884770784162,
+      "dx_mm": 24.099573109364428,
+      "dy_mm": -9.92393765203974,
+      "heading_rad": -0.0016013169226343216
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 25,
+      "end_us": 52268659714,
+      "heading_rad": -0.3806219066577503,
+      "seq": 1577,
+      "session": 6802203999349324711,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 6288.79486077748,
+      "y_mm": 1428.6152054237978
+    },
+    "iphone_unavailable": null,
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.4612476473498468,
+      "x_mm": 6325.946599082699,
+      "y_mm": 1451.6802576364385
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 500.0,
+    "wall_time": 1793481773.3212943,
+    "wheel_distance_from_start_mm": -498.80192792373816,
+    "wheels_minus_tag": {
+      "distance_mm": 62.6451278384935,
+      "dx_mm": -61.25131141458405,
+      "dy_mm": -13.141114560600954,
+      "heading_rad": 0.08222705761473081
+    },
+    "wheels_pose": {
+      "heading_rad": -0.379020589735116,
+      "x_mm": 6264.695287668115,
+      "y_mm": 1438.5391430758375
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793481784.2375383,
+    "checkpoint": "reverse_2",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": {
+      "distance_mm": 193.533696577773,
+      "dx_mm": -191.31793778676092,
+      "dy_mm": 29.2016847472637,
+      "heading_rad": 0.10771630529525344
+    },
+    "iphone_minus_wheels": {
+      "distance_mm": 56.11223149038749,
+      "dx_mm": 49.36721189650598,
+      "dy_mm": -26.67322463438404,
+      "heading_rad": -0.004111974892616832
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 25,
+      "end_us": 52281669294,
+      "heading_rad": -0.43042671336703986,
+      "seq": 1707,
+      "session": 6802203999349324711,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 5866.937539708055,
+      "y_mm": 1619.5945268299147
+    },
+    "iphone_unavailable": null,
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.5381430186622933,
+      "x_mm": 6058.255477494816,
+      "y_mm": 1590.392842082651
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 1000.0,
+    "wall_time": 1793481786.3372326,
+    "wheel_distance_from_start_mm": -992.0467933706074,
+    "wheels_minus_tag": {
+      "distance_mm": 247.08570734962382,
+      "dx_mm": -240.6851496832669,
+      "dy_mm": 55.87490938164774,
+      "heading_rad": 0.11182828018787028
+    },
+    "wheels_pose": {
+      "heading_rad": -0.426314738474423,
+      "x_mm": 5817.570327811549,
+      "y_mm": 1646.2677514642987
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793481797.7030294,
+    "checkpoint": "reverse_3",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": {
+      "distance_mm": 77.39109053378037,
+      "dx_mm": 65.51398508720104,
+      "dy_mm": -41.19828457596009,
+      "heading_rad": 0.003907836466219283
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 25,
+      "end_us": 52295346033,
+      "heading_rad": -0.4469998593526432,
+      "seq": 1844,
+      "session": 6802203999349324711,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 5429.505102163696,
+      "y_mm": 1826.4008038207674
+    },
+    "iphone_unavailable": null,
+    "tag_id": 15,
+    "tag_pose": null,
+    "tag_rejections": [
+      [
+        [
+          "tag16h5",
+          15
+        ],
+        "jump 1875 mm / 0.87 rad from predicted pose"
+      ]
+    ],
+    "target_reverse_mm": 1500.0,
+    "wall_time": 1793481799.9863362,
+    "wheel_distance_from_start_mm": -1496.8503487693629,
+    "wheels_minus_tag": null,
+    "wheels_pose": {
+      "heading_rad": -0.4509076958188625,
+      "x_mm": 5363.991117076495,
+      "y_mm": 1867.5990883967274
+    }
+  }
+]

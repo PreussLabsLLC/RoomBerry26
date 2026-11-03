@@ -1,5 +1,5 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 3.1.cal.2 2026/10/31 13:00:00
+# @(#)roomberry_mission.py 3.1.threshold.1 2026/11/03 12:00:00
 
 from math import atan2, cos, hypot, pi, sin
 from random import uniform, choice
@@ -220,6 +220,7 @@ class RoomberryMission:
             raise ValueError('Unsupported mission mode: ' + str(mode))
         with self._coord_lock:
             self._send_stop('mission mode transition')
+            leaving_calibration = self._mode == MODE_CALIBRATION and mode == MODE_IDLE
             leaving_active = (
                 mode in (MODE_IDLE, MODE_REMOTE) and
                 self._mode not in (MODE_IDLE, MODE_REMOTE)
@@ -231,9 +232,10 @@ class RoomberryMission:
                 self.calibration.result = dict(status='cancelled', reason='mode changed to '+mode)
                 self.calibration.stage = 'cancelled'
                 self.logger.info('Calibration cancelled by mode change to %s.', mode)
+            calibration = CalibrationDrive(self) if mode == MODE_CALIBRATION else None
             self._mode = mode
             if mode == MODE_CALIBRATION:
-                self.calibration = CalibrationDrive(self)
+                self.calibration = calibration
                 self._manual_motion_until = 0.0
                 self.localizer.invalidate_pose()
                 self._detections_after_restart = time()
@@ -293,6 +295,17 @@ class RoomberryMission:
                     self.logger.info('Roomba Open Interface entered Safe mode for %s.', mode)
                 except Exception:
                     self.logger.exception('Unable to enter Safe mode; motion remains inhibited.')
+            if leaving_calibration:
+                # Clock is reported by this firmware in Passive mode. Returning
+                # to idle in Safe leaves later physical presses invisible.
+                # The arbiter also checks its OI-stop latch at execution time.
+                if not self.robot_control.snapshot().get('oi_stopped'):
+                    try:
+                        self.robot_control.execute('_change_mode', mode=MODES.PASSIVE)
+                        self.logger.info('Calibration idle: restored Passive mode for Clock input.')
+                    except Exception:
+                        self.logger.exception('Unable to restore Passive mode after calibration; '
+                                              'physical Clock input may be unavailable.')
             if mode in (MODE_DISCOVERY, MODE_CALIBRATION):
                 self.robot_control.execute('set_motors', main_brush_on=False,
                                            side_brush=False, vacuum=False)
@@ -320,6 +333,7 @@ class RoomberryMission:
             run = self.calibration
             return dict(mission_mode=self._mode, calibration=None if run is None else dict(
                 stage=run.stage, result=run.result, checkpoints=len(run.records),
+                distance_mm=run.distance_mm, turnaround_hold_s=run.hold_s,
                 waiting_for_sensors=run.sensor_wait_since is not None,
                 latest_checkpoint=run.records[-1] if run.records else None))
 
@@ -418,8 +432,8 @@ class RoomberryMission:
                     self._discovery_stage,
                 )
                 return False
-            if self._mode == MODE_CALIBRATION and not self.calibration.stage.endswith('_scan'):
-                return False  # Calibration scans only at explicit stopped checkpoints.
+            if self._mode == MODE_CALIBRATION:
+                return False  # Overhead calibration never requests tag scans.
             recovery = self._localization_recovery
             if self._mode == MODE_DISCOVERY and recovery is not None and recovery['phase'] != 'scan':
                 return False
@@ -532,7 +546,7 @@ class RoomberryMission:
             self._shutdown.wait(max(0.0, self.period - elapsed))
 
     def _handle_clock(self, state):
-        """Start/cancel calibration on Clock, including during a stationary scan."""
+        """Start/cancel the scan-free calibration on Clock."""
         if state.get('oi_stopped') is True:
             return False
         pressed = bool(state.get('clock_button', False))
@@ -547,7 +561,7 @@ class RoomberryMission:
         else:
             self.set_mode(MODE_CALIBRATION)
             self.logger.info('Clock button pressed; starting tag 15 calibration: '
-                             'three 500 mm reverse legs, return scan and gentle bumper touch.')
+                             'reverse until phone bump or distance limit, one turnaround stop, forward return; no scans.')
         return True
 
     def _tick(self):

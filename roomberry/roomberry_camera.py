@@ -1,5 +1,5 @@
-"""Camera ownership, periodic snapshots, and AprilTag 3 detection."""
-# @(#)roomberry_camera.py 2.3.18 2026/10/28 21:40:00
+"""Camera ownership, explicit scan requests, and AprilTag 3 detection."""
+# @(#)roomberry_camera.py 3.1.scan.1 2026/11/02 21:00:00
 
 from threading import Event, Lock, Thread
 import json
@@ -253,6 +253,7 @@ class CameraService:
         self.logger = logger
         self._camera = camera
         self.detector = detector if detector is not None else AprilTagDetector()
+        # Retained for configuration compatibility; timer scans are disabled.
         self.snapshot_interval = snapshot_interval
         self.highest_resolution = True
         self._scan_requested = Event()
@@ -425,13 +426,15 @@ class CameraService:
 
     def _periodic_capture(self):
         while not self._shutdown.is_set():
-            requested = self._scan_requested.wait(self.snapshot_interval)
+            # No timer-driven snapshots or tag scans, in any mission mode.
+            # close() sets this event too, so shutdown still wakes immediately.
+            requested = self._scan_requested.wait()
             self._scan_requested.clear()
             if self._shutdown.is_set():
                 break
-            self._capture_scan(requested)
-            # Explicit requests wake the next capture, including requests that
-            # arrive while archiving. Periodic intervals never accumulate.
+            if requested:
+                self._capture_scan(requested)
+            # Requests arriving during capture/archiving wake the next scan.
 
     def _capture_scan(self, requested=False):
         """Archive every frame; only run stationary detection when pause permits."""

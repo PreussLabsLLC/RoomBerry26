@@ -1,5 +1,5 @@
-# @(#)roomberry_calibration_test.py 3.1.carpet.1 2026/10/31 15:00:00
-"""Cal drive sequence, independent estimates, scan boundaries and failure stops."""
+# @(#)roomberry_calibration_test.py 3.1.threshold.2 2026/11/03 09:20:00
+"""Scan-free calibration route, GroundHog steering, and failure stops."""
 import logging
 from copy import deepcopy
 from math import pi
@@ -9,7 +9,6 @@ from unittest.mock import Mock, patch
 
 from roomberry_mission import RoomberryMission, MODE_CALIBRATION
 from roomberry_control import RobotCommandArbiter
-
 
 class CalibrationTest(unittest.TestCase):
     def setUp(self):
@@ -58,8 +57,7 @@ class CalibrationTest(unittest.TestCase):
 
     def start(self):
         self.tick()
-        self.camera.request_scan.assert_called_once()
-        self.tick(pose=self.pose(),new=True)
+        self.camera.request_scan.assert_not_called()
         self.assertEqual(self.c.stage,'reverse')
 
     def move_to(self,target,phone_scale=1):
@@ -68,67 +66,14 @@ class CalibrationTest(unittest.TestCase):
             self.tick(delta=direction*min(10,abs(target-self.state['distance'])),phone_scale=phone_scale)
             self.assertEqual(self.m._mode,MODE_CALIBRATION)
 
-    def scan(self,pose=None,phone_scale=1):
-        self.tick(phone_scale=phone_scale)  # request after the stop
-        self.tick(pose=pose,new=True,phone_scale=phone_scale)
-
-    def return_to_start(self):
-        self.start()
-        for step in (1,2,3,4):
-            self.move_to(-500*step)
-            self.scan(self.pose(-500*step) if step<4 else None)
-        self.move_to(0)
-        self.scan(self.pose())
-        self.assertEqual(self.c.stage,'contact')
-
-    def test_full_sequence_missing_far_tag_return_scan_and_gentle_contact(self):
-        self.return_to_start()
-        self.assertEqual([r['checkpoint'] for r in self.c.records],
-                         ['start','reverse_1','reverse_2','reverse_3','reverse_4','return'])
-        self.assertIsNone(self.c.records[4]['tag_pose'])
-        self.assertAlmostEqual(self.c.records[4]['wheels_pose']['x_mm'],5430)
-        self.assertAlmostEqual(self.c.records[4]['iphone_pose']['x_mm'],5430)
-        self.assertEqual(self.camera.request_scan.call_count,6)
-        self.move_to(120)
-        self.state['sensors'].bumps_and_wheel_drops.bump_left=True
-        self.tick()
-        self.assertEqual(self.m._mode,'idle')
-        self.assertEqual(self.c.result['status'],'complete')
-        self.assertEqual(self.c.records[-1]['checkpoint'],'contact')
-        self.assertTrue(self.c.records[-1]['bumper']['left'])
-        self.assertFalse(any(c.args[0] in ('spin_left','spin_right','seek_dock')
-                             for c in self.robot.execute.call_args_list))
-        velocities=[dict(c.kwargs) for c in self.robot.execute.call_args_list if c.args[0]=='drive_direct']
-        self.assertTrue(any(v['left_velocity']<0 for v in velocities))
-        self.assertTrue(any(v['left_velocity']>0 for v in velocities))
-        self.assertLessEqual(max(max(abs(v['left_velocity']),abs(v['right_velocity'])) for v in velocities),50)
-
-    def test_estimates_do_not_reset_wheels_at_each_tag_fix(self):
-        self.start(); self.move_to(-500,phone_scale=.96)
-        self.scan(self.pose(-480),phone_scale=.96)
-        record=self.c.records[-1]
-        self.assertAlmostEqual(record['wheels_pose']['x_mm'],6930)
-        self.assertAlmostEqual(record['iphone_pose']['x_mm'],6950)
-        self.assertAlmostEqual(record['wheels_minus_tag']['dx_mm'],-20)
-        self.move_to(-1000,phone_scale=.96)
-        self.scan(self.pose(-960),phone_scale=.96)
-        self.assertAlmostEqual(self.c.records[-1]['wheels_minus_tag']['dx_mm'],-40)
-
-    def test_missing_initial_tag_and_wrong_heading_never_move(self):
-        for pose in (None,self.pose(heading=pi/2)):
-            self.m.set_mode(MODE_CALIBRATION); self.c=self.m.calibration
-            self.tick(); self.tick(pose=pose,new=True)
-            self.assertEqual(self.m._mode,'idle')
-        self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
-
     def test_phone_segment_rotation_is_removed_at_initial_anchor(self):
         self.ground['segment_yaw_rad']=pi/2
         self.start()
         self.ground.update(segment_x_mm=0,segment_y_mm=-500)
         phone, reason=self.c._phone_pose()
         self.assertIsNone(reason)
-        self.assertAlmostEqual(phone['x_mm'],6930)
-        self.assertAlmostEqual(phone['y_mm'],1180)
+        self.assertAlmostEqual(phone['x_mm'],-500)
+        self.assertAlmostEqual(phone['y_mm'],0)
         self.assertAlmostEqual(phone['heading_rad'],0)
 
     def test_wrong_way_motion_aborts(self):
@@ -149,19 +94,17 @@ class CalibrationTest(unittest.TestCase):
         self.assertEqual(self.m._mode,'idle')
         self.assertEqual(self.c.result['reason'],'mission update error')
 
-    def test_stationary_scan_poll_delay_preserves_result_until_fresh_sensors(self):
-        self.tick()  # request scan
+    def test_stationary_poll_delay_waits_for_fresh_sensors(self):
         self.state['age']=.583
         self.tick(pose=self.pose(),new=True)
         self.assertEqual(self.m._mode,MODE_CALIBRATION)
-        self.assertEqual(self.c.stage,'start_scan')
-        self.assertIsNotNone(self.c.pending_scan)
+        self.assertEqual(self.c.stage,'phone_anchor')
         self.assertTrue(self.m.status_snapshot()['calibration']['waiting_for_sensors'])
         self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
         self.state['age']=.02
-        self.tick()  # no second tag capture required
+        self.tick()  # begin with a fresh local baseline
         self.assertEqual(self.c.stage,'reverse')
-        self.assertEqual(self.c.records[0]['tag_pose']['x_mm'],7430)
+        self.assertIsNone(self.c.records[0]['tag_pose'])
         self.assertIsNone(self.c.sensor_wait_since)
 
     def test_persistent_stationary_poll_stall_aborts(self):
@@ -178,33 +121,6 @@ class CalibrationTest(unittest.TestCase):
         self.state['sensors'].cliff_left_sensor=True
         self.tick()
         self.assertEqual(self.m._mode,'idle')
-
-    def test_reported_twelve_degree_heading_is_accepted_with_doubled_limit(self):
-        self.tick(); self.tick(pose=self.pose(heading=-.223909),new=True)
-        self.assertEqual(self.c.stage,'reverse')
-
-    def test_doubled_heading_limit_still_rejects_outside_envelope(self):
-        self.tick(); self.tick(pose=self.pose(heading=-.31),new=True)
-        self.assertEqual(self.m._mode,'idle')
-        self.assertIn('17.2 deg',self.c.result['reason'])
-
-    def test_doubled_lateral_range_and_gap_acceptance(self):
-        pose=self.pose(dx=-1000,heading=.29)
-        pose['y_mm']=1370
-        self.assertTrue(self.c._valid_start(pose))
-        pose['y_mm']=1381
-        self.assertFalse(self.c._valid_start(pose))
-        pose=self.pose(dx=200)
-        self.assertTrue(self.c._valid_start(pose))
-        pose['x_mm']=7640
-        self.assertFalse(self.c._valid_start(pose))
-
-    def test_doubled_return_error_accepts_three_hundred_mm(self):
-        self.start()
-        for step in (1,2,3,4):
-            self.move_to(-500*step);self.scan(None)
-        self.move_to(0);self.scan(self.pose(-300))
-        self.assertEqual(self.c.stage,'contact')
 
     def test_calibration_does_not_block_sensor_polls_with_wake(self):
         self.assertFalse(any(c.args[0]=='wake' for c in self.robot.execute.call_args_list))
@@ -231,51 +147,14 @@ class CalibrationTest(unittest.TestCase):
         self.assertEqual(self.m._mode,'idle')
         self.assertIn('timeout',self.c.result['reason'])
 
-    def test_scan_results_predating_request_cannot_advance(self):
-        self.tick()
-        self.c.tick(self.state,self.pose(),True,self.c.requested_after-1)
-        self.assertEqual(self.c.stage,'start_scan')
-        self.assertIsNone(self.c.origin)
-
-    def test_lost_phone_segment_is_never_stitched(self):
-        self.start(); self.move_to(-250)
-        self.ground['continuity']=1
-        self.move_to(-500); self.scan(self.pose(-500))
-        self.assertIsNone(self.c.records[-1]['iphone_pose'])
-        self.assertIn('continuity changed',self.c.records[-1]['iphone_unavailable'])
-        self.assertEqual(self.c.stage,'reverse')
-
     def test_stale_transport_is_unavailable_without_inventing_a_position(self):
         self.start()
         self.ground['received_monotonic']=self.now-2
         self.assertIsNone(self.c._phone_pose()[0])
 
-    def test_return_tag_required_before_contact(self):
-        self.start()
-        for step in (1,2,3,4):
-            self.move_to(-500*step); self.scan(None)
-        self.move_to(0); self.scan(None)
-        self.assertEqual(self.m._mode,'idle')
-        self.assertIn('return scan',self.c.result['reason'])
-        self.assertIsNone(self.c.contact_start)
-
-    def test_contact_is_bounded_and_rejects_early_obstacle(self):
-        self.return_to_start()
-        self.state['sensors'].bumps_and_wheel_drops.bump_left=True
-        self.tick()
-        self.assertEqual(self.c.result['status'],'aborted')
-        self.assertIn('before verified tag',self.c.result['reason'])
-
-    def test_contact_distance_limit_without_touch_stops(self):
-        self.return_to_start()
-        self.move_to(self.c.contact_limit-1)
-        self.tick(delta=2)
-        self.assertEqual(self.m._mode,'idle')
-        self.assertIn('distance limit',self.c.result['reason'])
-
     def test_hazards_reset_drift_and_impacts_stop(self):
         initial=deepcopy(self.state)
-        for change in ('cliff','stale','epoch','heading','impact','latch'):
+        for change in ('cliff','stale','epoch','heading','latch'):
             with self.subTest(change=change):
                 self.state.clear(); self.state.update(deepcopy(initial))
                 self.health['bump_count']=0
@@ -292,24 +171,28 @@ class CalibrationTest(unittest.TestCase):
                 self.assertEqual(self.m._mode,'idle')
                 self.assertEqual(self.c.result['status'],'aborted')
 
-    def test_carpet_bump_is_recorded_without_stopping(self):
+    def test_return_small_bump_is_recorded_without_stopping(self):
         self.start()
+        self.move_to(-100)
+        self.c._move('return',self.state)
         self.health.update(bump_count=1,last_bump_peak_mm_s2=3383.3125)
-        self.tick(delta=-10)
-        self.assertEqual(self.c.stage,'reverse')
+        self.tick(delta=10)
+        self.assertEqual(self.c.stage,'return')
         self.assertEqual(self.c.phone_bumps[0]['action'],'record-only')
         self.assertAlmostEqual(self.c.phone_bumps[0]['peak_mm_s2'],3383.3125)
-        self.tick(delta=-10)
+        self.tick(delta=10)
         self.assertEqual(len(self.c.phone_bumps),1)
-        self.move_to(-500); self.scan(self.pose(-500))
+        self.c._record('sample',self.state,None,None)
         self.assertEqual(self.c.records[-1]['phone_bumps'][0]['count'],1)
 
     def test_refined_bump_peak_can_still_stop(self):
         self.start()
+        self.move_to(-100)
+        self.c._move('return',self.state)
         self.health.update(bump_count=1,last_bump_peak_mm_s2=3383)
-        self.tick(delta=-10)
+        self.tick(delta=10)
         self.health['last_bump_peak_mm_s2']=6000
-        self.tick(delta=-10)
+        self.tick(delta=10)
         self.assertEqual(self.m._mode,'idle')
         self.assertEqual(len(self.c.phone_bumps),1)
         self.assertEqual(self.c.phone_bumps[0]['action'],'stop')
@@ -318,30 +201,15 @@ class CalibrationTest(unittest.TestCase):
         self.health.update(bump_count=3,last_bump_peak_mm_s2=6000)
         self.start(); self.tick(delta=-10)
         self.assertEqual(self.c.stage,'reverse')
+        self.c.stage='return'
         self.health['bump_count']=4
         self.tick(delta=-10)
         self.assertEqual(self.m._mode,'idle')
         self.assertIn('phone reported an impact',self.c.result['reason'])
 
-    def test_endpoint_tolerance_accepts_observed_487_mm_stop(self):
-        self.start()
-        self.move_to(-480)
-        self.tick(delta=-7.2)
-        self.assertEqual(self.c.stage,'reverse_scan')
-        self.assertEqual(self.m._mode,MODE_CALIBRATION)
-        self.scan(self.pose(-487.2))
-        self.assertEqual(self.c.records[-1]['checkpoint'],'reverse_1')
-        self.assertAlmostEqual(self.c.records[-1]['wheel_distance_from_start_mm'],-487.2)
-        self.assertEqual(self.c.stage,'reverse')
-        # Targets remain anchored to the origin; tolerance does not accumulate.
-        self.move_to(-980)
-        self.assertEqual(self.c.stage,'reverse')
-        self.tick(delta=-6)
-        self.assertEqual(self.c.stage,'reverse_scan')
-
     def test_endpoint_approach_keeps_usable_drive_speed(self):
         self.start()
-        self.move_to(-480)
+        self.move_to(-self.c.distance_mm+20)
         self.tick()
         calls=[c for c in self.robot.execute.call_args_list if c.args[0]=='drive_direct']
         self.assertTrue(calls)
@@ -364,11 +232,62 @@ class CalibrationTest(unittest.TestCase):
         self.assertEqual(run.result['status'],'cancelled')
         self.assertEqual(self.m._mode,'remote_control')
 
+    def test_clock_release_and_second_press_restarts_after_cancel(self):
+        self.start()
+        old = self.c
+        self.state['clock_button']=True
+        self.assertTrue(self.m._handle_clock(self.state))
+        self.assertEqual(old.result['status'],'aborted')
+        self.state['clock_button']=False
+        self.assertFalse(self.m._handle_clock(self.state))
+        self.state['clock_button']=True
+        self.assertTrue(self.m._handle_clock(self.state))
+        self.assertIsNot(self.m.calibration,old)
+        self.c=self.m.calibration
+        self.tick()
+        self.assertEqual(self.c.stage,'reverse')
+        self.camera.request_scan.assert_not_called()
+
+    def test_tracking_abort_restores_passive_before_idle_feedback(self):
+        from irobot.openinterface.constants import MODES
+        self.start()
+        self.robot.execute.reset_mock()
+        self.ground.update(continuity=2,rejected_frames=52,reason=0)
+        self.tick(delta=-10)
+        self.assertIn('continuity changed',self.c.result['reason'])
+        self.assertIn('rejected_frames=52',self.c.result['reason'])
+        self.robot.execute.assert_any_call('_change_mode',mode=MODES.PASSIVE)
+        self.assertEqual(self.m._mode,'idle')
+        self.assertEqual(self.c.result['status'],'aborted')
+        # The next physical rising edge can start a new baseline.
+        self.state['clock_button']=True
+        self.assertTrue(self.m._handle_clock(self.state))
+        self.c=self.m.calibration
+        self.tick()
+        self.assertEqual(self.c.stage,'reverse')
+        self.assertEqual(self.c.phone_anchor['identity'][2],2)
+
+    def test_calibration_exit_does_not_rearm_oi_stop(self):
+        self.start()
+        self.robot.execute.reset_mock()
+        self.state['oi_stopped']=True
+        self.tick()
+        self.assertEqual(self.m._mode,'idle')
+        self.assertFalse(any(c.args[0]=='_change_mode' for c in self.robot.execute.call_args_list))
+
+    def test_calibration_completion_restores_passive(self):
+        from irobot.openinterface.constants import MODES
+        self.start()
+        self.robot.execute.reset_mock()
+        self.c._finish(self.state)
+        self.robot.execute.assert_any_call('_change_mode',mode=MODES.PASSIVE)
+        self.assertEqual(self.c.result['status'],'complete')
+
     def test_scan_is_skipped_during_motion_and_led_remains_cal(self):
         self.start()
         self.assertFalse(self.m.scan_pause())
         self.move_to(-500)
-        self.assertTrue(self.m.scan_pause())
+        self.assertFalse(self.m.scan_pause())
         display=SimpleNamespace()
         RobotCommandArbiter.set_drive_display(display,'calibration',scanning=True)
         self.assertEqual(display._drive_display,'CAL ')
@@ -381,16 +300,132 @@ class CalibrationTest(unittest.TestCase):
         self.assertEqual(self.m._mode,'idle')
         self.assertIn('timeout',self.c.result['reason'])
 
-    def test_calibration_filters_other_tags_and_disables_old_phone_aiding(self):
-        self.m.phone_position=Mock()
-        self.localizer.update.return_value=self.pose()
-        self.camera.last_detection_time=1700000000+self.now+1
-        self.camera.last_detection_ready_time=1700000000+self.now
-        self.camera.pause_for_detection=True
-        self.camera.latest_detections=[dict(id=1),dict(id=15)]
-        self.m._tick()
-        self.assertEqual(self.localizer.update.call_args.args[0],({'id':15},))
-        self.m.phone_position.apply.assert_not_called()
+    def test_continuous_five_metre_route_one_hold_and_no_scans(self):
+        self.m._send_stop=Mock(wraps=self.m._send_stop)
+        self.start()
+        self.assertAlmostEqual(self.c.distance_mm, 5000)
+        self.move_to(-self.c.distance_mm)
+        self.assertEqual(self.c.stage, 'turnaround')
+        self.assertFalse(self.m.scan_pause())
+        calls=len(self.robot.execute.call_args_list)
+        self.tick(); self.tick()
+        self.assertEqual(self.c.stage, 'turnaround')
+        self.assertEqual(len(self.robot.execute.call_args_list), calls)
+        self.now+=1
+        self.tick()
+        self.assertEqual(self.c.stage, 'return')
+        # Stop within the existing 15 mm tolerance of the origin.
+        self.move_to(-20)
+        self.tick(delta=10)
+        self.assertEqual(self.c.stage, 'complete')
+        reasons=[c.args[0] for c in self.m._send_stop.call_args_list]
+        self.assertEqual(reasons.count('calibration turnaround'),1)
+        self.assertEqual(self.m._mode, 'idle')
+        self.assertEqual([r['checkpoint'] for r in self.c.records],
+                         ['start','turnaround','finish'])
+        self.camera.request_scan.assert_not_called()
+        self.assertTrue(all(r['tag_pose'] is None for r in self.c.records))
+        self.assertFalse(any(c.args[0] in ('spin_left','spin_right','seek_dock')
+                             for c in self.robot.execute.call_args_list))
 
+    def test_groundhog_controls_heading_in_both_directions(self):
+        self.start()
+        self.ground['segment_yaw_rad']=.05
+        self.tick(delta=-10)
+        calls=[c for c in self.robot.execute.call_args_list if c.args[0]=='drive_direct']
+        self.assertEqual(calls[-1].kwargs, dict(right_velocity=-59,left_velocity=-40))
+        self.assertAlmostEqual(self.c.wheels['heading_rad'],0)
+        self.c._move('return',self.state)
+        # Stay away from the return endpoint while testing the opposite sign.
+        self.state['distance']=-100
+        self.c.progress=-100
+        self.tick()
+        calls=[c for c in self.robot.execute.call_args_list if c.args[0]=='drive_direct']
+        self.assertGreater(calls[-1].kwargs['left_velocity'],calls[-1].kwargs['right_velocity'])
+
+    def test_groundhog_limit_and_steering_clamp(self):
+        self.start()
+        self.ground['segment_yaw_rad']=.2
+        self.tick(delta=-10)
+        calls=[c for c in self.robot.execute.call_args_list if c.args[0]=='drive_direct']
+        self.assertEqual(calls[-1].kwargs,dict(right_velocity=-67,left_velocity=-32))
+        self.ground['segment_yaw_rad']=.31
+        self.tick()
+        self.assertIn('heading drift',self.c.result['reason'])
+
+    def test_groundhog_loss_stops_in_motion_and_hold(self):
+        for stage in ('reverse','turnaround'):
+            for change in ('continuity','session','calibration','flags','stale','frame','nonfinite'):
+                with self.subTest(stage=stage,change=change):
+                    self.m.set_mode('idle')
+                    self.m.set_mode(MODE_CALIBRATION); self.c=self.m.calibration
+                    self.ground.update(flags=7,segment_yaw_rad=0)
+                    self.start()
+                    self.c.stage=stage
+                    self.c.hold_until=self.now+1
+                    if change=='stale': self.ground['received_monotonic']=self.now-2
+                    elif change=='nonfinite': self.ground['segment_yaw_rad']=float('nan')
+                    elif change=='frame': self.ground['end_us']=self.ground['send_us']-600000
+                    else: self.ground[change]+=1
+                    if change=='flags': self.ground['flags']=2
+                    self.c.tick(self.state,None,False,None)
+                    self.assertEqual(self.c.result['status'],'aborted')
+                    self.assertEqual(self.m._mode,'idle')
+
+    def test_inflight_tag_pose_is_ignored(self):
+        self.tick(pose=self.pose(dx=900,heading=pi/2),new=True)
+        self.assertEqual(self.c.stage,'reverse')
+        self.assertEqual(self.c.origin['heading_rad'],0)
+        self.assertIsNone(self.c.records[0]['tag_pose'])
+        self.camera.request_scan.assert_not_called()
+
+    def test_unexpected_bumper_aborts(self):
+        self.start()
+        self.state['sensors'].bumps_and_wheel_drops.bump_left=True
+        self.tick()
+        self.assertIn('unexpected physical bumper',self.c.result['reason'])
+
+    def test_reverse_bump_stops_then_returns_without_retriggering(self):
+        self.health.update(bump_count=3,last_bump_peak_mm_s2=6000)
+        self.start()
+        self.move_to(-4700)
+        self.health.update(bump_count=4,last_bump_peak_mm_s2=100)
+        self.tick(delta=-5)
+        self.assertEqual(self.c.stage,'turnaround')
+        self.assertEqual(self.c.turnaround_reason,'phone bump')
+        self.assertEqual(self.c.phone_bumps[-1]['action'],'threshold-stop')
+        self.assertEqual(self.c.records[-1]['wheel_distance_from_start_mm'],-4705)
+        self.health['last_bump_peak_mm_s2']=6000
+        self.tick()
+        self.assertEqual(self.c.stage,'turnaround')
+        self.now+=1
+        self.tick()
+        self.assertEqual(self.c.stage,'return')
+        self.move_to(-20)
+        self.tick(delta=10)
+        self.assertEqual(self.c.stage,'complete')
+        self.camera.request_scan.assert_not_called()
+
+    def test_reverse_bump_without_peak_still_ends_leg(self):
+        self.start()
+        self.health['bump_count']=1
+        self.tick(delta=-10)
+        self.assertEqual(self.c.stage,'turnaround')
+
+    def test_cruise_speed_is_50_mm_s(self):
+        self.start(); self.tick(delta=-10)
+        self.assertEqual(self.robot.execute.call_args.kwargs['left_velocity'],-50)
+        self.assertEqual(self.robot.execute.call_args.kwargs['right_velocity'],-50)
+
+    def test_distance_configuration_and_invalid_values(self):
+        from roomberry_calibration import CalibrationDrive
+        with patch.dict('os.environ',{'ROOMBERRY_CALIBRATION_DISTANCE_MM':'5000',
+                                      'ROOMBERRY_CALIBRATION_HOLD_S':'1.5'}):
+            run=CalibrationDrive(self.m)
+            self.assertEqual(run.distance_mm,5000)
+            self.assertEqual(run.hold_s,1.5)
+        for value in ('nan','inf','-10','5001'):
+            with patch.dict('os.environ',{'ROOMBERRY_CALIBRATION_DISTANCE_MM':value}):
+                with self.assertRaises(ValueError): CalibrationDrive(self.m)
 
 if __name__=='__main__': unittest.main()

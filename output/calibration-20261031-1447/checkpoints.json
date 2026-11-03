@@ -1,0 +1,319 @@
+[
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483284.3557556,
+    "checkpoint": "start",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_minus_wheels": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 52,
+      "end_us": 53012922323,
+      "heading_rad": -0.11181968201960446,
+      "seq": 4116,
+      "session": 4919599159689171286,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 7475.673419000137,
+      "y_mm": 1177.151139021152
+    },
+    "iphone_unavailable": null,
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.11181968201960446,
+      "x_mm": 7475.673419000137,
+      "y_mm": 1177.151139021152
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 0,
+    "wall_time": 1793483286.1320236,
+    "wheel_distance_from_start_mm": 0.0,
+    "wheels_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "wheels_pose": {
+      "heading_rad": -0.11181968201960446,
+      "x_mm": 7475.673419000137,
+      "y_mm": 1177.151139021152
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483297.389846,
+    "checkpoint": "reverse_1",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.1458688128574508,
+      "x_mm": 7045.1382486323455,
+      "y_mm": 1184.3738949703106
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 500.0,
+    "wall_time": 1793483299.1571426,
+    "wheel_distance_from_start_mm": -499.2464929218874,
+    "wheels_minus_tag": {
+      "distance_mm": 88.3308949382243,
+      "dx_mm": -64.01621673920363,
+      "dy_mm": 60.86272254004848,
+      "heading_rad": 0.034049130837846775
+    },
+    "wheels_pose": {
+      "heading_rad": -0.11181968201960402,
+      "x_mm": 6981.122031893142,
+      "y_mm": 1245.236617510359
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483310.210761,
+    "checkpoint": "reverse_2",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.2992805221014332,
+      "x_mm": 6622.840257029569,
+      "y_mm": 1261.1340142597917
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 1000.0,
+    "wall_time": 1793483312.3373444,
+    "wheel_distance_from_start_mm": -995.8255958548775,
+    "wheels_minus_tag": {
+      "distance_mm": 147.4409317046586,
+      "dx_mm": -130.81678844663475,
+      "dy_mm": 68.0132060885694,
+      "heading_rad": 0.09287254260321465
+    },
+    "wheels_pose": {
+      "heading_rad": -0.20640797949821854,
+      "x_mm": 6492.023468582935,
+      "y_mm": 1329.147220348361
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483326.5339034,
+    "checkpoint": "start",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_minus_wheels": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "iphone_pose": {
+      "calibration": 13224271955303826191,
+      "continuity": 82,
+      "end_us": 53055420286,
+      "heading_rad": -0.2836840655580777,
+      "seq": 4541,
+      "session": 4919599159689171286,
+      "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+      "x_mm": 6613.850749381217,
+      "y_mm": 1244.8330574396653
+    },
+    "iphone_unavailable": null,
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.2836840655580777,
+      "x_mm": 6613.850749381217,
+      "y_mm": 1244.8330574396653
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 0,
+    "wall_time": 1793483328.5869844,
+    "wheel_distance_from_start_mm": 0.0,
+    "wheels_minus_tag": {
+      "distance_mm": 0.0,
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "heading_rad": 0.0
+    },
+    "wheels_pose": {
+      "heading_rad": -0.2836840655580777,
+      "x_mm": 6613.850749381217,
+      "y_mm": 1244.8330574396653
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483339.7712028,
+    "checkpoint": "reverse_1",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": {
+      "heading_rad": -0.6213472549383035,
+      "x_mm": 6335.313454886831,
+      "y_mm": 1677.1879992841766
+    },
+    "tag_rejections": null,
+    "target_reverse_mm": 500.0,
+    "wall_time": 1793483341.662599,
+    "wheel_distance_from_start_mm": -496.3568204339158,
+    "wheels_minus_tag": {
+      "distance_mm": 336.50085736035726,
+      "dx_mm": -192.3386905919897,
+      "dy_mm": -276.11348229598343,
+      "heading_rad": 0.25631725354861734
+    },
+    "wheels_pose": {
+      "heading_rad": -0.3650300013896861,
+      "x_mm": 6142.974764294841,
+      "y_mm": 1401.0745169881932
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483352.6050577,
+    "checkpoint": "reverse_2",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": null,
+    "tag_rejections": [
+      [
+        [
+          "tag16h5",
+          15
+        ],
+        "jump 1535 mm / 0.78 rad from predicted pose"
+      ]
+    ],
+    "target_reverse_mm": 1000.0,
+    "wall_time": 1793483354.7662172,
+    "wheel_distance_from_start_mm": -995.8255958548777,
+    "wheels_minus_tag": null,
+    "wheels_pose": {
+      "heading_rad": -0.3290864483478124,
+      "x_mm": 5671.412346576175,
+      "y_mm": 1565.5730614811384
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483365.5037692,
+    "checkpoint": "reverse_3",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": null,
+    "tag_rejections": [
+      [
+        [
+          "tag16h5",
+          15
+        ],
+        "jump 589 mm / 0.16 rad from predicted pose"
+      ]
+    ],
+    "target_reverse_mm": 1500.0,
+    "wall_time": 1793483367.740556,
+    "wheel_distance_from_start_mm": -1500.1845862554846,
+    "wheels_minus_tag": null,
+    "wheels_pose": {
+      "heading_rad": -0.2931428953059383,
+      "x_mm": 5190.387441017353,
+      "y_mm": 1717.1510491851702
+    }
+  },
+  {
+    "bumper": {
+      "left": false,
+      "right": false
+    },
+    "captured_at": 1793483378.3157156,
+    "checkpoint": "reverse_4",
+    "contact_expected_mm": null,
+    "iphone_minus_tag": null,
+    "iphone_minus_wheels": null,
+    "iphone_pose": null,
+    "iphone_unavailable": "GroundHog session/calibration/continuity changed",
+    "phone_bumps": [],
+    "tag_id": 15,
+    "tag_pose": null,
+    "tag_rejections": [
+      [
+        [
+          "tag16h5",
+          15
+        ],
+        "reprojection error=27.9"
+      ]
+    ],
+    "target_reverse_mm": 2000.0,
+    "wall_time": 1793483380.720756,
+    "wheel_distance_from_start_mm": -1992.7626042051302,
+    "wheels_minus_tag": null,
+    "wheels_pose": {
+      "heading_rad": -0.38773119278455415,
+      "x_mm": 4722.292263836067,
+      "y_mm": 1869.9083058915057
+    }
+  }
+]

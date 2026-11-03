@@ -1,5 +1,5 @@
-<!-- @(#)README.md 3.1.threading.1 2026/10/31 14:30:00 -->
-# GroundHog 3.1
+<!-- @(#)README.md 3.1.torch.6 2026/11/02 22:30:00 -->
+# GroundHog 3.1 (build 6)
 
 GroundHog measures robot-relative motion from a downward-facing iPhone rear camera. It uses AVFoundation, Vision revision-1 optical flow, Core Motion and Network.framework, without ARKit. It is a separate app (`com.preusslabs.GroundHog`); StarLock remains available. Deployment target: iOS 15.0, including the 2016 SE on iOS 15.8. The supplied `../GroundHog.png` is preserved; the app catalog contains a generated opaque 1024-pixel copy.
 
@@ -26,6 +26,10 @@ Enter four measured values, then tap Start tracking:
 
 Calibration is saved locally, with a new random calibration identity whenever its values change. No assumed lens height or old mount offset is silently enabled. Camera and local-network permission are required. Allow Motion access if requested. After a system permission prompt, tap Start again if tracking has not begun.
 
+The interface supports both landscape orientations. Data and calibration fields scroll on the left; a 72×96-point preview and a fixed 160×76-point Start/Stop button sit on the right. Live data labels refresh at most twice per second; button feedback remains immediate. Capture and NavLink reporting keep their existing rates. Interface rotation does not rotate the estimator pixels or change the mount calibration: the angle still refers to the physical portrait top edge of the phone.
+
+Use **LED: Off/On** below Start/Stop for the rear-camera torch. While stopped, selecting On queues it for the next Start; while tracking it switches immediately on the camera queue. This app-owned setting is applied after the capture session starts, so it does not depend on the Control Center flashlight. Stop, backgrounding, or a startup failure turns the LED off and clears the selection. Unsupported or unavailable torch hardware is reported on the button. Enable the light before starting a robot run so exposure can settle.
+
 The app stays awake while tracking. Stop, screen lock, loss of foreground, or restart ends capture/transmission. Foreground return requires an explicit Start and creates a new session. The screen reports segment X/Y/yaw, accepted/rejected frame counts, fit residual and UDP send status. UDP completion does not prove Pi reception. Confirm a growing NavLink log on the Pi. No Pi deployment or motor commands are performed by building this app.
 
 ## Estimator
@@ -34,7 +38,7 @@ Capture requests VGA at 30 fps when supported, with a fixed portrait pixel orien
 
 Core Motion runs at a requested 100 Hz independently of the image-processing queue. Buffered gravity-projected gyro rates supply yaw at camera timestamps, with bounded nearest-sample extrapolation (25 ms) and IMU-gap rejection. This is gyro-relative heading without magnetic correction. Gravity levels image rays; known camera height intersects rays with the floor plane. Consecutive ray intersections, compensated for yaw, yield camera translation. Mount yaw converts this to forward/left; the change in the rotated lens offset removes the camera's arc about the robot center.
 
-Only one low-accuracy classical Vision optical-flow request exists at a time. Capture discards late frames rather than building a processing queue. Sampled flow must pass texture, brightness-match, bounds and four-quadrant coverage checks. A robust median/inlier fit requires at least 24 samples, at least 65% agreement, and RMS residual at most 2 mm. Frames older than 250 ms, intervals longer than 150 ms, tilt over 10°, missing IMU, excessive speed/turn rate and failed fits invalidate tracking. The fit residual is an internal consistency diagnostic, **not calibrated measurement uncertainty**; repeating textures can still fool the estimator.
+Only one low-accuracy classical Vision optical-flow request exists at a time. Capture discards late frames rather than building a processing queue. Sampled flow must pass texture, brightness-match and bounds checks. Spatial coverage is checked on robust **inliers**: at least 30% of image width and height, four occupied cells of a 4×4 grid, and covariance area ratio at least 0.10 to reject nearly collinear support. Missing one quadrant no longer discards otherwise useful matches. A robust median/inlier fit requires at least 24 samples, at least 65% agreement, and RMS residual at most 2 mm. Frames older than 250 ms, intervals longer than 150 ms, tilt over 10°, missing IMU, excessive speed/turn rate and failed fits invalidate tracking. Tracking breaks log the reason and fit/coverage diagnostics to the device console; the latest break remains visible after tracking recovers. Repeated failures are log-throttled to twice per second, while a new continuity break is logged immediately. These diagnostics do not change the NavLink packet format. The fit residual is an internal consistency diagnostic, **not calibrated measurement uncertainty**; repeating textures can still fool the estimator.
 
 At 10 Hz, NavLink carries the latest frame delta plus an SE(2) cumulative transform, path length and accepted duration for the continuous segment. Translation is composed with rotation rather than simply summing body-frame distances. Failed observation breaks continuity and resets the transform. Transport loss does not reset it. Repeated frame snapshots retain the original timestamps and tallies.
 

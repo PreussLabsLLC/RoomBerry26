@@ -308,7 +308,7 @@ class RoomberryMissionTest(unittest.TestCase):
 
         self.assertIn("starting tag 15 calibration", captured.output[-1])
         self.assertEqual(self.mission._mode, MODE_CALIBRATION)
-        self.assertEqual(self.mission.calibration.stage, 'start_scan')
+        self.assertEqual(self.mission.calibration.stage, 'phone_anchor')
         self.localizer.invalidate_pose.assert_called_once()
         self.robot.execute.assert_any_call("stop", timeout=2)
 
@@ -624,7 +624,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._run()
         self.assertTrue(self.mission._scan_active)
         self.assertEqual(self.mission._mode, MODE_CALIBRATION)
-        self.assertEqual(self.mission.calibration.stage, 'start_scan')
+        self.assertEqual(self.mission.calibration.stage, 'phone_anchor')
 
     def test_clock_button_edge_beeps(self):
         sensors = self.discovery_sensors()

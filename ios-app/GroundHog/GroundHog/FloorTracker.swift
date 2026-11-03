@@ -1,4 +1,4 @@
-// @(#)FloorTracker.swift 3.1.threading.1 2026/10/31 14:30:00
+// @(#)FloorTracker.swift 3.1.torch.6 2026/11/02 22:30:00
 import AVFoundation
 import CoreMotion
 import Vision
@@ -12,6 +12,8 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private let reportingQueue = DispatchQueue(label: "GroundHog.reporting", qos: .userInitiated)
     private let snapshot = GroundPacketSnapshot()
     private var reportSession: UInt64 = 0 // reporting queue only
+    private var lastStatusAt = -Double.infinity
+    private var failureSummary = "" // guarded by lock; retained after recovery
     private var reportSequence: UInt32 = 0
     private var reportBattery: (UInt8, UInt8) = (255, 0)
     private let motion = CMMotionManager()
@@ -28,7 +30,10 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private var duration: Double = 0
     private var running = false
     private var configured = false
+    private var lastFailureLoggedAt = -Double.infinity
     private var focusReadyAt: Double = 0
+    private var torchRequested = false // capture queue only
+    var onTorchStatus: ((Bool, String) -> Void)? // main queue
     private var camera: AVCaptureDevice?
     private var timer: DispatchSourceTimer?
     var onPacket: ((GroundPacket) -> Void)? // reporting queue
@@ -47,10 +52,60 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         reportingQueue.async { self.reportBattery = (percent,state) }
     }
 
+    // Configure the torch on the same serial queue that owns the camera.
+    // A selection made while stopped is applied after capture starts.
+    func setTorch(_ enabled: Bool) {
+        queue.async {
+            self.torchRequested = enabled
+            self.applyTorch()
+        }
+    }
+    private func torchStatus(_ text: String) {
+        let requested = torchRequested
+        DispatchQueue.main.async { self.onTorchStatus?(requested, text) }
+    }
+    private func applyTorch() {
+        guard running, let camera = camera else {
+            torchStatus(torchRequested ? "LED: On at Start" : "LED: Off")
+            return
+        }
+        guard camera.hasTorch, camera.isTorchModeSupported(.on) else {
+            torchRequested = false; torchStatus("LED unavailable"); return
+        }
+        do {
+            try camera.lockForConfiguration()
+            defer { camera.unlockForConfiguration() }
+            if torchRequested {
+                guard camera.isTorchAvailable else {
+                    torchRequested = false; torchStatus("LED unavailable"); return
+                }
+                try camera.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+            } else {
+                camera.torchMode = .off
+            }
+            torchStatus(torchRequested ? "LED: On" : "LED: Off")
+        } catch {
+            torchRequested = false
+            torchStatus("LED error")
+            status("LED: " + error.localizedDescription)
+        }
+    }
+    private func extinguishTorch() {
+        torchRequested = false
+        if let camera = camera, camera.hasTorch {
+            do {
+                try camera.lockForConfiguration()
+                camera.torchMode = .off
+                camera.unlockForConfiguration()
+            } catch { NSLog("GroundHog LED off: %@", error.localizedDescription) }
+        }
+        torchStatus("LED: Off")
+    }
     func start(_ calibration: MountCalibration) {
         queue.async {
             guard !self.running, calibration.valid else { return }
             self.mount = calibration
+            self.lock.lock(); self.failureSummary = ""; self.lock.unlock()
             self.packet = GroundPacket(); self.packet.session = UInt64.random(in: 1...UInt64.max)
             self.packet.calibration = calibration.identity
             self.packet.flags = 2; self.packet.values[7] = Float(calibration.heightMM)
@@ -77,13 +132,14 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                     self.samples.append(IMU(time: m.timestamp, yaw: yaw, rate: rate, gravity: g))
                     if self.samples.count > 400 { self.samples.removeFirst(self.samples.count - 400) }
                 }
+                self.capture.startRunning()
+                self.applyTorch()
                 self.focusReadyAt = ProcessInfo.processInfo.systemUptime + 1
                 if let camera = self.camera {
                     try camera.lockForConfiguration()
                     if camera.isFocusModeSupported(.autoFocus) { camera.focusMode = .autoFocus }
                     camera.unlockForConfiguration()
                 }
-                self.capture.startRunning()
                 self.snapshot.activate(self.packet)
                 let timer = DispatchSource.makeTimerSource(queue: self.reportingQueue)
                 timer.schedule(deadline: .now(), repeating: .milliseconds(100))
@@ -91,6 +147,7 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                 self.timer = timer; timer.resume()
                 self.status("Acquiring floor texture…")
             } catch {
+                self.extinguishTorch()
                 self.running = false; self.motion.stopDeviceMotionUpdates(); self.health.stop()
                 self.clearSnapshot()
                 self.capture.stopRunning(); self.status(error.localizedDescription)
@@ -101,6 +158,7 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         clearSnapshot()
         health.stop()
         queue.async {
+            self.extinguishTorch()
             self.running = false; self.timer?.cancel(); self.timer = nil
             self.clearSnapshot()
             self.health.stop(); self.motion.stopDeviceMotionUpdates(); self.capture.stopRunning(); self.previous = nil
@@ -159,7 +217,13 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         packet.sequence = 0; packet.continuity = 0
         packet.accepted = 0; packet.rejected = 0
     }
-    private func breakTracking(_ reason: UInt8, countFrame: Bool = true) {
+    private func breakTracking(_ reason: UInt8, countFrame: Bool = true, detail: String = "") {
+        let message = "Tracking break reason=\(reason) nextSegment=\(packet.continuity + (packet.continuity < .max && packet.flags & 4 != 0 ? 1 : 0)) \(detail)"
+        lock.lock(); failureSummary = message; lock.unlock()
+        let now = ProcessInfo.processInfo.systemUptime
+        if packet.flags & 4 != 0 || now-lastFailureLoggedAt >= 0.5 {
+            NSLog("%@", message); lastFailureLoggedAt = now
+        }
         if packet.flags & 4 != 0 {
             if packet.continuity == .max { newSession() }
             else { packet.continuity += 1 }
@@ -196,10 +260,13 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         reportSequence += 1
         let outgoing = latest.reportingCopy(now: now, sequence: reportSequence, battery: reportBattery)
         onPacket?(outgoing)
+        guard now-lastStatusAt >= 0.5 else { return }
+        lastStatusAt = now
+        lock.lock(); let failure = failureSummary; lock.unlock()
         status(String(format: "%@  X %.1f  Y %.1f mm\nYaw %.1f° · segment %u\nAccepted %u · lost %u · residual %.2f mm",
                       outgoing.flags & 1 != 0 ? "TRACKING" : "NO LOCK (reason \(outgoing.reason))",
                       outgoing.values[0], outgoing.values[1], outgoing.values[2] * 180 / .pi,
-                      outgoing.continuity, outgoing.accepted, outgoing.rejected, outgoing.values[6]))
+                      outgoing.continuity, outgoing.accepted, outgoing.rejected, outgoing.values[6]) + (failure.isEmpty ? "" : "\nLast: " + failure))
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sample: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard running, let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
@@ -250,8 +317,16 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                 request.outputPixelFormat = kCVPixelFormatType_TwoComponent32Float
                 try VNImageRequestHandler(cvPixelBuffer: old.image, orientation: .up, options: [:]).perform([request])
                 guard let flow = request.results?.first?.pixelBuffer else { breakTracking(6); return }
-                let candidates = translations(flow: flow, old: old, current: current, yaw: yaw)
-                guard let fit = FloorGeometry.fit(candidates) else { breakTracking(7); return }
+                let samples = translations(flow: flow, old: old, current: current, yaw: yaw)
+                let candidates = samples.map(\.delta)
+                var fitFailure = ""
+                guard let fit = FloorGeometry.fit(candidates, failure: { fitFailure = $0 }) else {
+                    breakTracking(7, detail: "\(fitFailure) dt=\(dt)"); return
+                }
+                let coverage = FloorGeometry.spatialCoverage(fit.indices.map { samples[$0].pixel })
+                guard coverage.valid else {
+                    breakTracking(7, detail: "\(coverage.detail) candidates=\(candidates.count) inliers=\(fit.inliers) rms=\(fit.rms)"); return
+                }
                 let camera = mount.robot(fit.delta)
                 let center = PlanarTransform.centerDelta(camera: camera, yaw: yaw, mount: mount)
                 guard simd_length(center)/dt <= 1000, abs(yaw)/dt <= 4 else { breakTracking(2); return }
@@ -266,7 +341,7 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             } catch { breakTracking(6) }
         }
     }
-    private func translations(flow: CVPixelBuffer, old: Frame, current: Frame, yaw: Double) -> [SIMD2<Double>] {
+    private func translations(flow: CVPixelBuffer, old: Frame, current: Frame, yaw: Double) -> [(delta: SIMD2<Double>, pixel: SIMD2<Double>)] {
         guard CVPixelBufferGetWidth(flow) == CVPixelBufferGetWidth(old.image),
               CVPixelBufferGetHeight(flow) == CVPixelBufferGetHeight(old.image),
               CVPixelBufferGetPixelFormatType(flow) == kCVPixelFormatType_TwoComponent32Float else { return [] }
@@ -283,8 +358,7 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let w = CVPixelBufferGetWidth(flow), h = CVPixelBufferGetHeight(flow)
         let strideOld = CVPixelBufferGetBytesPerRowOfPlane(old.image,0), strideNew = CVPixelBufferGetBytesPerRowOfPlane(current.image,0)
         let oldY = oldBase.assumingMemoryBound(to: UInt8.self), newY = newBase.assumingMemoryBound(to: UInt8.self)
-        var candidates: [SIMD2<Double>] = []
-        var cells = Set<Int>()
+        var candidates: [(delta: SIMD2<Double>, pixel: SIMD2<Double>)] = []
         for y in stride(from: h/8, to: 7*h/8, by: 16) {
             let row = base.advanced(by: y * CVPixelBufferGetBytesPerRow(flow)).assumingMemoryBound(to: Float.self)
             for x in stride(from: w/8, to: 7*w/8, by: 16) {
@@ -297,10 +371,9 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                       abs(Int(oldY[y*strideOld+x])-Int(newY[Int(ny.rounded())*strideNew+Int(nx.rounded())])) <= 35,
                       let a = FloorGeometry.point(pixel: SIMD2(Double(x),Double(y)), intrinsics: old.k, gravity: old.imu.gravity, height: mount.heightMM),
                       let b = FloorGeometry.point(pixel: SIMD2(nx,ny), intrinsics: current.k, gravity: current.imu.gravity, height: mount.heightMM) else { continue }
-                candidates.append(a - PlanarTransform.rotate(b,yaw))
-                cells.insert((y >= h/2 ? 2 : 0) + (x >= w/2 ? 1 : 0))
+                candidates.append((a - PlanarTransform.rotate(b,yaw), SIMD2(Double(x)/Double(w), Double(y)/Double(h))))
             }
         }
-        return cells.count == 4 ? candidates : []
+        return candidates
     }
 }

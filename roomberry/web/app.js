@@ -1,4 +1,4 @@
-// @(#)app.js 3.1.manual.1 2026/10/31 15:10:00
+// @(#)app.js 3.1.overhead.2 2026/11/02 20:30:00
 'use strict';
 const $ = id => document.getElementById(id);
 const node = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
@@ -76,7 +76,7 @@ function renderCommands() {
   if (!list.childElementCount) list.append(node('div', 'No matching commands.', 'empty'));
 }
 async function loadCommands() {
-  try { const s = await getJSON('/commands.json'); commands = s.commands; renderCommands(); const a = s.calibration_acceptance; $('acceptance').textContent = `Calibration acceptance: heading/drift ±${fmt(deg(a.heading_rad))}° · lateral ±${a.lateral_mm} mm · return error ${a.return_error_mm} mm · starting gap ${a.start_gap_mm.join('–')} mm.`; }
+  try { const s = await getJSON('/commands.json'); commands = s.commands; renderCommands(); const a = s.calibration_acceptance; $('acceptance').textContent = `Calibration: manual alignment at tag 15 · no scans · heading drift ±${fmt(deg(a.heading_rad))}° · wheel endpoint tolerance ${a.endpoint_tolerance_mm} mm.`; }
   catch (e) { $('command-list').textContent = `Command index unavailable: ${e.message}`; }
 }
 for (const button of document.querySelectorAll('[data-command]')) button.addEventListener('click', async () => {
