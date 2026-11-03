@@ -1,6 +1,6 @@
 <!-- @(#)architecture.md 1.1 2026/10/25 -->
 
-# Roomberry Architecture
+# Roomberry Design
 
 Roomberry is a Raspberry Pi service that exposes camera and Roomba operations over HTTP. When `roomberry/autonomy.json` is present, the service also starts a mission loop that localizes the robot, plans cleaning waypoints, and issues bounded drive commands. Without that configuration, the HTTP API and camera/robot services still run, but mapping and autonomous missions are not created.
 

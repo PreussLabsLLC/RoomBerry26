@@ -1,4 +1,4 @@
-# @(#)roomberry_map_image_test.py 2.3.map-log.1 2026/10/30 18:30:00
+# @(#)roomberry_map_image_test.py 3.1.mapsplit.1 2026/11/02 17:40:00
 import unittest
 from io import BytesIO
 from math import pi
@@ -6,8 +6,8 @@ from math import pi
 from PIL import Image
 
 from roomberry_map_image import (
-    TRAIL_GAP_MM, TRAIL_NEWEST_COLOR, TRAIL_OLDEST_COLOR, _fade_color,
-    render_map, trail_segments,
+    TRAIL_GAP_MM, TRAIL_NEWEST_COLOR, TRAIL_OLDEST_COLOR, TRAIL_RELOCATION_COLOR,
+    _fade_color, render_map, trail_segments, trail_segments_with_flags,
     TAG_FACING_COLOR,
 )
 
@@ -65,11 +65,20 @@ class RoomberryTrailRenderingTest(unittest.TestCase):
     def test_previous_session_fades_and_session_boundary_has_no_bridge(self):
         state = self.state()
         state.update(trail=[(x,100) for x in range(100,701,100)],trail_session_start=3)
-        image = Image.open(BytesIO(render_map(state))).convert('RGB')
+        image = Image.open(BytesIO(render_map(state, include_old_trail=True))).convert('RGB')
         background = Image.open(BytesIO(render_map(self.state()))).convert('RGB')
         self.assertNotEqual(self.pixel(image,150,100),TRAIL_NEWEST_COLOR)
         self.assertEqual(self.pixel(image,450,100),TRAIL_NEWEST_COLOR)
         self.assertEqual(self.pixel(image,350,100),self.pixel(background,350,100))
+
+    def test_previous_session_is_hidden_by_default(self):
+        state = self.state()
+        state.update(trail=[(x,100) for x in range(100,701,100)],trail_session_start=3)
+        image = Image.open(BytesIO(render_map(state))).convert('RGB')
+        background = Image.open(BytesIO(render_map(self.state()))).convert('RGB')
+        self.assertEqual(self.pixel(image,150,100),self.pixel(background,150,100))
+        self.assertEqual(self.pixel(image,250,100),self.pixel(background,250,100))
+        self.assertEqual(self.pixel(image,450,100),TRAIL_NEWEST_COLOR)
 
     def test_legacy_snapshot_without_session_metadata_stays_visible(self):
         state = self.state()
@@ -98,6 +107,19 @@ class RoomberryTrailRenderingTest(unittest.TestCase):
             [[(100.0, 100.0), (200.0, 100.0)],
              [(900.0, 900.0), (950.0, 900.0)]],
         )
+
+    def test_segment_after_a_jump_is_flagged_as_relocation(self):
+        trail = [(100, 100), (200, 100), (900, 900), (950, 900)]
+        segments = trail_segments_with_flags(trail, gap_mm=TRAIL_GAP_MM)
+        self.assertFalse(segments[0][1])
+        self.assertTrue(segments[1][1])
+
+    def test_relocation_segment_is_drawn_in_the_warning_color(self):
+        state = self.state()
+        state['trail'] = [(100, 100), (200, 100), (900, 900), (950, 900)]
+        image = Image.open(BytesIO(render_map(state))).convert('RGB')
+        self.assertEqual(self.pixel(image, 150, 100), TRAIL_NEWEST_COLOR)
+        self.assertEqual(self.pixel(image, 900, 900), TRAIL_RELOCATION_COLOR)
 
     def test_single_point_segments_are_not_drawn(self):
         self.assertEqual(trail_segments([(0, 0), (500, 0)], gap_mm=100), [])

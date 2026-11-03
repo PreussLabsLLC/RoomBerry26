@@ -1,4 +1,4 @@
-<!-- @(#)README.md 3.1.docs.1 2026/10/31 14:00:00 -->
+<!-- @(#)README.md 3.1.threading.1 2026/10/31 14:30:00 -->
 # GroundHog 3.1
 
 GroundHog measures robot-relative motion from a downward-facing iPhone rear camera. It uses AVFoundation, Vision revision-1 optical flow, Core Motion and Network.framework, without ARKit. It is a separate app (`com.preusslabs.GroundHog`); StarLock remains available. Deployment target: iOS 15.0, including the 2016 SE on iOS 15.8. The supplied `../GroundHog.png` is preserved; the app catalog contains a generated opaque 1024-pixel copy.
@@ -95,3 +95,12 @@ Only `startUpdatingHeading()` is used. No GPS/location updates, true-north calcu
 Tests include byte-for-byte Swift/Python type-4 serialization, mount-angle sign/wrap, accuracy and freshness rejection, unsupported/error representation, ordered sessions and mixed four-type UDP logs/CSV. On-phone magnetic accuracy and distortion remain to be measured.
 
 Apple references: [CLHeading](https://developer.apple.com/documentation/corelocation/clheading), [magnetic heading](https://developer.apple.com/documentation/corelocation/clheading/magneticheading) and [heading updates](https://developer.apple.com/documentation/corelocation/cllocationmanager/startupdatingheading()).
+
+
+## Independent motion reporting (3.1 build 4)
+
+Vision and frame-to-frame integration remain on the serial capture queue. A separate user-initiated reporting queue emits a motion snapshot every 100 ms; the existing Core Motion and health queues remain independent. This allows the system to schedule reporting on another core while Vision processes a frame. A short lock protects a copy-on-write packet snapshot, with no image processing or network callbacks inside the lock. Reporting owns sequence numbers, transmission timestamps, and battery fields; capture owns segment continuity and cumulative motion. Stopping disables snapshot publication immediately, including late camera callbacks.
+
+When the latest accepted frame is older than 250 ms, reporting continues with an explicitly invalid stale heartbeat. Reporting never invents displacement or resets live estimator state. Subsequent capture gaps still break continuity. Repeated reports of the same frame do not represent additional movement; NavLink receivers use source timestamps and cumulative tallies. The wire format and capture resolution are unchanged. Separate queues improve reporting responsiveness but do not guarantee optical lock or hard real-time delivery.
+
+`ReportingCheck.swift` exercises concurrent snapshot publication, stale reports, independent timer execution while a simulated camera queue is blocked, and stop/restart publication gating. It is run by `roomberry_groundhog_test` on macOS alongside the existing Vision and wire checks.

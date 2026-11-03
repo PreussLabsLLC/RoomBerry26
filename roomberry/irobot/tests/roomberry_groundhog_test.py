@@ -1,4 +1,4 @@
-# @(#)roomberry_groundhog_test.py 3.1 2026/10/31 11:30:00
+# @(#)roomberry_groundhog_test.py 3.1.threading.1 2026/10/31 14:30:00
 """Cross-language wire, packet loss, continuity, and floor geometry checks."""
 import csv
 import io
@@ -104,6 +104,25 @@ class GroundHogTest(unittest.TestCase):
             self.assertEqual(rows[1]['segment_x_mm'],'100.0')
             self.assertEqual(rows[0]['segment_x_mm'],'')
             self.assertEqual(rows[2]['reason'],'7')
+
+    @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('swiftc'), 'requires macOS Swift')
+    def test_reporting_isolation_and_freshness(self):
+        root = Path(__file__).resolve().parents[3]/'ios-app/GroundHog'
+        with TemporaryDirectory() as directory:
+            executable = str(Path(directory)/'reporting-check')
+            result = subprocess.run(['swiftc','-module-cache-path',str(Path(directory)/'cache'),
+                str(root/'GroundHog/GroundMotion.swift'),str(root/'tests/ReportingCheck.swift'),
+                '-o',executable],capture_output=True,text=True,timeout=60)
+            self.assertEqual(result.returncode,0,result.stderr)
+            result = subprocess.run([executable],capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('concurrent snapshots verified',result.stdout)
+            reports = [dict(zip(GROUND_FIELDS,decode_packet(bytes.fromhex(line))))
+                       for line in result.stdout.splitlines()[:2]]
+            self.assertEqual([r['flags'] for r in reports],[7,2])
+            self.assertEqual([r['seq'] for r in reports],[1,2])
+            self.assertEqual(reports[1]['reason'],4)
+            self.assertEqual(reports[0]['continuity'],reports[1]['continuity'])
 
     @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('swiftc'), 'requires macOS Vision')
     def test_actual_vision_flow_direction(self):

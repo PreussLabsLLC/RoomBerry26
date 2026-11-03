@@ -1,4 +1,4 @@
-// @(#)FloorTracker.swift 3.1.compass.1 2026/10/31 12:10:00
+// @(#)FloorTracker.swift 3.1.threading.1 2026/10/31 14:30:00
 import AVFoundation
 import CoreMotion
 import Vision
@@ -8,6 +8,12 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     let capture = AVCaptureSession()
     let health = PhoneTelemetry()
     private let queue = DispatchQueue(label: "GroundHog.capture", qos: .userInitiated)
+    // Vision stays serial; reporting never waits for camera processing.
+    private let reportingQueue = DispatchQueue(label: "GroundHog.reporting", qos: .userInitiated)
+    private let snapshot = GroundPacketSnapshot()
+    private var reportSession: UInt64 = 0 // reporting queue only
+    private var reportSequence: UInt32 = 0
+    private var reportBattery: (UInt8, UInt8) = (255, 0)
     private let motion = CMMotionManager()
     private let motionQueue: OperationQueue = { let q = OperationQueue(); q.maxConcurrentOperationCount = 1; return q }()
     private let lock = NSLock()
@@ -25,8 +31,7 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private var focusReadyAt: Double = 0
     private var camera: AVCaptureDevice?
     private var timer: DispatchSourceTimer?
-    private var battery: (UInt8, UInt8) = (255, 0)
-    var onPacket: ((GroundPacket) -> Void)? // capture queue
+    var onPacket: ((GroundPacket) -> Void)? // reporting queue
     var onStatus: ((String) -> Void)? // delivered on main
 
     override init() {
@@ -36,10 +41,10 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     }
     deinit { NotificationCenter.default.removeObserver(self) }
     private func status(_ text: String) { DispatchQueue.main.async { self.onStatus?(text) } }
-    @objc private func interrupted() { queue.async { self.breakTracking(5, countFrame: false); self.previous = nil } }
+    @objc private func interrupted() { queue.async { self.breakTracking(5, countFrame: false); self.previous = nil; self.publishSnapshot() } }
     func setBattery(_ percent: UInt8, _ state: UInt8) {
         health.setBattery(percent,state)
-        queue.async { self.battery = (percent,state) }
+        reportingQueue.async { self.reportBattery = (percent,state) }
     }
 
     func start(_ calibration: MountCalibration) {
@@ -79,21 +84,25 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                     camera.unlockForConfiguration()
                 }
                 self.capture.startRunning()
-                let timer = DispatchSource.makeTimerSource(queue: self.queue)
+                self.snapshot.activate(self.packet)
+                let timer = DispatchSource.makeTimerSource(queue: self.reportingQueue)
                 timer.schedule(deadline: .now(), repeating: .milliseconds(100))
                 timer.setEventHandler { [weak self] in self?.emit() }
                 self.timer = timer; timer.resume()
                 self.status("Acquiring floor texture…")
             } catch {
                 self.running = false; self.motion.stopDeviceMotionUpdates(); self.health.stop()
+                self.clearSnapshot()
                 self.capture.stopRunning(); self.status(error.localizedDescription)
             }
         }
     }
     func stop() {
+        clearSnapshot()
         health.stop()
         queue.async {
             self.running = false; self.timer?.cancel(); self.timer = nil
+            self.clearSnapshot()
             self.health.stop(); self.motion.stopDeviceMotionUpdates(); self.capture.stopRunning(); self.previous = nil
             self.status("Stopped")
         }
@@ -161,26 +170,40 @@ final class FloorTracker: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         for i in 0..<12 where i != 7 { packet.values[i] = 0 }
         packet.inliers = 0; packet.candidates = 0
     }
+    // Copy-on-write packet values keep the lock short; no Vision work or
+    // callbacks occur while it is held. Capture owns all estimator state.
+    private func publishSnapshot() {
+        snapshot.store(running ? packet : nil)
+    }
+    private func clearSnapshot() {
+        snapshot.store(nil)
+    }
     private func emit() {
-        guard running else { return }
+        guard let latest = snapshot.load() else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        if packet.endUS == 0 || now - Double(packet.endUS)/1e6 > 0.25 {
-            breakTracking(4, countFrame: false); previous = nil
+        if latest.session != reportSession {
+            reportSession = latest.session; reportSequence = 0
         }
-        if packet.sequence == .max {
-            newSession(); packet.flags = 2
-            breakTracking(1, countFrame: false); previous = nil
+        guard reportSequence < .max else {
+            // Rotate identity on the capture queue before sequence wrap.
+            queue.async {
+                guard self.packet.session == latest.session else { return }
+                self.newSession(); self.breakTracking(1, countFrame: false)
+                self.previous = nil; self.publishSnapshot()
+            }
+            return
         }
-        packet.sendUS = GroundPacket.us(now); packet.sequence += 1
-        packet.battery = battery.0; packet.batteryState = battery.1
-        onPacket?(packet)
-        let p = tally.position
+        reportSequence += 1
+        let outgoing = latest.reportingCopy(now: now, sequence: reportSequence, battery: reportBattery)
+        onPacket?(outgoing)
         status(String(format: "%@  X %.1f  Y %.1f mm\nYaw %.1f° · segment %u\nAccepted %u · lost %u · residual %.2f mm",
-                      packet.flags & 1 != 0 ? "TRACKING" : "NO LOCK (reason \(packet.reason))",
-                      p.x, p.y, tally.yaw * 180 / .pi, packet.continuity, packet.accepted, packet.rejected, packet.values[6]))
+                      outgoing.flags & 1 != 0 ? "TRACKING" : "NO LOCK (reason \(outgoing.reason))",
+                      outgoing.values[0], outgoing.values[1], outgoing.values[2] * 180 / .pi,
+                      outgoing.continuity, outgoing.accepted, outgoing.rejected, outgoing.values[6]))
     }
     func captureOutput(_ output: AVCaptureOutput, didOutput sample: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard running, let buffer = CMSampleBufferGetImageBuffer(sample) else { return }
+        defer { publishSnapshot() }
         health.setDimensions(width: CVPixelBufferGetWidth(buffer),height: CVPixelBufferGetHeight(buffer))
         autoreleasepool { [self] in
             let began = ProcessInfo.processInfo.systemUptime

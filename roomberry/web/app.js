@@ -1,4 +1,4 @@
-// @(#)app.js 3.1.web.1 2026/10/31 14:00:00
+// @(#)app.js 3.1.manual.1 2026/10/31 15:10:00
 'use strict';
 const $ = id => document.getElementById(id);
 const node = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
@@ -31,7 +31,7 @@ async function phone() {
     badge('motion-state', m ? !m.fresh ? 'STALE' : m.usable ? 'TRACKING' : 'NO LOCK' : 'NO DATA', !!m && !m.usable, !m);
     const usable = m && m.usable;
     $('motion').replaceChildren(metric('Segment X', usable ? `${fmt(m.segment_x_mm)} mm` : '—'), metric('Segment Y', usable ? `${fmt(m.segment_y_mm)} mm` : '—'), metric('Segment yaw', usable ? `${fmt(deg(m.segment_yaw_rad))}°` : '—'), metric('Continuity segment', m ? String(m.continuity) : '—', m ? reasons[m.reason] || 'unknown state' : ''), metric('Flow processing', m ? `${fmt(m.processing_us / 1000)} ms` : '—'), metric('Fit residual', usable ? `${fmt(m.residual_mm, 3)} mm` : '—'), metric('Forward / left speed', usable ? `${fmt(m.forward_mm_s)} / ${fmt(m.left_mm_s)} mm/s` : '—'), metric('Accepted / rejected frames', m ? `${m.accepted_frames} / ${m.rejected_frames}` : '—'));
-    badge('health-state', h ? h.fresh ? 'LIVE' : 'STALE' : 'NO DATA', !!h && !h.fresh, !h);
+    badge('health-state', h ? h.fresh ? 'FRESH AT REFRESH' : 'STALE' : 'NO DATA', !!h && !h.fresh, !h);
     const live = h && h.fresh; const states = ['unknown', 'unplugged', 'charging', 'full']; const thermal = ['nominal', 'fair', 'serious', 'critical'];
     $('health').replaceChildren(metric('Phone battery', live && bit(h, 32) ? `${h.battery_pct}%` : '—', live ? states[h.battery_state] : age(h)), metric('Impact episodes', live ? String(h.bump_count) : '—', live ? `Last peak ${fmt(h.last_bump_peak_mm_s2 / 9806.65, 2)} g` : ''), metric('App CPU', live && bit(h, 4) ? `${fmt(h.app_cpu_pct)}%` : '—', '100% = one CPU core'), metric('App memory', live && bit(h, 8) ? `${fmt(h.app_footprint_bytes / 1048576)} MiB` : '—'), metric('Thermal state', live ? thermal[h.thermal_state] || 'unknown' : '—'), metric('Delivered image', live && bit(h, 64) ? `${h.image_width} × ${h.image_height}` : '—'));
     const imu = live && bit(h, 1); const vector = (r, keys, digits = 2) => keys.map(k => fmt(r[k], digits)).join(' / ');
@@ -49,7 +49,7 @@ async function scans() {
   try {
     const only = $('tags-only').checked;
     const s = await getJSON(`/cam/${only ? 'tags' : 'scans'}.json?limit=8`);
-    $('scan-status').textContent = `${s.scans.length} recent ${only ? 'tag ' : ''}scan(s) · refreshes every 15 seconds`;
+    $('scan-status').textContent = `${s.scans.length} recent ${only ? 'tag ' : ''}scan(s) · manual refresh`;
     const list = $('scan-list'); list.replaceChildren();
     if (!s.scans.length) list.append(node('div', 'No archived scans available yet.', 'empty'));
     for (const scan of s.scans) {
@@ -87,5 +87,13 @@ for (const button of document.querySelectorAll('[data-command]')) button.addEven
   finally { clearTimeout(timer); button.disabled = false; }
 });
 $('command-search').addEventListener('input', renderCommands); $('refresh-scans').addEventListener('click', scans); $('tags-only').addEventListener('change', scans);
-async function loop(fn, interval) { await fn(); setTimeout(() => loop(fn, interval), interval); }
-loop(robot, 2000); loop(phone, 2000); loop(scans, 15000); loadCommands();
+async function refreshAll() {
+  const button = $('refresh-all'); button.disabled = true;
+  $('refresh-status').textContent = 'Loading snapshots…';
+  try {
+    await Promise.all([robot(), phone(), scans(), loadCommands()]);
+    $('refresh-status').textContent = `Refresh finished at ${new Date().toLocaleTimeString()}. Automatic refresh is off; displayed values are snapshots.`;
+  } finally { button.disabled = false; }
+}
+$('refresh-all').addEventListener('click', refreshAll);
+refreshAll();

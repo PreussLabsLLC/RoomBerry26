@@ -1,5 +1,5 @@
 """On-demand PNG map rendering for Roomberry."""
-# @(#)roomberry_map_image.py 2.3.map-log.1 2026/10/30 18:30:00
+# @(#)roomberry_map_image.py 3.1.mapsplit.1 2026/11/02 17:40:00
 from collections import deque
 from io import BytesIO
 from math import ceil, cos, hypot, sin
@@ -20,24 +20,32 @@ COLORS = {
 TRAIL_GAP_MM = 275.0
 TRAIL_OLDEST_COLOR = (220, 232, 246)
 TRAIL_NEWEST_COLOR = (25, 100, 210)
+TRAIL_RELOCATION_COLOR = (198, 52, 52)
 TAG_FACING_COLOR = (15, 50, 120)
 
 
-def trail_segments(trail, gap_mm=TRAIL_GAP_MM):
-    """Split a world-frame trail wherever consecutive poses jump too far."""
+def trail_segments_with_flags(trail, gap_mm=TRAIL_GAP_MM):
+    """Split the trail and flag segments that begin after a localization jump."""
     segments = []
     current = []
+    relocated = False
     for point in trail:
         point = (float(point[0]), float(point[1]))
         if current and hypot(point[0] - current[-1][0],
                              point[1] - current[-1][1]) > gap_mm:
             if len(current) > 1:
-                segments.append(current)
+                segments.append((current, relocated))
             current = []
+            relocated = True
         current.append(point)
     if len(current) > 1:
-        segments.append(current)
+        segments.append((current, relocated))
     return segments
+
+
+def trail_segments(trail, gap_mm=TRAIL_GAP_MM):
+    """Split a world-frame trail wherever consecutive poses jump too far."""
+    return [segment for segment, _ in trail_segments_with_flags(trail, gap_mm)]
 
 
 def _fade_color(fraction):
@@ -49,7 +57,7 @@ def _fade_color(fraction):
     )
 
 
-def render_map(state, tags=(), caption=None):
+def render_map(state, tags=(), caption=None, include_old_trail=False):
     cols, rows = state['cols'], state['rows']
     pitch = float(state['cell_size_mm'])
     ox, oy = float(state['origin_x']), float(state['origin_y'])
@@ -117,26 +125,28 @@ def render_map(state, tags=(), caption=None):
     # guessing which points are old. Never bridge a process-session boundary.
     session_start = max(0, min(len(trail), int(state.get('trail_session_start', 0))))
     old_segments = trail_segments(trail[:session_start])
-    current_segments = trail_segments(trail[session_start:])
+    current_segments = trail_segments_with_flags(trail[session_start:])
     pair_count = sum(max(0, len(segment) - 1) for segment in old_segments)
     # Composite onto the actual cell colors so old paths fade into the map
     # rather than becoming pale opaque lines over obstacles and coverage.
     trail_layer = Image.new('RGBA', im.size, (0, 0, 0, 0))
     trail_draw = ImageDraw.Draw(trail_layer)
-    pair_index = 0
-    for segment in old_segments:
-        for start, end in zip(segment, segment[1:]):
-            fraction = pair_index / max(1, pair_count - 1)
-            pair_index += 1
-            opacity = int(round(255 * (0.08 + 0.27 * fraction)))
-            trail_draw.line(
-                (xy(*start), xy(*end)),
-                fill=_fade_color(fraction) + (opacity,),
-                width=max(2, scale // 2),
-            )
-    for segment in current_segments:
+    if include_old_trail:
+        pair_index = 0
+        for segment in old_segments:
+            for start, end in zip(segment, segment[1:]):
+                fraction = pair_index / max(1, pair_count - 1)
+                pair_index += 1
+                opacity = int(round(255 * (0.08 + 0.27 * fraction)))
+                trail_draw.line(
+                    (xy(*start), xy(*end)),
+                    fill=_fade_color(fraction) + (opacity,),
+                    width=max(2, scale // 2),
+                )
+    for segment, relocated in current_segments:
+        color = TRAIL_RELOCATION_COLOR if relocated else TRAIL_NEWEST_COLOR
         trail_draw.line([xy(*point) for point in segment],
-                        fill=TRAIL_NEWEST_COLOR + (255,),
+                        fill=color + (255,),
                         width=max(2, scale // 2))
     im = Image.alpha_composite(im.convert('RGBA'), trail_layer).convert('RGB')
     draw = ImageDraw.Draw(im)

@@ -1,5 +1,5 @@
 """Fuse Create 2 incremental odometry with surveyed AprilTag landmarks."""
-# @(#)roomberry_localization.py 2.3.16 2026/10/28 21:00:00
+# @(#)roomberry_localization.py 3.1.posgate.1 2026/11/02 17:40:00
 
 from math import atan2, cos, hypot, isfinite, sin, sqrt
 from time import monotonic, time
@@ -27,7 +27,11 @@ class AprilTagLocalizer:
                  max_localization_age=60.0, max_pose_jump_age=30.0,
                  min_decision_margin=10.0, max_reprojection_error=10.0,
                  min_tag_distance_m=0.08, max_tag_distance_m=8.0,
+                 max_tag_distance_m_by_key=None,
                  max_pose_jump_mm=500.0, max_heading_jump_rad=0.6,
+                 max_pose_jump_motion_factor=1.5,
+                 max_pose_jump_motion_margin_mm=150.0,
+                 relocation_max_tag_distance_m=1.2,
                  consensus_distance_mm=250.0, consensus_heading_rad=0.35,
                  discover_unknown_tags=False, discovery_save_path=None,
                  room_bounds_mm=None, confirm_large_relocations=False):
@@ -44,8 +48,15 @@ class AprilTagLocalizer:
         self.max_reprojection_error = float(max_reprojection_error)
         self.min_tag_distance_m = float(min_tag_distance_m)
         self.max_tag_distance_m = float(max_tag_distance_m)
+        self.max_tag_distance_m_by_key = {
+            (str(key[0]), int(key[1])): float(value)
+            for key, value in (max_tag_distance_m_by_key or {}).items()
+        }
         self.max_pose_jump_mm = float(max_pose_jump_mm)
         self.max_heading_jump_rad = float(max_heading_jump_rad)
+        self.max_pose_jump_motion_factor = float(max_pose_jump_motion_factor)
+        self.max_pose_jump_motion_margin_mm = float(max_pose_jump_motion_margin_mm)
+        self.relocation_max_tag_distance_m = float(relocation_max_tag_distance_m)
         self.consensus_distance_mm = float(consensus_distance_mm)
         self.consensus_heading_rad = float(consensus_heading_rad)
         self.discover_unknown_tags = bool(discover_unknown_tags)
@@ -53,10 +64,12 @@ class AprilTagLocalizer:
         self._pending_relocation = None
         self._pose = None
         self._last_tag_time = None
+        self._last_tag_odometry = None
         self._last_odometry = None
         self._last_odometry_epoch = None
         self._last_tag_ids = ()
         self._last_rejected = ()
+        self._last_relocation = False
         self._discovered_tags = {}
         self._discovered_tags_log = []
 
@@ -77,8 +90,10 @@ class AprilTagLocalizer:
         self._pending_relocation = None
         self._pose = None
         self._last_tag_time = None
+        self._last_tag_odometry = None
         self._last_tag_ids = ()
         self._last_rejected = ()
+        self._last_relocation = False
         self._last_odometry = None
         self._last_odometry_epoch = None
 
@@ -89,6 +104,10 @@ class AprilTagLocalizer:
         angle_degrees = float(angle_degrees)
         epoch_changed = (self._last_odometry_epoch is not None and
                          odometry_epoch != self._last_odometry_epoch)
+        if epoch_changed:
+            # The encoder baseline restarted; do not compare the new signed
+            # distance with the value captured at the last accepted tag.
+            self._last_tag_odometry = None
         if (not epoch_changed and self._last_odometry is not None and
                 self._pose is not None):
             delta_distance = distance_mm - self._last_odometry[0]
@@ -118,7 +137,8 @@ class AprilTagLocalizer:
                     except Exception:
                         pass
             estimates, rejected = self._tag_pose_estimates(detections or ())
-            estimates, rejected = self._consistent_estimates(estimates, rejected)
+            estimates, rejected = self._consistent_estimates(
+                estimates, rejected, distance_mm)
             self._last_rejected = tuple(rejected)
             if estimates:
                 count = sum(item['weight'] for item in estimates)
@@ -135,6 +155,7 @@ class AprilTagLocalizer:
                 capture_age = (0.0 if detection_timestamp is None else
                                max(0.0, time() - float(detection_timestamp)))
                 self._last_tag_time = processing_time - capture_age
+                self._last_tag_odometry = distance_mm
                 self._last_tag_ids = tuple(item['key'] for item in estimates)
                 accepted = self._last_tag_ids
 
@@ -149,6 +170,7 @@ class AprilTagLocalizer:
             tag_ids=self._last_tag_ids,
             accepted_tag_ids=accepted,
             rejected_tags=self._last_rejected,
+            relocated=bool(accepted) and self._last_relocation,
         )
 
     @property
@@ -281,8 +303,11 @@ class AprilTagLocalizer:
                         reason = 'non-finite camera pose'
                     elif not isfinite(error) or error > self.max_reprojection_error:
                         reason = 'reprojection error={:.1f}'.format(error)
-                    elif not self.min_tag_distance_m <= range_m <= self.max_tag_distance_m:
-                        reason = 'implausible range={:.3f} m'.format(range_m)
+                    else:
+                        maximum = self.max_tag_distance_m_by_key.get(
+                            key, self.max_tag_distance_m)
+                        if not self.min_tag_distance_m <= range_m <= maximum:
+                            reason = 'implausible range={:.3f} m'.format(range_m)
             if reason is not None:
                 rejected.append((key, reason))
                 continue
@@ -296,15 +321,22 @@ class AprilTagLocalizer:
                 world_from_tag, self._inverse(camera_from_tag),
             )
             world_from_robot = self._multiply(world_from_camera, self.camera_from_robot)
+            x, y = world_from_robot[0][3] * 1000, world_from_robot[1][3] * 1000
             if self.room_bounds_mm is not None:
-                x, y = world_from_robot[0][3] * 1000, world_from_robot[1][3] * 1000
                 xmin, ymin, xmax, ymax = self.room_bounds_mm
                 if not (xmin <= x <= xmax and ymin <= y <= ymax):
                     rejected.append((key, 'outside room bounds'))
                     continue
+            # The surveyed tag's +Z axis points into the mounting wall. A valid
+            # observation must place the robot on the room side of that plane.
+            # This uses the known tag pose to discard an impossible planar
+            # branch before it can move the fused pose. Skip tags whose normal
+            # is not horizontal (e.g. a test or floor-mounted tag).
+            nx, ny = world_from_tag[0][2], world_from_tag[1][2]
+            if hypot(nx, ny) > 0.5:
                 dx = world_from_tag[0][3] * 1000 - x
                 dy = world_from_tag[1][3] * 1000 - y
-                if dx * world_from_tag[0][2] + dy * world_from_tag[1][2] <= 0:
+                if dx * nx + dy * ny <= 0:
                     rejected.append((key, 'behind tag mounting plane'))
                     continue
             rotation = world_from_robot
@@ -322,56 +354,109 @@ class AprilTagLocalizer:
             })
         return estimates, rejected
 
-    def _consistent_estimates(self, estimates, rejected):
-        """Reject jumps and outliers before they can move the fused pose."""
+    def _consistent_estimates(self, estimates, rejected, distance_mm=None):
+        """Reject implausible jumps before they can move the fused pose.
+
+        The gate is applied on every scan. A run of rejected scans must not
+        disable it: otherwise the first bad tag solution after the outage is
+        installed unchecked. A single tag is never allowed to move the pose
+        farther than the odometry-predicted travel bound. A genuine relocation
+        after a long tag outage needs either two distinct tags or a short-range
+        tag, and two consistent scans.
+        """
+        self._last_relocation = False
         if not estimates:
             return estimates, rejected
-        candidates = estimates
         prior = self._pose
-        prior_age = (None if self._last_tag_time is None or prior is None else
-                     monotonic() - self._last_tag_time)
-        # Only trust the odometry prediction as a jump reference for a short
-        # window. After that, drift can exceed the allowed jump and otherwise
-        # reject every correction, leaving the pose stale until it expires.
-        if prior_age is not None and prior_age <= self.max_pose_jump_age:
-            filtered = []
-            for estimate in candidates:
-                distance = hypot(
-                    estimate['x_mm'] - prior['x_mm'],
-                    estimate['y_mm'] - prior['y_mm'],
+        if prior is None:
+            # First fix: there is no predicted pose to compare against, but the
+            # multi-tag consensus check still applies.
+            candidates = estimates
+        else:
+            if distance_mm is None:
+                distance_mm = (None if self._last_odometry is None
+                               else self._last_odometry[0])
+            motion_mm = 0.0
+            if distance_mm is not None and self._last_tag_odometry is not None:
+                motion_mm = abs(float(distance_mm) - self._last_tag_odometry)
+            jump_limit = max(
+                self.max_pose_jump_mm,
+                self.max_pose_jump_motion_factor * motion_mm
+                + self.max_pose_jump_motion_margin_mm,
+            )
+
+            def jump(estimate):
+                return (
+                    hypot(estimate['x_mm'] - prior['x_mm'],
+                          estimate['y_mm'] - prior['y_mm']),
+                    abs(self._wrap(estimate['heading_rad'] - prior['heading_rad'])),
                 )
-                heading = abs(self._wrap(
-                    estimate['heading_rad'] - prior['heading_rad']
-                ))
-                if (distance > self.max_pose_jump_mm or
-                        heading > self.max_heading_jump_rad):
-                    rejected.append((
-                        estimate['key'],
-                        'jump {:.0f} mm / {:.2f} rad from predicted pose'.format(
-                            distance, heading,
-                        ),
-                    ))
+
+            within, outside = [], []
+            for estimate in estimates:
+                distance, heading = jump(estimate)
+                if distance > jump_limit or heading > self.max_heading_jump_rad:
+                    outside.append((estimate, distance, heading))
                 else:
-                    filtered.append(estimate)
-            candidates = filtered
-        if (self.confirm_large_relocations and prior_age is not None and
-                prior_age > self.max_pose_jump_age and candidates):
-            reference = max(candidates, key=lambda item: item['weight'])
-            large = (hypot(reference['x_mm'] - prior['x_mm'],
-                           reference['y_mm'] - prior['y_mm']) > self.max_pose_jump_mm or
-                     abs(self._wrap(reference['heading_rad'] - prior['heading_rad'])) > self.max_heading_jump_rad)
-            if large:
-                pending = self._pending_relocation
-                confirmed = (pending is not None and monotonic() - pending['time'] < 90 and
-                    hypot(reference['x_mm'] - pending['x_mm'],
-                          reference['y_mm'] - pending['y_mm']) <= self.consensus_distance_mm and
-                    abs(self._wrap(reference['heading_rad'] - pending['heading_rad'])) <= self.consensus_heading_rad)
-                if not confirmed:
-                    self._pending_relocation = dict(reference, time=monotonic())
-                    rejected.extend((item['key'], 'large relocation needs another consistent scan')
-                                    for item in candidates)
-                    return [], rejected
-            self._pending_relocation = None
+                    within.append(estimate)
+
+            if outside and not within:
+                # The whole candidate set is a large correction. Only a long
+                # accepted-tag outage can justify relocation, and it needs
+                # stronger evidence than one distant tag.
+                prior_age = (None if self._last_tag_time is None else
+                             monotonic() - self._last_tag_time)
+                keys = {item['key'] for item in estimates}
+                short_range = any(
+                    item['range_m'] <= self.relocation_max_tag_distance_m
+                    for item in estimates
+                )
+                supported = len(keys) >= 2 or short_range
+                if (self.confirm_large_relocations and supported and
+                        (prior_age is None or prior_age > self.max_pose_jump_age)):
+                    reference = max(estimates, key=lambda item: item['weight'])
+                    pending = self._pending_relocation
+                    confirmed = (
+                        pending is not None and
+                        monotonic() - pending['time'] < 90 and
+                        hypot(reference['x_mm'] - pending['x_mm'],
+                              reference['y_mm'] - pending['y_mm'])
+                        <= self.consensus_distance_mm and
+                        abs(self._wrap(reference['heading_rad'] -
+                                       pending['heading_rad']))
+                        <= self.consensus_heading_rad
+                    )
+                    if not confirmed:
+                        self._pending_relocation = dict(reference, time=monotonic())
+                        rejected.extend(
+                            (item['key'],
+                             'large relocation needs another consistent scan')
+                            for item in estimates
+                        )
+                        return [], rejected
+                    self._pending_relocation = None
+                    self._last_relocation = True
+                    return estimates, rejected
+                rejected.extend(
+                    (item['key'],
+                     'jump {:.0f} mm / {:.2f} rad from predicted pose'.format(
+                         distance, heading,
+                     ))
+                    for item, distance, heading in outside
+                )
+                return [], rejected
+
+            if outside:
+                # Keep the estimates that agree with odometry; drop the outliers.
+                rejected.extend(
+                    (item['key'],
+                     'jump {:.0f} mm / {:.2f} rad from predicted pose'.format(
+                         distance, heading,
+                     ))
+                    for item, distance, heading in outside
+                )
+            candidates = within
+
         if len(candidates) <= 1:
             return candidates, rejected
 

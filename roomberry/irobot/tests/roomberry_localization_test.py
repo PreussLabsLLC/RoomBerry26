@@ -1,4 +1,4 @@
-# @(#)roomberry_localization_test.py 2.3.16 2026/10/28 21:00:00
+# @(#)roomberry_localization_test.py 3.1.posgate.1 2026/11/02 17:40:00
 import unittest
 from unittest.mock import patch
 
@@ -140,7 +140,7 @@ class AprilTagLocalizerTest(unittest.TestCase):
         self.assertAlmostEqual(second['x_mm'], 900.0)
         self.assertIn('jump', localizer.last_rejected[0][1])
 
-    def test_stale_odometry_allows_jump_correction(self):
+    def test_stale_odometry_does_not_disable_single_tag_gate(self):
         localizer = self.localizer()
         with patch('roomberry_localization.monotonic', return_value=100.0):
             first = localizer.update(
@@ -156,8 +156,95 @@ class AprilTagLocalizerTest(unittest.TestCase):
                 new_detections=True,
             )
 
-        self.assertAlmostEqual(second['x_mm'], -100.0)
+        # The old code bypassed the jump gate after max_pose_jump_age and
+        # installed this 1 m single-tag correction. It must stay rejected.
+        self.assertAlmostEqual(second['x_mm'], 900.0)
+        self.assertIn('jump', localizer.last_rejected[0][1])
+
+    def test_motion_since_last_tag_raises_the_jump_bound(self):
+        localizer = self.localizer()
+        first = localizer.update(
+            [detection(1, 0.1, 0.2, 0.5)], 0.0, 0.0,
+            new_detections=True,
+        )
+        self.assertAlmostEqual(first['x_mm'], 900.0)
+
+        # Odometry says the robot drove 1.5 m, so the odometry-predicted pose
+        # is already near the tag solution and a 0.9 m correction is plausible.
+        second = localizer.update(
+            [detection(1, -0.5, 0.2, 0.5)], 1500.0, 0.0,
+            new_detections=True,
+        )
+
+        self.assertEqual(second['accepted_tag_ids'], (('tag16h5', 1),))
+        self.assertAlmostEqual(second['x_mm'], 1500.0)
         self.assertEqual(localizer.last_rejected, ())
+
+    def test_rejected_scans_do_not_unlock_a_distant_single_tag(self):
+        localizer = self.localizer()
+        accepted = localizer.update(
+            [detection(2, 0.1, 0.2, 0.4)], 0.0, 0.0,
+            new_detections=True,
+        )
+        self.assertEqual(accepted['accepted_tag_ids'], (('tag16h5', 2),))
+        with patch('roomberry_localization.monotonic', return_value=100.0):
+            with patch.object(localizer, '_last_tag_time', 0.0):
+                for _ in range(5):
+                    localizer.update(
+                        [detection(2, 0.1, 0.2, 0.4, error=1137.77)],
+                        0.0, 0.0, new_detections=True,
+                    )
+                pose = localizer.update(
+                    [detection(1, 1.1, 0.2, 0.5)], 0.0, 0.0,
+                    new_detections=True,
+                )
+        self.assertAlmostEqual(pose['x_mm'], -100.0)
+        self.assertIn('jump', localizer.last_rejected[0][1])
+
+    def test_short_range_single_tag_relocation_needs_two_scans(self):
+        localizer = self.localizer()
+        localizer.confirm_large_relocations = True
+        localizer._pose = dict(x_mm=0, y_mm=0, heading_rad=0)
+        localizer._last_tag_time = 0.0
+        localizer._last_tag_odometry = 0.0
+        candidate = dict(x_mm=1000, y_mm=700, heading_rad=0,
+                         key=('tag16h5', 2), weight=1, error=.1, range_m=0.8)
+        with patch('roomberry_localization.monotonic', return_value=100.0):
+            estimates, rejected = localizer._consistent_estimates(
+                [candidate], [], 0.0)
+            self.assertEqual(estimates, [])
+            self.assertIn('another consistent scan', rejected[0][1])
+            estimates, rejected = localizer._consistent_estimates(
+                [candidate], [], 0.0)
+        self.assertEqual(estimates, [candidate])
+        self.assertTrue(localizer._last_relocation)
+
+    def test_distant_single_tag_relocation_is_refused(self):
+        localizer = self.localizer()
+        localizer.confirm_large_relocations = True
+        localizer._pose = dict(x_mm=0, y_mm=0, heading_rad=0)
+        localizer._last_tag_time = 0.0
+        candidate = dict(x_mm=2000, y_mm=1000, heading_rad=0,
+                         key=('tag16h5', 2), weight=1, error=.1, range_m=2.0)
+        with patch('roomberry_localization.monotonic', return_value=100.0):
+            estimates, rejected = localizer._consistent_estimates(
+                [candidate], [], 0.0)
+        self.assertEqual(estimates, [])
+        self.assertIn('jump', rejected[0][1])
+        self.assertIsNone(localizer._pending_relocation)
+
+    def test_per_tag_range_limit_rejects_distant_tag(self):
+        localizer = AprilTagLocalizer(
+            {('tag16h5', 15): landmark(7.73, 1.237)}, IDENTITY,
+            max_tag_distance_m=8.0,
+            max_tag_distance_m_by_key={('tag16h5', 15): 1.2},
+        )
+        pose = localizer.update(
+            [detection(15, 0.0, 0.0, 2.0)], 0.0, 0.0,
+            new_detections=True,
+        )
+        self.assertIsNone(pose)
+        self.assertIn('range', localizer.last_rejected[0][1])
 
     def test_rejects_outlier_tag_when_other_tags_agree(self):
         localizer = self.localizer()

@@ -400,8 +400,6 @@ class RoomberryMission:
         so the ~350 ms JSON fsync no longer stalls a motion tick.
         """
         with self._coord_lock:
-            if self.robot_control.snapshot().get('oi_stopped') is True:
-                return False
             moving = (self._active_command is not None and
                       monotonic() < self._active_until)
             if (self._mode in (MODE_IDLE, MODE_REMOTE) and
@@ -448,7 +446,10 @@ class RoomberryMission:
                 blocked['scan_view'] = view
             self._scan_active = True
             self._scan_started_at = monotonic()
-            self._send_stop('AprilTag scan pause', smooth=True)
+            # Reject any drive command that arrives from another thread (web,
+            # remote control) until the stationary capture has completed.
+            self.robot_control.set_scan_active(True)
+            self._send_stop('AprilTag scan pause', smooth=True, force=True)
             self._flush_map('stationary AprilTag scan')
             self._button_beep('neutral')
             pose = self._scan_pose
@@ -499,6 +500,7 @@ class RoomberryMission:
                 recovery['turn_deadline'] += monotonic() - self._scan_started_at
             self._scan_started_at = None
             self._scan_active = False
+            self.robot_control.set_scan_active(False)
             self.logger.debug('AprilTag scan complete; mission will re-localize and replan.')
 
     def _run(self):
@@ -2645,8 +2647,8 @@ class RoomberryMission:
         self.mapper.mark_obstacle(x, y)
         self.logger.info('Mapped bumper contact as obstacle near (%.0f, %.0f) mm.', x, y)
 
-    def _send_stop(self, reason, disable_cleaning=True, smooth=False):
-        if self._active_command is None and self._stop_sent:
+    def _send_stop(self, reason, disable_cleaning=True, smooth=False, force=False):
+        if not force and self._active_command is None and self._stop_sent:
             if disable_cleaning:
                 self._set_cleaning_motors(False)
             return

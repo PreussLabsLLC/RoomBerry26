@@ -93,6 +93,7 @@ class RobotCommandArbiter:
         self._last_encoder_counts = None
         self._safety_latched = False
         self._wheel_drop_stopped = False
+        self._scan_active = False
         self._recovery_active = False
         self._startup_sensor_samples = 0
         self._startup_braked = False
@@ -280,6 +281,15 @@ class RobotCommandArbiter:
         except Exception:
             self.logger.exception('Unable to play button feedback beep.')
 
+    def set_scan_active(self, active):
+        """Gate drive commands while a stationary AprilTag scan is in progress.
+
+        The mission sets this before braking for the capture and clears it when
+        the camera reports completion. Stops and zero-motion commands remain
+        permitted so a scan can always be interrupted safely.
+        """
+        self._scan_active = bool(active)
+
     def set_drive_display(self, mode, stage=None, scanning=False):
         """Publish a display label; only the I/O owner writes the serial port."""
         label = {'idle': 'IdLE', 'discovery': 'dISC', 'clean': 'CLn ',
@@ -405,6 +415,9 @@ class RobotCommandArbiter:
             operation = command['operation']
             if self._wheel_drop_stopped and operation not in ('restart_oi', 'stop', 'soft_stop', 'emergency_stop'):
                 raise RuntimeError('OI is stopped; use restart_oi explicitly before rearming')
+            if (self._scan_active and operation in MOTION_OPERATIONS and
+                    not self._is_zero_motion(operation, command['kwargs'])):
+                raise RuntimeError('Motion rejected while an AprilTag scan is active')
             if operation == 'restart_oi':
                 if command['kwargs']:
                     raise ValueError('restart_oi takes no arguments')

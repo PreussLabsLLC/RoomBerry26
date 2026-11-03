@@ -123,7 +123,7 @@ class RoomberryMissionTest(unittest.TestCase):
     def test_configured_tag15_parks_to_lower_x_and_faces_positive_x(self):
         config = json.loads((Path(__file__).resolve().parents[2] / 'autonomy.json').read_text())
         tag = next(v for v in config['landmarks'] if v['id'] == 15)['world_from_tag']
-        self.assertEqual(self.mission._tag_approach_waypoint(tag, 500), (7230.0, 1180.0))
+        self.assertEqual(self.mission._tag_approach_waypoint(tag, 500), (7230.0, 1237.0))
         self.assertAlmostEqual(self.mission._tag_normal_heading(tag), 0)
 
     def test_scan_debug_names_target_and_planned_heading(self):
@@ -1399,7 +1399,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual((tag15[0][2], tag15[1][2]), (1, 0))
         self.assertEqual(
             self.mission._tag_approach_waypoint(tag15, 500),
-            (7230.0, 1180.0),
+            (7230.0, 1237.0),
         )
         self.assertAlmostEqual(self.mission._tag_normal_heading(tag15), 0)
 
@@ -2001,13 +2001,16 @@ class RoomberryMissionTest(unittest.TestCase):
             mission._discovery_tick(state,pose,False,None)
             boundary.assert_called_once_with(pose)
 
-    def test_oi_stop_prevents_buttons_and_camera_from_rearming(self):
+    def test_oi_stop_allows_scan_but_prevents_buttons_from_rearming(self):
         self.mission.set_mode(MODE_DISCOVERY)
         self.robot.execute.reset_mock()
         self.robot.snapshot.return_value=dict(oi_stopped=True,clock_button=True,schedule_button=True)
         self.mission._tick()
         self.assertEqual(self.mission._mode,MODE_IDLE)
-        self.assertFalse(self.mission.scan_pause())
+        # A stationary scan is still allowed so localization can recover while
+        # the OI is stopped; only drive/rearm operations are forbidden.
+        self.assertTrue(self.mission.scan_pause())
+        self.mission.scan_complete()
         self.assertFalse(any(c.args[0]=='_change_mode' for c in self.robot.execute.call_args_list))
 
     def test_restart_discards_capture_from_before_carry_even_if_recently_processed(self):

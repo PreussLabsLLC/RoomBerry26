@@ -64,6 +64,15 @@ class QueuedControlTest(unittest.TestCase):
         self.controller._poll_sensors()
         self.assertEqual(self.controller.snapshot()['sensors'].oi_mode,1)
 
+    def test_scan_gate_rejects_motion_but_allows_stops(self):
+        self.controller.set_scan_active(True)
+        with self.assertRaisesRegex(RuntimeError,'AprilTag scan'):
+            self.command('drive_straight',velocity=40)
+        self.command('stop')
+        self.command('drive_straight',velocity=0)
+        self.controller.set_scan_active(False)
+        self.command('drive_straight',velocity=40)
+
     def test_invalid_packet_is_not_published_or_recorded_or_monitored(self):
         self.controller.sensor_log=Mock()
         before=self.controller._sensor_time

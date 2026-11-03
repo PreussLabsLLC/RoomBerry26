@@ -1,6 +1,6 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 3.1.web.1 2026/10/31 14:00:00
+# @(#)roomberry.py 3.1.posgate.1 2026/11/02 17:40:00
 import xml.etree.ElementTree as ET
 import logging
 import traceback
@@ -183,6 +183,13 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
             if not landmarks:
                 raise ValueError('Autonomy requires at least one surveyed AprilTag landmark')
             tag_filter = autonomy_config.get('tag_filter', {})
+            tag_distance_limits = {}
+            for item in autonomy_config['landmarks']:
+                limit = item.get('max_tag_distance_m')
+                if limit is not None:
+                    tag_distance_limits[
+                        (str(item.get('family', camera_config.get('family', 'tag16h5'))),
+                         int(item['id']))] = float(limit)
             localizer = AprilTagLocalizer(
                 landmarks,
                 autonomy_config['camera_from_robot'],
@@ -195,8 +202,15 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                 max_reprojection_error=tag_filter.get('max_reprojection_error', 10.0),
                 min_tag_distance_m=tag_filter.get('min_tag_distance_m', 0.08),
                 max_tag_distance_m=tag_filter.get('max_tag_distance_m', 8.0),
+                max_tag_distance_m_by_key=tag_distance_limits,
                 max_pose_jump_mm=tag_filter.get('max_pose_jump_mm', 500.0),
                 max_heading_jump_rad=tag_filter.get('max_heading_jump_rad', 0.6),
+                max_pose_jump_motion_factor=tag_filter.get(
+                    'max_pose_jump_motion_factor', 1.5),
+                max_pose_jump_motion_margin_mm=tag_filter.get(
+                    'max_pose_jump_motion_margin_mm', 150.0),
+                relocation_max_tag_distance_m=tag_filter.get(
+                    'relocation_max_tag_distance_m', 1.2),
                 consensus_distance_mm=tag_filter.get('consensus_distance_mm', 250.0),
                 consensus_heading_rad=tag_filter.get('consensus_heading_rad', 0.35),
                 discover_unknown_tags=autonomy_config.get('discover_unknown_tags', True),

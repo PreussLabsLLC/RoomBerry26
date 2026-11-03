@@ -1,4 +1,4 @@
-// @(#)GroundMotion.swift 3.1 2026/10/31 11:30:00
+// @(#)GroundMotion.swift 3.1.threading.1 2026/10/31 14:30:00
 import Foundation
 import simd
 
@@ -105,5 +105,41 @@ struct GroundPacket {
         put(inliers); put(candidates); put(battery); put(batteryState); put(UInt16(0)); put(processingUS)
         precondition(d.count == 128)
         return d
+    }
+}
+
+/// One immutable snapshot between capture and reporting; never hold this lock
+/// across Vision, dispatch, callbacks, or network operations.
+final class GroundPacketSnapshot {
+    private let lock = NSLock()
+    private var latest: GroundPacket?
+    private var active = false
+    func activate(_ packet: GroundPacket) {
+        lock.lock(); latest = packet; active = true; lock.unlock()
+    }
+    func store(_ packet: GroundPacket?) {
+        lock.lock(); defer { lock.unlock() }
+        if packet == nil { active = false; latest = nil }
+        else if active { latest = packet }
+    }
+    func load() -> GroundPacket? {
+        lock.lock(); defer { lock.unlock() }
+        return latest
+    }
+}
+
+extension GroundPacket {
+    func reportingCopy(now: Double, sequence: UInt32, battery: (UInt8, UInt8)) -> GroundPacket {
+        var result = self
+        if endUS == 0 || now - Double(endUS)/1e6 > 0.25 {
+            // Staleness affects only this report. Capture owns continuity and
+            // resets its live segment when the next frame reveals a gap.
+            result.flags = 2; result.state = 1; result.reason = 4
+            for i in 0..<12 where i != 7 { result.values[i] = 0 }
+            result.inliers = 0; result.candidates = 0
+        }
+        result.sequence = sequence; result.sendUS = Self.us(now)
+        result.battery = battery.0; result.batteryState = battery.1
+        return result
     }
 }

@@ -1,5 +1,5 @@
 """Stationary tag / independent wheel / GroundHog comparison on tag 15's axis."""
-# @(#)roomberry_calibration.py 3.1.web.1 2026/10/31 14:00:00
+# @(#)roomberry_calibration.py 3.1.carpet.1 2026/10/31 15:00:00
 
 import json
 from math import cos, sin, hypot, isfinite, pi
@@ -9,6 +9,10 @@ from time import monotonic, time
 MODE_CALIBRATION = 'calibration'
 TAG_ID = 15
 STEP_MM = 500.0
+REVERSE_STEPS = 4
+PHONE_BUMP_RECORD_ONLY_MAX_MM_S2 = 0.5 * 9806.65
+ENDPOINT_TOLERANCE_MM = 15.0
+MIN_MOVE_SPEED_MM_S = 25
 SCAN_TIMEOUT_S = 120.0
 HEADING_LIMIT_RAD = 0.30
 TAG_FACE_LIMIT_RAD = 0.10
@@ -38,6 +42,8 @@ class CalibrationDrive:
         self.start_captured_at = None
         self.phone_wait_logged = False
         self.health_baseline = None
+        self.phone_bumps = []
+        self.pending_impact = None
         self.records = []
         self.result = None
         self.progress = None
@@ -134,8 +140,30 @@ class CalibrationDrive:
         if health is not None and 0 <= now-health.get('received_monotonic', -1e9) <= .5:
             identity = (health['session'], health['calibration'])
             old = self.health_baseline
-            if old is not None and old[0] == identity and health['bump_count'] > old[1]:
-                if not (self.stage == 'contact' and contact):
+            if old is None or old[0] != identity:
+                self.pending_impact = None
+            elif health['bump_count'] > old[1]:
+                event = dict(session=identity[0], calibration=identity[1],
+                             count=health['bump_count'], stage=self.stage,
+                             wall_time=time(), peak_mm_s2=health.get('last_bump_peak_mm_s2'))
+                self.phone_bumps.append(event)
+                self.pending_impact = (identity, health['bump_count'], event)
+            pending = self.pending_impact
+            if pending is not None and pending[:2] == (identity, health['bump_count']):
+                event = pending[2]
+                peak = health.get('last_bump_peak_mm_s2')
+                known = isinstance(peak, (int,float)) and isfinite(peak) and peak > 0
+                previous_action = event.get('action')
+                if known:
+                    event['peak_mm_s2'] = max(event.get('peak_mm_s2') or 0, peak)
+                event['action'] = ('record-only' if known and
+                    event['peak_mm_s2'] <= PHONE_BUMP_RECORD_ONLY_MAX_MM_S2 else 'stop')
+                if event['action'] != previous_action:
+                    self.mission.logger.info('Calibration phone bump: %s', json.dumps(event, sort_keys=True))
+                # The phone refines the event peak for 150 ms after onset.
+                # Recheck the same counter so a small first report cannot mask
+                # an event that subsequently grows above the stop threshold.
+                if event['action'] == 'stop' and not (self.stage == 'contact' and contact):
                     self.abort('phone reported an impact during ' + self.stage)
                     return False
             self.health_baseline = (identity, health['bump_count'])
@@ -184,6 +212,7 @@ class CalibrationDrive:
             return dict(dx_mm=dx, dy_mm=dy, distance_mm=hypot(dx,dy),
                         heading_rad=self.mission._wrap(p['heading_rad']-reference['heading_rad']))
         record = dict(checkpoint=label, tag_id=TAG_ID, wall_time=time(), captured_at=captured_at,
+                      phone_bumps=[dict(event) for event in self.phone_bumps],
                       target_reverse_mm=self.step*STEP_MM if label.startswith('reverse_') else 0,
                       wheel_distance_from_start_mm=distance,
                       tag_pose=compact(tag_pose), wheels_pose=compact(self.wheels),
@@ -284,7 +313,7 @@ class CalibrationDrive:
                         return
                     self._move('contact',state)
                     self.deadline = now+self.contact_limit/15+10
-                elif self.step == 3:
+                elif self.step == REVERSE_STEPS:
                     self._move('return',state)
                 else:
                     self.step += 1
@@ -331,10 +360,10 @@ class CalibrationDrive:
         else:
             target = self.origin['distance']-(self.step*STEP_MM if self.stage == 'reverse' else 0)
             remaining = distance-target if self.stage == 'reverse' else target-distance
-            if remaining <= 0:
+            if remaining <= ENDPOINT_TOLERANCE_MM:
                 self._scan('reverse_scan' if self.stage == 'reverse' else 'return_scan')
                 return
-            speed = min(50,max(10,int(remaining/2)))
+            speed = min(50,max(MIN_MOVE_SPEED_MM_S,int(remaining/2)))
             if self.stage == 'reverse':
                 speed = -speed
         if abs(distance-self.progress) >= 3:

@@ -1,11 +1,12 @@
 <!doctype html>
-<!-- @(#)index.html 3.1.web.1 2026/10/31 14:00:00 -->
+<!-- @(#)index.html 3.1.manual.1 2026/10/31 15:10:00 -->
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Roomberry local console</title><link rel="stylesheet" href="/ui/style.css"><script src="/ui/app.js" defer></script></head>
 <body>
 <header><div><span class="eyebrow">ROOMBERRY / LOCAL</span><h1>Drive, measure, inspect.</h1><p>Robot status, tag scans and GroundHog in one place.</p></div><div class="connection" id="connection" role="status">Connecting…</div></header>
 <nav aria-label="Sections"><a href="#robot">Robot</a><a href="#groundhog">GroundHog</a><a href="#scans">Tag scans</a><a href="#commands">Command index</a><a href="/map.png" target="_blank" rel="noopener">Map ↗</a></nav>
 <main>
+<div class="actions"><button class="secondary" id="refresh-all">Refresh all</button><p id="refresh-status" class="note" role="status">Automatic refresh is off. Loading initial snapshots…</p></div>
 <section id="robot"><div class="section-head"><div><span class="eyebrow">01 / CONTROL</span><h2>Robot & calibration</h2></div><a href="/status.json">Status JSON ↗</a></div><div id="robot-summary" class="metrics"></div>
 <div class="actions"><button class="danger" data-command="/roomba/?op=stop">Stop / idle</button><button data-command="/roomba/?op=calibrate">Start calibration</button><button class="secondary" data-command="/roomba/?op=discovery">Start discovery</button><button class="secondary" data-command="/cam/?op=request_scan">Request tag scan</button></div>
 <p id="action-status" class="note" role="status">Controls run only when pressed. Repeated calibration starts keep the current run.</p><p id="acceptance" class="note"></p><div id="calibration" class="detail"></div></section>
