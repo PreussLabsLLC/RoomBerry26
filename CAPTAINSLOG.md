@@ -30,7 +30,8 @@ should be visible at all times. Worth a try!
   reports instead of inventing displacement.
 - analysis written to `output/positioning-analysis-20261102.md`.
 - focused python suite: 258 tests OK.
-- Next: publish the snapshot to GitHub, then tape-measure the tile pitch and run
-  the straight five-tile test before trusting an odometry scale correction.
+- Published snapshot `5c91169` to GitHub (`PreussLabsLLC/RoomBerry26`).
+- Next: tape-measure the tile pitch and run the straight five-tile test before
+  trusting an odometry scale correction.
 
 
