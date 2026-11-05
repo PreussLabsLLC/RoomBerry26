@@ -1,4 +1,4 @@
-// @(#)app.js 3.1.overhead.2 2026/11/02 20:30:00
+// @(#)app.js 3.1.grout.16 2026/11/05
 'use strict';
 const $ = id => document.getElementById(id);
 const node = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
@@ -8,12 +8,28 @@ const bit = (r, b) => r && (r.flags & b) !== 0;
 const age = r => r && typeof r.receive_age_s === 'number' ? `${fmt(r.receive_age_s)} s since receipt` : 'No packets received';
 function metric(label, value, sub) { const n = node('div', '', 'metric'); n.append(node('span', label, 'metric-label'), node('span', value, 'metric-value')); if (sub) n.append(node('span', sub, 'metric-sub')); return n; }
 function badge(id, text, bad = false, muted = false) { const n = $(id); n.textContent = text; n.className = `badge${bad ? ' bad' : ''}${muted ? ' muted' : ''}`; }
-async function getJSON(url) { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000); try { const r = await fetch(url, {cache: 'no-store', signal: controller.signal}); if (!r.ok) throw Error(`HTTP ${r.status}`); return await r.json(); } finally { clearTimeout(timer); } }
+async function getJSON(url) { const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 12000); try { const r = await fetch(url, {cache: 'no-store', signal: controller.signal}); if (!r.ok) throw Error(`HTTP ${r.status}`); return await r.json(); } finally { clearTimeout(timer); } }
 async function robot() {
   try {
     const s = await getJSON('/status.json');
     $('connection').textContent = 'ROBOT ONLINE'; $('connection').className = 'connection';
     $('robot-summary').replaceChildren(metric('Mission', s.mission_mode || 'unavailable'), metric('Sensors', s.ready ? 'Ready' : 'Not ready', `Poll age ${fmt(s.age, 2)} s`), metric('Roomba battery', s.battery_status || '—'), metric('Safety', s.oi_stopped ? 'OI stopped' : (s.hard_hazard_reasons || []).join(', ') || 'Clear'));
+    $('version-status').textContent = `Pi control ${s.control_version || 'older build / unavailable'} · wheel-size factor ${fmt(s.wheel_size_adjustment, 6)} · firmware ${s.firmware_release || 'unknown'}`;
+    if (s.manual_step) {
+      const step = s.manual_step, unit = step.axis === 'angle' ? '°' : ' mm';
+      $('steering-status').textContent = `${step.direction}: ${step.status} · measured ${fmt(step.measured, 1)}${unit} / target ${fmt(step.target, 0)}${unit}${step.reason ? ` · ${step.reason}` : ''}`;
+    } else {
+      $('steering-status').textContent = 'Turns: 5° · moves: 50 / 500 mm · measured by wheel odometry.';
+    }
+    const g = s.gridrunner;
+    if (g) {
+      const homing = g.kind === 'return_to_tag15';
+      const label = homing ? 'Return to tag 15' : 'Grout run';
+      const detail = g.result ? g.result.reason : g.last
+        ? `${g.last.tracking || 'tracking'}${g.last.steering_mode === 'pivot' ? ' · aligning heading' : ''} · speed ${fmt(g.last.velocity_mm_s, 0)} mm/s · camera-line error ${fmt(g.last.tracking_error_mm ?? g.last.offset_mm)} mm`
+        : homing ? 'acquiring mapped-tag pose' : 'waiting for line';
+      $('grid-status').textContent = `${label}: ${g.stage} · ${detail}${g.next_checkpoint_mm != null ? ` · next scan ${fmt(g.next_checkpoint_mm / 1000, 2)} m` : ''}`;
+    } else $('grid-status').textContent = '';
     const c = s.calibration; const box = $('calibration'); box.replaceChildren();
     if (c) {
       box.append(node('strong', `Calibration: ${c.stage}${c.waiting_for_sensors ? ' · waiting for sensor poll' : ''}`));
@@ -21,6 +37,7 @@ async function robot() {
       box.append(node('p', `${c.checkpoints} checkpoint(s) recorded`));
       if (c.latest_checkpoint) { const details = node('details'); details.append(node('summary', `Latest checkpoint: ${c.latest_checkpoint.checkpoint}`), node('pre', JSON.stringify(c.latest_checkpoint, null, 2))); box.append(details); }
     }
+    return s;
   } catch (e) { $('connection').textContent = `ROBOT OFFLINE · ${e.message}`; $('connection').className = 'connection bad'; }
 }
 async function phone() {
@@ -79,12 +96,32 @@ async function loadCommands() {
   try { const s = await getJSON('/commands.json'); commands = s.commands; renderCommands(); const a = s.calibration_acceptance; $('acceptance').textContent = `Calibration: manual alignment at tag 15 · no scans · heading drift ±${fmt(deg(a.heading_rad))}° · wheel endpoint tolerance ${a.endpoint_tolerance_mm} mm.`; }
   catch (e) { $('command-list').textContent = `Command index unavailable: ${e.message}`; }
 }
+let steeringBusy = false;
 for (const button of document.querySelectorAll('[data-command]')) button.addEventListener('click', async () => {
+  const steering = button.hasAttribute('data-step');
+  if (steering && steeringBusy) return;
+  if (steering) { steeringBusy = true; for (const pad of document.querySelectorAll('[data-step]')) pad.disabled = true; }
   button.disabled = true; $('action-status').textContent = 'Sending command…';
-  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 8000);
-  try { const r = await fetch(button.dataset.command, {cache: 'no-store', signal: controller.signal}); if (!r.ok) throw Error(`HTTP ${r.status}: ${(await r.text()).replace(/<[^>]*>/g, ' ').slice(0, 240)}`); $('action-status').textContent = `${button.textContent}: accepted.`; await robot(); }
+  const timeout = steering && button.dataset.stepMm === '500' ? 20000 : 12000;
+  const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const r = await fetch(button.dataset.command, {cache: 'no-store', signal: controller.signal});
+    if (!r.ok) throw Error(`HTTP ${r.status}: ${(await r.text()).replace(/<[^>]*>/g, ' ').slice(0, 240)}`);
+    $('action-status').textContent = `${button.textContent}: accepted.`;
+    let state = await robot();
+    if (button.dataset.command === '/roomba/?op=restart_oi') {
+      $('action-status').textContent = 'OI restarted; waiting for grounded sensor qualification…';
+      for (let attempt = 0; state && !state.ready && attempt < 16; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        state = await robot();
+      }
+      $('action-status').textContent = state && state.ready && !state.oi_stopped
+        ? 'OI restarted. Sensors Ready — align at tag 15, then start a new run.'
+        : 'OI restarted; sensors are not ready. Ground the robot and refresh status.';
+    }
+  }
   catch (e) { $('action-status').textContent = `Command failed: ${e.message}`; }
-  finally { clearTimeout(timer); button.disabled = false; }
+  finally { clearTimeout(timer); button.disabled = false; if (steering) { steeringBusy = false; for (const pad of document.querySelectorAll('[data-step]')) pad.disabled = false; } }
 });
 $('command-search').addEventListener('input', renderCommands); $('refresh-scans').addEventListener('click', scans); $('tags-only').addEventListener('change', scans);
 async function refreshAll() {
@@ -97,3 +134,5 @@ async function refreshAll() {
 }
 $('refresh-all').addEventListener('click', refreshAll);
 refreshAll();
+
+$('version-check').addEventListener('click', robot);

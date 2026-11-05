@@ -1,0 +1,69 @@
+{
+  "records": 2155,
+  "valid_pose_packets": 2035,
+  "feature_median": 3.0,
+  "mount_yaw_deg": 92.12337932057517,
+  "yaw_fit_windows": 281,
+  "coverage": [
+    "16:53:05",
+    "16:56:41"
+  ],
+  "max_excess_receipt_delay_s": 5.5282206535339355,
+  "battery_changes": [
+    {
+      "time": "16:53:05",
+      "level": 79,
+      "state": 1
+    },
+    {
+      "time": "16:53:27",
+      "level": 78,
+      "state": 1
+    },
+    {
+      "time": "16:54:09",
+      "level": 77,
+      "state": 1
+    },
+    {
+      "time": "16:54:30",
+      "level": 76,
+      "state": 1
+    },
+    {
+      "time": "16:55:11",
+      "level": 75,
+      "state": 1
+    },
+    {
+      "time": "16:55:52",
+      "level": 74,
+      "state": 1
+    },
+    {
+      "time": "16:56:34",
+      "level": 73,
+      "state": 1
+    }
+  ],
+  "stop_robot_xy_mm": [
+    1283.468949836679,
+    454.3118319790965
+  ],
+  "stop_phone_xy_mm": [
+    1352.351234598297,
+    1101.5594167999147
+  ],
+  "estimated_pi_boot": "2026-10-30T16:50:25",
+  "sequence_discontinuities": 0,
+  "worst_phone_motion_anomaly": {
+    "start": "2026-10-30T16:54:19.573",
+    "end": "2026-10-30T16:54:19.673",
+    "capture_dt_s": 0.09999489784240723,
+    "camera_displacement_mm": 528.0313175469197,
+    "axle_displacement_mm": 525.7438215377986,
+    "wheel_distance_mm": 5.106121268792364,
+    "flags_before": 111,
+    "flags_after": 111
+  }
+}

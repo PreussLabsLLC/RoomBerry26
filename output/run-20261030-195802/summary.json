@@ -1,0 +1,80 @@
+{
+  "records": 6303,
+  "valid_pose_packets": 6303,
+  "feature_median": 9.0,
+  "mount_yaw_deg": 93.6,
+  "yaw_fit_windows": 1505,
+  "coverage": [
+    "19:58:02",
+    "20:08:32"
+  ],
+  "max_excess_receipt_delay_s": 1.507643461227417,
+  "battery_changes": [
+    {
+      "time": "19:58:02",
+      "level": 85,
+      "state": 1
+    },
+    {
+      "time": "19:58:06",
+      "level": 85,
+      "state": 2
+    },
+    {
+      "time": "19:58:27",
+      "level": 86,
+      "state": 2
+    },
+    {
+      "time": "19:59:28",
+      "level": 87,
+      "state": 2
+    },
+    {
+      "time": "20:00:30",
+      "level": 88,
+      "state": 2
+    },
+    {
+      "time": "20:01:33",
+      "level": 89,
+      "state": 2
+    },
+    {
+      "time": "20:02:55",
+      "level": 90,
+      "state": 2
+    },
+    {
+      "time": "20:04:17",
+      "level": 91,
+      "state": 2
+    },
+    {
+      "time": "20:06:00",
+      "level": 92,
+      "state": 2
+    },
+    {
+      "time": "20:07:42",
+      "level": 93,
+      "state": 2
+    }
+  ],
+  "stop_robot_xy_mm": [
+    5700.714345500329,
+    1628.6833192845681
+  ],
+  "stop_phone_xy_mm": [
+    5002.608875868244,
+    208.83460072742935
+  ],
+  "max_valid_axle_step_mm": 68.92579703617328,
+  "sequence_discontinuities": 0,
+  "tracking_gaps": [],
+  "sessions": 1,
+  "alignments": 1,
+  "stop_roomba_travelled_cm": 1217.8,
+  "stop_separation_mm": 1582.1888731496579,
+  "stop_disagreement_pct": 12.992189794298389
+}

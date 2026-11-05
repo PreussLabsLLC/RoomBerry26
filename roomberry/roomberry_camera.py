@@ -1,5 +1,5 @@
 """Camera ownership, explicit scan requests, and AprilTag 3 detection."""
-# @(#)roomberry_camera.py 3.1.scan.1 2026/11/02 21:00:00
+# @(#)roomberry_camera.py 3.1.grout.5 2026/11/02 21:00:00
 
 from threading import Event, Lock, Thread
 import json
@@ -22,9 +22,31 @@ SNAPSHOT_INTERVAL = 20
 APRILTAG_FAMILY = 'tag16h5'
 DETECTION_MAX_DIMENSION = 0
 SCAN_SETTLE_SECONDS = 1.0
+DETECTOR_TIMEOUT_SECONDS = 10.0
 ANNOTATION_SETTINGS = frozenset((
     'annotate_background', 'annotate_foreground', 'annotate_text_size',
 ))
+
+
+def _detector_process(connection, settings):
+    """Own native detection outside the control process and its Python GIL."""
+    detector = AprilTagDetector(**settings)
+    try:
+        while True:
+            request = connection.recv()
+            if request is None:
+                return
+            image, intrinsics = request
+            detector.camera_intrinsics = intrinsics
+            try:
+                observations = detector.detect(image)
+                connection.send((observations, detector.last_timings_ms, None))
+            except Exception as error:
+                connection.send((None, {}, str(error)))
+    except (EOFError, BrokenPipeError):
+        pass
+    finally:
+        connection.close()
 
 
 class AprilTagDetector:
@@ -40,7 +62,8 @@ class AprilTagDetector:
 
     def __init__(self, family=APRILTAG_FAMILY,
                  max_dimension=DETECTION_MAX_DIMENSION, detector=None,
-                 tag_size_m=None, camera_intrinsics=None, logger=None):
+                 tag_size_m=None, camera_intrinsics=None, logger=None,
+                 isolate_process=False):
         self.logger = logger
         self.last_timings_ms = {}
         self.family = family
@@ -57,6 +80,54 @@ class AprilTagDetector:
             if float(camera_intrinsics[0]) <= 0 or float(camera_intrinsics[1]) <= 0:
                 raise ValueError('Camera focal lengths must be positive')
         self._detector = detector
+        self.isolate_process = bool(isolate_process)
+        self._process = self._connection = None
+
+    def close(self):
+        process, connection = self._process, self._connection
+        self._process = self._connection = None
+        if connection is not None:
+            connection.close()
+        if process is not None:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=2)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=2)
+            process.close()
+
+    def _detect_in_process(self, image):
+        from multiprocessing import get_context
+        if self._process is None:
+            context = get_context('spawn')  # Never inherit camera or serial owners.
+            parent, child = context.Pipe()
+            settings = dict(family=self.family, max_dimension=self.max_dimension,
+                            tag_size_m=self.tag_size_m, detector=self._detector)
+            process = context.Process(target=_detector_process, args=(child, settings),
+                                      name='apriltag-detector', daemon=True)
+            try:
+                process.start()
+            except Exception:
+                parent.close()
+                child.close()
+                raise
+            child.close()
+            self._process, self._connection = process, parent
+        try:
+            self._connection.send((image, self.camera_intrinsics))
+            if not self._connection.poll(DETECTOR_TIMEOUT_SECONDS):
+                raise TimeoutError('AprilTag detector process timed out')
+            observations, timings, error = self._connection.recv()
+            if error is not None:
+                raise RuntimeError(error)
+            self.last_timings_ms = timings
+            if self.logger is not None:
+                self.logger.debug('AprilTag process pipeline: timings_ms=%s', timings)
+            return observations
+        except Exception:
+            self.close()
+            raise
 
     def _load_detector(self):
         if self._detector is None:
@@ -150,6 +221,8 @@ class AprilTagDetector:
 
         return {'R': rotation, 't': translation, 'error': error}
     def detect(self, image):
+        if self.isolate_process:
+            return self._detect_in_process(image)
         import numpy as np
         from PIL import Image
 
@@ -252,7 +325,7 @@ class CameraService:
                  scan_settle_seconds=SCAN_SETTLE_SECONDS, capture_resolution=None):
         self.logger = logger
         self._camera = camera
-        self.detector = detector if detector is not None else AprilTagDetector()
+        self.detector = detector if detector is not None else AprilTagDetector(isolate_process=True)
         # Retained for configuration compatibility; timer scans are disabled.
         self.snapshot_interval = snapshot_interval
         self.highest_resolution = True
@@ -363,7 +436,10 @@ class CameraService:
         self._shutdown.set()
         self._scan_requested.set()
         if self._worker is not None:
-            self._worker.join(timeout=2)
+            self._worker.join(timeout=DETECTOR_TIMEOUT_SECONDS+2)
+        close_detector = getattr(self.detector, 'close', None)
+        if callable(close_detector):
+            close_detector()
         if self._camera is not None:
             with self._lock:
                 if self._camera.started:

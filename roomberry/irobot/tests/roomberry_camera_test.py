@@ -42,7 +42,7 @@ class CameraServiceTest(unittest.TestCase):
         self.service._annotate_image(image, 0)
         self.assertEqual(image.getpixel((0, 0)), (18, 52, 86))
         self.assertTrue(any(
-            image.getpixel((x, y)) == (255, 255, 255)
+            min(image.getpixel((x, y))) >= 240  # Antialiased fallback fonts can peak at 254.
             for x in range(image.width)
             for y in range(image.height)
         ))

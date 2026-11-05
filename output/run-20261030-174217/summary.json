@@ -1,0 +1,66 @@
+{
+  "records": 4727,
+  "valid_pose_packets": 4600,
+  "feature_median": 4.0,
+  "mount_yaw_deg": 92.79028890412744,
+  "yaw_fit_windows": 1355,
+  "coverage": [
+    "17:42:17",
+    "17:50:10"
+  ],
+  "max_excess_receipt_delay_s": 5.736161231994629,
+  "battery_changes": [
+    {
+      "time": "17:42:17",
+      "level": 97,
+      "state": 2
+    },
+    {
+      "time": "17:47:33",
+      "level": 98,
+      "state": 2
+    }
+  ],
+  "stop_robot_xy_mm": [
+    1799.527478203251,
+    1982.8071773100526
+  ],
+  "stop_phone_xy_mm": [
+    1788.8532448497851,
+    1983.862127529676
+  ],
+  "max_valid_axle_step_mm": 43.72246378261009,
+  "sequence_discontinuities": 0,
+  "tracking_gaps": [
+    {
+      "start": "17:47:28",
+      "end": "17:47:33",
+      "duration_s": 4.499803066253662,
+      "tracking": 1,
+      "reason": 3
+    },
+    {
+      "start": "17:47:42",
+      "end": "17:47:47",
+      "duration_s": 5.3997650146484375,
+      "tracking": 1,
+      "reason": 3
+    },
+    {
+      "start": "17:48:33",
+      "end": "17:48:34",
+      "duration_s": 1.4999349117279053,
+      "tracking": 1,
+      "reason": 3
+    },
+    {
+      "start": "17:48:42",
+      "end": "17:48:43",
+      "duration_s": 1.299942970275879,
+      "tracking": 1,
+      "reason": 3
+    }
+  ],
+  "sessions": 1,
+  "alignments": 1
+}

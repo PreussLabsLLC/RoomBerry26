@@ -1,0 +1,95 @@
+{
+  "records": 3332,
+  "valid_pose_packets": 3332,
+  "feature_median": 3.0,
+  "mount_yaw_deg": 93.59219335060843,
+  "yaw_fit_windows": 566,
+  "coverage": [
+    "19:37:20",
+    "19:42:53"
+  ],
+  "max_excess_receipt_delay_s": 1.5999867916107178,
+  "battery_changes": [
+    {
+      "time": "19:37:20",
+      "level": 97,
+      "state": 1
+    },
+    {
+      "time": "19:37:38",
+      "level": 96,
+      "state": 1
+    },
+    {
+      "time": "19:38:19",
+      "level": 95,
+      "state": 1
+    },
+    {
+      "time": "19:38:40",
+      "level": 94,
+      "state": 1
+    },
+    {
+      "time": "19:39:21",
+      "level": 93,
+      "state": 1
+    },
+    {
+      "time": "19:39:41",
+      "level": 92,
+      "state": 1
+    },
+    {
+      "time": "19:40:23",
+      "level": 91,
+      "state": 1
+    },
+    {
+      "time": "19:40:44",
+      "level": 90,
+      "state": 1
+    },
+    {
+      "time": "19:40:49",
+      "level": 89,
+      "state": 1
+    },
+    {
+      "time": "19:41:04",
+      "level": 88,
+      "state": 1
+    },
+    {
+      "time": "19:41:24",
+      "level": 87,
+      "state": 1
+    },
+    {
+      "time": "19:42:05",
+      "level": 86,
+      "state": 1
+    },
+    {
+      "time": "19:42:46",
+      "level": 85,
+      "state": 1
+    }
+  ],
+  "stop_robot_xy_mm": [
+    344.4821990575561,
+    650.9676524774749
+  ],
+  "stop_phone_xy_mm": [
+    474.9893601281815,
+    984.9526691661604
+  ],
+  "max_valid_axle_step_mm": 54.31155754572842,
+  "sequence_discontinuities": 0,
+  "tracking_gaps": [],
+  "sessions": 1,
+  "alignments": 1,
+  "stop_roomba_travelled_cm": 564.26,
+  "stop_separation_mm": 358.5779001322526,
+  "stop_disagreement_pct": 6.354834653036765
+}

@@ -1,8 +1,8 @@
-# @(#)roomberry_calibration_test.py 3.1.threshold.2 2026/11/03 09:20:00
+# @(#)roomberry_calibration_test.py 3.1.grid.1 2026/11/03 20:30:00
 """Scan-free calibration route, GroundHog steering, and failure stops."""
 import logging
 from copy import deepcopy
-from math import pi
+from math import sin, pi
 from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock, patch
@@ -232,7 +232,7 @@ class CalibrationTest(unittest.TestCase):
         self.assertEqual(run.result['status'],'cancelled')
         self.assertEqual(self.m._mode,'remote_control')
 
-    def test_clock_release_and_second_press_restarts_after_cancel(self):
+    def test_clock_release_and_second_press_starts_gridrunner_after_cancel(self):
         self.start()
         old = self.c
         self.state['clock_button']=True
@@ -242,10 +242,9 @@ class CalibrationTest(unittest.TestCase):
         self.assertFalse(self.m._handle_clock(self.state))
         self.state['clock_button']=True
         self.assertTrue(self.m._handle_clock(self.state))
-        self.assertIsNot(self.m.calibration,old)
-        self.c=self.m.calibration
-        self.tick()
-        self.assertEqual(self.c.stage,'reverse')
+        self.assertIs(self.m.calibration,old)
+        self.assertEqual(self.m._mode,'gridrunner')
+        self.assertEqual(self.m.gridrunner.stage,'waiting')
         self.camera.request_scan.assert_not_called()
 
     def test_tracking_abort_restores_passive_before_idle_feedback(self):
@@ -262,6 +261,8 @@ class CalibrationTest(unittest.TestCase):
         # The next physical rising edge can start a new baseline.
         self.state['clock_button']=True
         self.assertTrue(self.m._handle_clock(self.state))
+        self.assertEqual(self.m._mode,'gridrunner')
+        self.m.start_calibration()
         self.c=self.m.calibration
         self.tick()
         self.assertEqual(self.c.stage,'reverse')
@@ -352,6 +353,74 @@ class CalibrationTest(unittest.TestCase):
         self.ground['segment_yaw_rad']=.31
         self.tick()
         self.assertIn('heading drift',self.c.result['reason'])
+
+    def test_lateral_error_corrects_toward_same_line_in_both_directions(self):
+        self.start()
+        self.move_to(-250)
+        anchor = dict(self.c.phone_anchor)
+        for stage in ('reverse', 'return'):
+            self.c._move(stage, self.state)
+            for lateral in (-40, 40):
+                with self.subTest(stage=stage, lateral=lateral):
+                    self.ground['segment_y_mm'] = lateral
+                    self.tick()
+                    drive = [c for c in self.robot.execute.call_args_list
+                             if c.args[0] == 'drive_direct'][-1].kwargs
+                    left, right = drive['left_velocity'], drive['right_velocity']
+                    # yaw change follows right-left; y change follows speed*yaw.
+                    # The initial lateral acceleration must oppose the offset.
+                    self.assertLess(lateral*(left+right)*(right-left), 0)
+                    self.assertEqual(self.c.phone_anchor, anchor)
+
+    def test_line_target_is_bounded_and_logged(self):
+        from roomberry_calibration import MAX_LINE_HEADING_RAD
+        self.start()
+        self.ground['segment_y_mm'] = -1000
+        with self.assertLogs('CalibrationTest', level='INFO') as captured:
+            self.tick(delta=-10)
+        import json
+        sample = json.loads(next(line.split('Calibration sample: ')[1]
+                                 for line in captured.output if 'Calibration sample: ' in line))
+        self.assertEqual(sample['cross_track_mm'], -1000)
+        self.assertAlmostEqual(sample['target_heading_rad'], -MAX_LINE_HEADING_RAD)
+        self.assertLessEqual(abs(sample['steering']), .35)
+
+    def test_line_target_does_not_relax_absolute_heading_guard(self):
+        self.start()
+        self.ground.update(segment_y_mm=1000, segment_yaw_rad=.31)
+        self.tick(delta=-10)
+        self.assertEqual(self.c.stage, 'aborted')
+        self.assertIn('heading drift', self.c.result['reason'])
+
+    def test_line_feedback_rejects_persistent_yaw_bias_in_full_route_model(self):
+        # Differential-drive model with direction-dependent yaw disturbance,
+        # roughly matching the recorded steering offsets. This checks closed-loop
+        # restoration, not a prediction of real floor accuracy or motor dynamics.
+        commands = []
+        self.m._dispatch = lambda action, pose: commands.append(dict(action))
+        self.start()
+        heading = lateral = 0.0
+        for _ in range(1300):
+            previous = heading
+            delta = 0.0
+            if self.c.moving and commands:
+                command = commands[-1]
+                velocity = command['velocity']
+                right = int(velocity*(1+command['steering']))
+                left = int(velocity*(1-command['steering']))
+                bias = .023 if velocity < 0 else -.067
+                heading += ((right-left)/235 + bias)*.2
+                delta = (right+left)/2*.2
+                lateral += delta*sin((previous+heading)/2)
+            elif not self.c.moving:
+                commands.clear()
+            self.ground.update(segment_y_mm=lateral, segment_yaw_rad=heading)
+            self.tick(delta=delta, heading_delta=(heading-previous)*180/pi)
+            if self.c.stage in ('complete', 'aborted'):
+                break
+        self.assertEqual(self.c.stage, 'complete', self.c.result)
+        self.assertLess(abs(lateral), 40)
+        self.assertGreater(len(self.c.records), 2)
 
     def test_groundhog_loss_stops_in_motion_and_hold(self):
         for stage in ('reverse','turnaround'):

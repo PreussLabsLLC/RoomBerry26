@@ -1,0 +1,21 @@
+{
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+    {
+      "width": 3840,
+      "height": 2160,
+      "avg_frame_rate": "514920/21457",
+      "duration": "178.808333",
+      "nb_frames": "4291",
+      "tags": {
+        "creation_time": "2026-11-03T21:46:20.000000Z"
+      },
+      "side_data_list": [
+        {
+          "rotation": -90
+        }
+      ]
+    }
+  ]
+}

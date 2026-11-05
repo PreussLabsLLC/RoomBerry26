@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1580" viewBox="0 0 2200 1580">
+<title>RoomBerry: GroundHog and GridRunner mount measurements</title>
+<desc>Scaled robot and nominal iPhone X outline. Camera on rear-left faces down; current screenshot has a negative left setting. Carton and body side profile are approximate.</desc>
+<!-- 3.1.diagram.2 2026/11/04 -->
+<rect width="2200" height="1580" fill="#f3f6fa"/>
+<text x="42" y="67.84" font-family="Arial, sans-serif" font-size="44" fill="#172b46" font-weight="700" text-anchor="start">RoomBerry: phone mount &amp; settings check</text>
+<text x="44" y="114.36" font-family="Arial, sans-serif" font-size="26" fill="#53657a" font-weight="400" text-anchor="start">Camera is rear-left, looking down. Measure from the wheel-axle midpoint to the active lens center.</text>
+<rect x="35" y="155" width="1115" height="1070" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<rect x="1180" y="155" width="985" height="470" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<rect x="1180" y="650" width="985" height="380" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<rect x="1180" y="1055" width="985" height="170" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<text x="65" y="204.07999999999998" font-family="Arial, sans-serif" font-size="28" fill="#172b46" font-weight="700" text-anchor="start">TOP VIEW · 2 drawing units = 1 mm</text>
+<text x="65" y="240.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Body Ø348 mm · wheel centers 235 mm apart</text>
+<ellipse cx="530.0" cy="650.0" rx="348.0" ry="348.0" fill="#e7edf4" stroke="#698099" stroke-width="4"/>
+<ellipse cx="530.0" cy="650.0" rx="255.0" ry="255.0" fill="#eef2f6" stroke="#c2ccd6" stroke-width="2"/>
+<polyline points="530.00,285.00 530.00,1120.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<rect x="277.0" y="590.0" width="36.0" height="120.0" rx="6" fill="#52657b" stroke="#52657b" stroke-width="2"/>
+<rect x="747.0" y="590.0" width="36.0" height="120.0" rx="6" fill="#52657b" stroke="#52657b" stroke-width="2"/>
+<polyline points="162.00,650.00 898.00,650.00" fill="none" stroke="#c49235" stroke-width="3" stroke-dasharray="8 7"/>
+<text x="75" y="701.92" font-family="Arial, sans-serif" font-size="22" fill="#946b21" font-weight="700" text-anchor="start">Wheel axle</text>
+<ellipse cx="530.0" cy="650.0" rx="7.0" ry="7.0" fill="white" stroke="#172b46" stroke-width="3"/>
+<text x="547.0" y="683.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">C</text>
+<text x="620" y="755.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">C = wheel-axle midpoint</text>
+<polyline points="530.00,350.00 530.00,278.00" fill="none" stroke="#176cbd" stroke-width="4"/>
+<polygon points="530.0,278 525.0,290.0 535.0,290.0" fill="#176cbd"/>
+<text x="530.0" y="271.92" font-family="Arial, sans-serif" font-size="22" fill="#176cbd" font-weight="700" text-anchor="middle">ROBOT FRONT (+X)</text>
+<polyline points="490.00,650.00 400.00,650.00" fill="none" stroke="#176cbd" stroke-width="3"/>
+<polygon points="400.0,650.0 412.0,655.0 412.0,645.0" fill="#176cbd"/>
+<text x="242" y="628.06" font-family="Arial, sans-serif" font-size="21" fill="#176cbd" font-weight="700" text-anchor="start">LEFT (+Y)</text>
+<rect x="410.0" y="360.0" width="240.0" height="200.0" rx="8" fill="#e2c79c" stroke="#aa8250" stroke-width="2"/>
+<polyline points="410.00,360.00 650.00,360.00 650.00,560.00 410.00,560.00 410.00,360.00" fill="none" stroke="#aa8250" stroke-width="2" stroke-dasharray="8 7"/>
+<ellipse cx="530.0" cy="471.0" rx="36.0" ry="36.0" fill="#f6f4ef" stroke="#b4b4b4" stroke-width="3"/>
+<text x="530.0" y="534.78" font-family="Arial, sans-serif" font-size="23" fill="#795b34" font-weight="700" text-anchor="middle">AYI</text>
+<rect x="507.0" y="351.0" width="46.0" height="26.0" rx="5" fill="#394650" stroke="#394650" stroke-width="2"/>
+<polyline points="530.00,345.00 530.00,295.00" fill="none" stroke="#176cbd" stroke-width="3"/>
+<polygon points="530.0,295.0 525.0,307.0 535.0,307.0" fill="#176cbd"/>
+<polyline points="554.00,370.00 730.00,365.00 780.00,365.00" fill="none" stroke="#9baabd" stroke-width="2"/>
+<text x="790" y="363.92" font-family="Arial, sans-serif" font-size="22" fill="#172b46" font-weight="700" text-anchor="start">AYI carton / front camera</text>
+<text x="790" y="394.48" font-family="Arial, sans-serif" font-size="18" fill="#53657a" font-weight="400" text-anchor="start">Rough placement from photo</text>
+<text x="790" y="421.48" font-family="Arial, sans-serif" font-size="18" fill="#53657a" font-weight="400" text-anchor="start">Carton dimensions unmeasured</text>
+<rect x="484.0" y="778.8" width="141.79999999999995" height="287.20000000000005" rx="24" fill="#d9ebfa" stroke="#176cbd" stroke-width="2"/>
+<rect x="494.0" y="791.8" width="121.79999999999995" height="261.20000000000005" rx="18" fill="#f0f7fc" stroke="#f0f7fc" stroke-width="2"/>
+<rect x="530.0" y="1053.0" width="49.799999999999955" height="8.0" rx="4" fill="#34495d" stroke="#34495d" stroke-width="2"/>
+<text x="554.9" y="838.0" font-family="Arial, sans-serif" font-size="20" fill="#176cbd" font-weight="700" text-anchor="middle">iPhone X</text>
+<polyline points="554.90,873.80 554.90,953.80" fill="none" stroke="#176cbd" stroke-width="3"/>
+<polygon points="554.9,953.8 559.9,941.8 549.9,941.8" fill="#176cbd"/>
+<text x="710" y="894.78" font-family="Arial, sans-serif" font-size="23" fill="#176cbd" font-weight="700" text-anchor="start">Screen up</text>
+<text x="710" y="926.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">Top / notch end faces rear</text>
+<polyline points="700.00,933.00 610.80,1050.00" fill="none" stroke="#176cbd" stroke-width="2"/>
+<ellipse cx="504.0" cy="1050.0" rx="9.0" ry="9.0" fill="white" stroke="#b73535" stroke-width="3"/>
+<polyline points="504.00,1050.00 360.00,1065.00 235.00,1065.00" fill="none" stroke="#b73535" stroke-width="2"/>
+<text x="80" y="1054.64" font-family="Arial, sans-serif" font-size="24" fill="#b73535" font-weight="700" text-anchor="start">ACTIVE LENS</text>
+<text x="80" y="1088.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Rear-left, underside</text>
+<text x="80" y="1115.48" font-family="Arial, sans-serif" font-size="18" fill="#53657a" font-weight="400" text-anchor="start">Projection shown through phone</text>
+<polyline points="530.00,650.00 944.00,650.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="504.00,1050.00 944.00,1050.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="930.00,650.00 930.00,1050.00" fill="none" stroke="#b73535" stroke-width="3"/>
+<polygon points="930,1050.0 935.0,1038.0 925.0,1038.0" fill="#b73535"/>
+<polygon points="930,650.0 925.0,662.0 935.0,662.0" fill="#b73535"/>
+<text x="955" y="814.78" font-family="Arial, sans-serif" font-size="23" fill="#b73535" font-weight="700" text-anchor="start">3. Forward</text>
+<text x="955" y="852.22" font-family="Arial, sans-serif" font-size="27" fill="#b73535" font-weight="700" text-anchor="start">−200 mm</text>
+<text x="955" y="887.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">Behind C</text>
+<polyline points="504.00,1050.00 504.00,1140.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="530.00,1050.00 530.00,1140.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="504.00,1135.00 530.00,1135.00" fill="none" stroke="#16735d" stroke-width="2"/>
+<polygon points="530.0,1135 518.0,1130.0 518.0,1140.0" fill="#16735d"/>
+<polygon points="504.0,1135 516.0,1140.0 516.0,1130.0" fill="#16735d"/>
+<polyline points="517.00,1135.00 650.00,1135.00" fill="none" stroke="#16735d" stroke-width="2"/>
+<text x="665" y="1137.5" font-family="Arial, sans-serif" font-size="25" fill="#16735d" font-weight="700" text-anchor="start">4. Lens left = +L</text>
+<text x="665" y="1167.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">L = 13 mm drawn only as a sign example.</text>
+<text x="665" y="1197.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">Remeasure L; do not assume its magnitude.</text>
+<rect x="80" y="1160" width="50" height="14" rx="0" fill="#172b46" stroke="#172b46" stroke-width="1"/>
+<rect x="130" y="1160" width="50" height="14" rx="0" fill="white" stroke="#172b46" stroke-width="1"/>
+<rect x="180" y="1160" width="50" height="14" rx="0" fill="#172b46" stroke="#172b46" stroke-width="1"/>
+<rect x="230" y="1160" width="50" height="14" rx="0" fill="white" stroke="#172b46" stroke-width="1"/>
+<text x="80" y="1196.62" font-family="Arial, sans-serif" font-size="17" fill="#53657a" font-weight="400" text-anchor="start">0</text>
+<text x="280" y="1196.62" font-family="Arial, sans-serif" font-size="17" fill="#53657a" font-weight="400" text-anchor="end">100 mm</text>
+<text x="1215" y="207.07999999999998" font-family="Arial, sans-serif" font-size="28" fill="#172b46" font-weight="700" text-anchor="start">GRIDRUNNER SCREENSHOT → MOUNT</text>
+<text x="1215" y="250.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="700" text-anchor="start">Setting</text>
+<text x="1630" y="250.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="700" text-anchor="start">Screenshot</text>
+<text x="1875" y="250.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="700" text-anchor="start">Rear-left mount</text>
+<polyline points="1215.00,319.00 2125.00,319.00" fill="none" stroke="#e6ebf1" stroke-width="1"/>
+<text x="1215" y="301.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="400" text-anchor="start">1. Lens height</text>
+<text x="1630" y="301.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">85 mm</text>
+<text x="1875" y="301.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">85 mm*</text>
+<polyline points="1215.00,370.00 2125.00,370.00" fill="none" stroke="#e6ebf1" stroke-width="1"/>
+<text x="1215" y="352.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="400" text-anchor="start">2. Top-edge angle</text>
+<text x="1630" y="352.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">180°</text>
+<text x="1875" y="352.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">180°</text>
+<polyline points="1215.00,421.00 2125.00,421.00" fill="none" stroke="#e6ebf1" stroke-width="1"/>
+<text x="1215" y="403.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="400" text-anchor="start">3. Lens forward</text>
+<text x="1630" y="403.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">−200 mm</text>
+<text x="1875" y="403.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">−200 mm*</text>
+<polyline points="1215.00,472.00 2125.00,472.00" fill="none" stroke="#e6ebf1" stroke-width="1"/>
+<text x="1215" y="454.5" font-family="Arial, sans-serif" font-size="25" fill="#b73535" font-weight="400" text-anchor="start">4. Lens left</text>
+<text x="1630" y="454.5" font-family="Arial, sans-serif" font-size="25" fill="#b73535" font-weight="700" text-anchor="start">−13 mm</text>
+<text x="1875" y="454.5" font-family="Arial, sans-serif" font-size="25" fill="#b73535" font-weight="700" text-anchor="start">+L mm</text>
+<text x="1215" y="519.78" font-family="Arial, sans-serif" font-size="23" fill="#b73535" font-weight="700" text-anchor="start">−13 means RIGHT. A lens on the LEFT needs a positive value.</text>
+<text x="1215" y="559.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">*Height and forward distance are existing settings, not a new survey.</text>
+<text x="1215" y="590.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">If L measures 13 mm, enter +13; changing the sign shifts the model 26 mm.</text>
+<text x="1215" y="701.22" font-family="Arial, sans-serif" font-size="27" fill="#172b46" font-weight="700" text-anchor="start">SIDE VIEW · same scale · front ←</text>
+<polyline points="1230.00,955.00 2125.00,955.00" fill="none" stroke="#172b46" stroke-width="3"/>
+<rect x="1292.0" y="825.0" width="696.0" height="116.0" rx="22" fill="#e7edf4" stroke="#b3c1d0" stroke-width="2"/>
+<text x="1308" y="886.48" font-family="Arial, sans-serif" font-size="18" fill="#53657a" font-weight="400" text-anchor="start">Body side profile schematic</text>
+<ellipse cx="1640.0" cy="919.0" rx="36.0" ry="36.0" fill="#52657b" stroke="#52657b" stroke-width="2"/>
+<polyline points="1640.00,759.00 1640.00,970.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<rect x="1768.8" y="769.6" width="287.20000000000005" height="15.399999999999977" rx="6" fill="#d9ebfa" stroke="#176cbd" stroke-width="2"/>
+<ellipse cx="2040.0" cy="785.0" rx="6.0" ry="6.0" fill="white" stroke="#b73535" stroke-width="3"/>
+<polyline points="2040.00,800.00 2040.00,935.00" fill="none" stroke="#176cbd" stroke-width="3"/>
+<polygon points="2040.0,935.0 2045.0,923.0 2035.0,923.0" fill="#176cbd"/>
+<polyline points="2040.00,785.00 2120.00,785.00" fill="none" stroke="#9baabd" stroke-width="2" stroke-dasharray="8 7"/>
+<polyline points="2105.00,785.00 2105.00,955.00" fill="none" stroke="#b73535" stroke-width="2"/>
+<polygon points="2105,955.0 2110.0,943.0 2100.0,943.0" fill="#b73535"/>
+<polygon points="2105,785.0 2100.0,797.0 2110.0,797.0" fill="#b73535"/>
+<text x="1910" y="851.92" font-family="Arial, sans-serif" font-size="22" fill="#b73535" font-weight="700" text-anchor="start">1. H = 85 mm*</text>
+<text x="1745" y="752.92" font-family="Arial, sans-serif" font-size="22" fill="#176cbd" font-weight="700" text-anchor="start">Rear camera faces down</text>
+<text x="1215" y="1002.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">Height is lens center → floor; phone thickness 7.7 mm (nominal).</text>
+<text x="1215" y="1101.5" font-family="Arial, sans-serif" font-size="25" fill="#172b46" font-weight="700" text-anchor="start">LEFT / RIGHT ALWAYS REFER TO THE ROBOT</text>
+<text x="1215" y="1143.78" font-family="Arial, sans-serif" font-size="23" fill="#176cbd" font-weight="700" text-anchor="start">Outbound motion is backward: travel-left is robot-right.</text>
+<text x="1215" y="1181.06" font-family="Arial, sans-serif" font-size="21" fill="#53657a" font-weight="400" text-anchor="start">Your ~10 mm travel-left offset alone does not determine the lens correction.</text>
+<rect x="35" y="1250" width="2130" height="292" rx="18" fill="white" stroke="#d6dfea" stroke-width="2"/>
+<text x="65" y="1300.22" font-family="Arial, sans-serif" font-size="27" fill="#172b46" font-weight="700" text-anchor="start">WHAT IS SCALED — AND WHAT STILL NEEDS MEASURING</text>
+<text x="65" y="1342.78" font-family="Arial, sans-serif" font-size="23" fill="#176cbd" font-weight="700" text-anchor="start">Scaled geometry</text>
+<text x="65" y="1378.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Body Ø348 mm and wheel base 235 mm use current robot assumptions.</text>
+<text x="65" y="1414.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Phone outline 143.6 × 70.9 × 7.7 mm uses Apple’s nominal iPhone X size.</text>
+<text x="65" y="1450.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Lens −200 mm forward and 85 mm high reproduce the screenshot settings.</text>
+<text x="65" y="1486.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">No app, mount calibration or robot-control settings were changed.</text>
+<text x="1215" y="1342.78" font-family="Arial, sans-serif" font-size="23" fill="#16735d" font-weight="700" text-anchor="start">Illustrative geometry / next measurement</text>
+<text x="1215" y="1378.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Lens lateral distance L, lens-to-phone edges and carton placement</text>
+<text x="1215" y="1414.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">are provisional. Measure L from the centerline to the active lens.</text>
+<text x="1215" y="1450.92" font-family="Arial, sans-serif" font-size="22" fill="#53657a" font-weight="400" text-anchor="start">Phone top means the physical notch/camera end, not landscape UI.</text>
+<text x="1215" y="1485.2" font-family="Arial, sans-serif" font-size="20" fill="#53657a" font-weight="400" text-anchor="start">References: RoomBerry26b.png · RoomBerry.svg · GridRunner.png</text>
+<text x="2160" y="1567.62" font-family="Arial, sans-serif" font-size="17" fill="#53657a" font-weight="400" text-anchor="end">GroundHog / GridRunner mount review · 2026-11-04</text>
+</svg>

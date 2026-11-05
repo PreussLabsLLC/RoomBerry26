@@ -1,6 +1,6 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 3.1.posgate.1 2026/11/02 17:40:00
+# @(#)roomberry.py 3.1.grout.16 2026/11/05
 import xml.etree.ElementTree as ET
 import logging
 import traceback
@@ -231,6 +231,7 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                 max_dimension=camera_config.get('max_dimension', 0),
                 tag_size_m=camera_config['tag_size_m'],
                 camera_intrinsics=camera_intrinsics, logger=self.logger,
+                isolate_process=True,
             )
             if camera_config.get('pause_for_detection', False):
                 scan_pause = self.mission.scan_pause
@@ -482,7 +483,7 @@ class RoomberryHandler(BaseHTTPRequestHandler):
             
     def _mission_operation(self, operation, kwargs):
         """Mission commands belong to the coordinator, not the serial driver."""
-        operations = ('calibrate','cal','calibration','discovery','discover',
+        operations = ('restart_oi','step_left','step_right','step_forward','step_backward','step_forward_500','step_backward_500','clean','return_to_base','return_to_tag15','remote_control','gridrunner','grid','calibrate','cal','calibration','discovery','discover',
                       'idle','cancel_calibration','stop','emergency_stop')
         if operation not in operations:
             return False
@@ -499,8 +500,18 @@ class RoomberryHandler(BaseHTTPRequestHandler):
             raise RuntimeError('Calibration unavailable: autonomy is not configured'
                                if operation in ('calibrate','cal','calibration') else
                                'Mission unavailable: autonomy is not configured')
-        if operation in ('calibrate','cal','calibration'):
+        if operation == 'restart_oi':
+            mission.restart_oi()
+        elif operation.startswith('step_'):
+            mission.manual_step(operation[5:])
+        elif operation in ('calibrate','cal','calibration'):
             mission.start_calibration()
+        elif operation in ('gridrunner','grid'):
+            mission.start_gridrunner()
+        elif operation == 'return_to_tag15':
+            mission.return_to_tag15()
+        elif operation in ('clean','return_to_base','remote_control'):
+            mission.set_mode(operation)
         elif operation in ('discovery','discover'):
             if self.server.roomba_control.snapshot().get('oi_stopped') is True:
                 raise RuntimeError('OI is stopped; use restart_oi explicitly before discovery')
@@ -527,7 +538,7 @@ class RoomberryHandler(BaseHTTPRequestHandler):
             content_type = 'application/json'
         elif parsed.path == '/status.json':
             state = self.server.roomba_control.snapshot()
-            keys = ('firmware_version', 'firmware_release', 'age', 'ready', 'oi_stopped', 'sensor_fault', 'battery_status',
+            keys = ('control_version', 'wheel_size_adjustment', 'firmware_version', 'firmware_release', 'age', 'ready', 'oi_stopped', 'sensor_fault', 'battery_status',
                     'hard_hazard_reasons', 'button_diagnostics', 'reverse_current_monitor',
                     'applied_left_velocity_mm_s', 'applied_right_velocity_mm_s')
             status = {key: state.get(key) for key in keys}
@@ -576,7 +587,11 @@ class RoomberryHandler(BaseHTTPRequestHandler):
                     self.send_error(404, 'Mapping is not configured')
                     return
                 from roomberry_map_image import render_map
-                payload = render_map(self.server.mapper.snapshot(), self.server.map_tags_mm)
+                mission = getattr(self.server, 'mission', None)
+                run_map = None if mission is None else mission.status_snapshot().get('run_map')
+                caption = 'Estimated run trace; green cookies = visited' if run_map else None
+                payload = render_map(self.server.mapper.snapshot(), self.server.map_tags_mm,
+                                     caption=caption)
                 self.send_response(200)
                 self.send_header('Content-Type', 'image/png')
                 self.send_header('Content-Length', str(len(payload)))

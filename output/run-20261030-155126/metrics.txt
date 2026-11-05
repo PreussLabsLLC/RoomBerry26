@@ -1,0 +1,88 @@
+{
+  "records": 2551,
+  "valid_pose_packets": 2551,
+  "feature_median": 3.0,
+  "mount_yaw_deg": 92.51960338141974,
+  "yaw_fit_windows": 366,
+  "coverage": [
+    "15:51:26",
+    "15:55:41"
+  ],
+  "max_excess_receipt_delay_s": 5.542538404464722,
+  "battery_changes": [
+    {
+      "time": "15:51:26",
+      "level": 74,
+      "state": 2
+    },
+    {
+      "time": "15:51:38",
+      "level": 75,
+      "state": 2
+    },
+    {
+      "time": "15:52:38",
+      "level": 75,
+      "state": 1
+    },
+    {
+      "time": "15:53:39",
+      "level": 74,
+      "state": 1
+    },
+    {
+      "time": "15:53:50",
+      "level": 73,
+      "state": 1
+    },
+    {
+      "time": "15:54:21",
+      "level": 72,
+      "state": 1
+    },
+    {
+      "time": "15:55:02",
+      "level": 71,
+      "state": 1
+    },
+    {
+      "time": "15:55:11",
+      "level": 70,
+      "state": 1
+    },
+    {
+      "time": "15:55:22",
+      "level": 69,
+      "state": 1
+    },
+    {
+      "time": "15:55:32",
+      "level": 68,
+      "state": 1
+    }
+  ],
+  "stop_robot_xy_mm": [
+    1750.8228320014014,
+    202.8575679424307
+  ],
+  "stop_phone_xy_mm": [
+    1804.4284139815513,
+    555.2717417940272
+  ]
+}
+15:52:03 178 -1.5 feature 4 Stationary AprilTag scan requested: target_tag=1 stage=initial_scan view=None target_
+15:52:11 179 -1.6 feature 3 Discovery initial_scan: tags=[1] expected=1 surface=carpet note=expected tag visible;
+15:52:19 179 -0.6 feature 3 Stationary AprilTag scan requested: target_tag=1 stage=retreat_scan view=None target_
+15:52:28 0 -0.0 feature 4 Discovery retreat_scan: tags=[1] expected=1 surface=carpet note=expected tag visible 
+15:52:45 215 -10.9 feature 3 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_scan view=None t
+15:52:52 211 -9.3 feature 3 Discovery tag2_approach_scan: tags=[] expected=2 surface=carpet note=expected tag mis
+15:52:53 217 -8.0 feature 3 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_scan view=None t
+15:53:02 214 -7.5 feature 2 Discovery tag2_approach_scan: tags=[] expected=2 surface=carpet note=expected tag mis
+15:53:04 206 -9.8 feature 2 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_scan view=None t
+15:53:10 329 1.4 feature 2 Discovery tag2_approach_scan: tags=[2] expected=2 surface=carpet note=expected tag vi
+15:53:34 394 -11.6 feature 15 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach view=0 target_h
+15:54:01 287 0.5 feature 3 Discovery bumper contact during visit_approach: bump_left=False bump_right=True 
+15:54:01 287 0.5 feature 3 Discovery obstacle contact on the right; stage=visit_approach signals={'left': 0, 'fr
+15:54:04 300 0.3 feature 1 Stationary AprilTag scan requested: target_tag=16 stage=avoid_turn view=None target_h
+15:54:27 356 -11.2 feature 1 Discovery stop (next stationary robot pose)
+15:54:30 357 -11.2 feature 1 Stationary AprilTag scan requested: target_tag=None stage=visit_approach view=None ta

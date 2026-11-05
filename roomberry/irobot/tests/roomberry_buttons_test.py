@@ -1,10 +1,10 @@
-# @(#)roomberry_buttons_test.py 2.3.10 2026/10/28 17:00:00
+# @(#)roomberry_buttons_test.py 3.1.grout.2 2026/11/04 11:00:00
 import logging
 import unittest
 from time import monotonic
 from types import SimpleNamespace
 
-from roomberry_control import RobotCommandArbiter
+from roomberry_control import RobotCommandArbiter, WHEEL_SIZE_ADJUSTMENT
 
 
 class RobotButtonSnapshotTest(unittest.TestCase):
@@ -39,8 +39,8 @@ class RobotButtonSnapshotTest(unittest.TestCase):
         control._poll_sensors()
 
         state = control.snapshot()
-        self.assertAlmostEqual(state["distance"], -1200.3, delta=1.0)
-        self.assertAlmostEqual(state["travelled_distance"], 1200.3, delta=1.0)
+        self.assertAlmostEqual(state["distance"], -1200.3*WHEEL_SIZE_ADJUSTMENT, delta=1.0)
+        self.assertAlmostEqual(state["travelled_distance"], 1200.3*WHEEL_SIZE_ADJUSTMENT, delta=1.0)
     def test_sensor_poll_latches_clock_and_counts_reverse_as_positive(self):
         logger = logging.getLogger("ButtonPollRobot")
         sensors = SimpleNamespace(
@@ -68,8 +68,8 @@ class RobotButtonSnapshotTest(unittest.TestCase):
             control._poll_sensors()
 
         state = control.snapshot()
-        self.assertEqual(state["distance"], -25)
-        self.assertEqual(state["travelled_distance"], 25)
+        self.assertAlmostEqual(state["distance"], -25*WHEEL_SIZE_ADJUSTMENT)
+        self.assertAlmostEqual(state["travelled_distance"], 25*WHEEL_SIZE_ADJUSTMENT)
         self.assertTrue(control.consume_clock_button_press())
         self.assertTrue(any("Clock button pressed" in line for line in captured.output))
     def test_clock_press_latch_is_consumed_once(self):

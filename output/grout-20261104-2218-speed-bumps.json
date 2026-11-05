@@ -1,0 +1,130 @@
+{
+  "timing": [
+    {
+      "attempt": 1,
+      "command_epoch": 1793859524.584,
+      "event_epoch": 1793859524.6788347,
+      "delay_ms": 94.83456611633301,
+      "bump_count": 2
+    },
+    {
+      "attempt": 2,
+      "command_epoch": 1793859547.912,
+      "event_epoch": 1793859552.7995036,
+      "delay_ms": 4887.503623962402,
+      "bump_count": 5
+    },
+    {
+      "attempt": 3,
+      "command_epoch": 1793859577.514,
+      "event_epoch": 1793859577.5970292,
+      "delay_ms": 83.02927017211914,
+      "bump_count": 7
+    },
+    {
+      "attempt": 4,
+      "command_epoch": 1793859597.867,
+      "event_epoch": 1793859597.9501061,
+      "delay_ms": 83.10604095458984,
+      "bump_count": 8
+    },
+    {
+      "attempt": 5,
+      "command_epoch": 1793859617.681,
+      "event_epoch": 1793859617.775656,
+      "delay_ms": 94.65599060058594,
+      "bump_count": 9
+    },
+    {
+      "attempt": 6,
+      "command_epoch": 1793859660.635,
+      "event_epoch": 1793859660.7361045,
+      "delay_ms": 101.1044979095459,
+      "bump_count": 10
+    }
+  ],
+  "event_peak_note": "First and final 150ms episode peaks retained separately",
+  "events": [
+    {
+      "count": 2,
+      "receipt_epoch": 1793859524.6799247,
+      "event_epoch": 1793859524.6788347,
+      "first_peak_g": 0.4258750658832272,
+      "peak_g": 0.565880508618514,
+      "ended_outbound": true,
+      "command_before_bump_mm_s": -149.5
+    },
+    {
+      "count": 3,
+      "receipt_epoch": 1793859541.652114,
+      "event_epoch": 1793859541.651006,
+      "first_peak_g": 0.2540435482156878,
+      "peak_g": 0.2540435482156878,
+      "ended_outbound": false,
+      "command_before_bump_mm_s": 0.0
+    },
+    {
+      "count": 4,
+      "receipt_epoch": 1793859547.8264227,
+      "event_epoch": 1793859547.8199677,
+      "first_peak_g": 0.3741982331902969,
+      "peak_g": 1.830547542993785,
+      "ended_outbound": false,
+      "command_before_bump_mm_s": 0.0
+    },
+    {
+      "count": 5,
+      "receipt_epoch": 1793859552.8005726,
+      "event_epoch": 1793859552.7995036,
+      "first_peak_g": 0.2891839000034416,
+      "peak_g": 0.2891839000034416,
+      "ended_outbound": true,
+      "command_before_bump_mm_s": -149.5
+    },
+    {
+      "count": 6,
+      "receipt_epoch": 1793859569.9357498,
+      "event_epoch": 1793859569.9345758,
+      "first_peak_g": 0.6336049011544462,
+      "peak_g": 0.9236998737782526,
+      "ended_outbound": false,
+      "command_before_bump_mm_s": 149.5
+    },
+    {
+      "count": 7,
+      "receipt_epoch": 1793859577.5982182,
+      "event_epoch": 1793859577.5970292,
+      "first_peak_g": 0.45642696856214915,
+      "peak_g": 0.45642696856214915,
+      "ended_outbound": true,
+      "command_before_bump_mm_s": -149.5
+    },
+    {
+      "count": 8,
+      "receipt_epoch": 1793859597.9512422,
+      "event_epoch": 1793859597.9501061,
+      "first_peak_g": 0.4024557245991878,
+      "peak_g": 0.4024557245991878,
+      "ended_outbound": true,
+      "command_before_bump_mm_s": -149.5
+    },
+    {
+      "count": 9,
+      "receipt_epoch": 1793859617.777153,
+      "event_epoch": 1793859617.775656,
+      "first_peak_g": 0.43826466766173977,
+      "peak_g": 0.43826466766173977,
+      "ended_outbound": true,
+      "command_before_bump_mm_s": -149.5
+    },
+    {
+      "count": 10,
+      "receipt_epoch": 1793859660.7411134,
+      "event_epoch": 1793859660.7361045,
+      "first_peak_g": 0.47365464577926714,
+      "peak_g": 0.47365464577926714,
+      "ended_outbound": true,
+      "command_before_bump_mm_s": -149.5
+    }
+  ]
+}

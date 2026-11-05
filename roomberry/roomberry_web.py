@@ -1,5 +1,5 @@
 """Read-only local dashboard data and a command index from the shipped driver."""
-# @(#)roomberry_web.py 3.1.overhead.2 2026/11/02 20:30:00
+# @(#)roomberry_web.py 3.1.grout.18 2026/11/05
 import ast
 from functools import lru_cache
 from pathlib import Path
@@ -21,6 +21,16 @@ def command_index():
     def add(group, name, url, description, mutates=False, aliases=()):
         commands.append(dict(group=group,name=name,url=url,description=description,
                              mutates=mutates,aliases=list(aliases),parameters=[]))
+    add('Mission','gridrunner','/roomba/?op=gridrunner','Reverse along grout; stop and confirm its end, then return through tag-15 scan checkpoints and front contact. Clock starts/cancels.',True,('grid',))
+    add('Mission','return_to_tag15','/roomba/?op=return_to_tag15','Stop the current mission, localize with mapped tags or a valid trace, and home to tag 15. No threshold run or phone stream required.',True)
+    for direction, amount in (('left','5 degrees'),('right','5 degrees'),
+                              ('forward','50 mm'),('backward','50 mm'),
+                              ('forward_500','500 mm'),('backward_500','500 mm')):
+        add('Steering pad','step_'+direction,'/roomba/?op=step_'+direction,
+            'Pause the mission and move '+direction.replace('_500','')+' by '+amount+' using wheel odometry, then stop.',True)
+    for mode in ('clean','return_to_base','remote_control'):
+        add('Mission',mode,'/roomba/?op='+mode,'Select '+mode+' mission mode.',True)
+    add('Roomba','reset','/roomba/?op=reset','Send the standard driver reset command (requires a responsive robot).',True)
     add('Mission','calibrate','/roomba/?op=calibrate','Run scan-free out-and-back calibration from manual alignment at tag 15.',True,('cal','calibration'))
     add('Mission','discovery','/roomba/?op=discovery','Start the surveyed landmark discovery route.',True,('discover',))
     add('Mission','idle','/roomba/?op=idle','Stop motion and return to idle.',True,('cancel_calibration',))

@@ -1,0 +1,6 @@
+event,pi_epoch_s,video_s,notes
+start,1793742395.2794745,14.979474544525146,application checkpoint
+turnaround,1793742474.031893,93.73189306259155,"phone impact, physical bumpers clear"
+finish,1793742554.2135015,173.91350150108337,application checkpoint
+first_forward_command,1793742475.2235131,94.923513174057,"command time, not physical motion onset"
+first_observed_both_physical_bumpers,1793742555.116,174.8159999847412,contact time bracketed by sensor polls; first observation after completion

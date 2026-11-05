@@ -1,0 +1,11 @@
+# Run 2026-10-30 19:37:20
+
+Camera capture/detection: 820 x 616. 16 full scans, averaging 3.463 s (range 3.107–3.869 s); detection averaged 1.513 s and image saving 0.634 s. Ten skipped-detection captures averaged 0.493 s. No full scan overlapped a sensor-poll failure. One write timeout occurred at 19:37:21, before the first scan.
+
+Phone: 3,332/3,332 packets had valid poses; no sequence discontinuities, tracking gaps, session changes or alignment changes. Median feature count 3. Maximum excess receipt delay 1.600 s. Comparison uses frame timestamps with minimum observed send/receipt offset, a fitted mounting yaw of 93.592 degrees, and the previously measured camera lever arm (145 mm rearward, 22 mm rightward). A fixed room transform is anchored at the retreat tag fix at 19:38:11. These are relative comparisons, not surveyed ground truth; robot poses are sparse and include tag corrections.
+
+Position disagreement: about 15 cm approaching tag 2, 17 cm after its fix, 25 cm at 19:39:04 and 35–36 cm late in the run. At 19:42:35, robot map position was (344, 651) mm and aligned phone axle position was (475, 985) mm: 359 mm apart. Latest logged pose heading difference was 0.3 degrees at 19:41:57; earlier late-run differences ranged about 3–11 degrees. Last accepted tag fix was at 19:39:08; localization age reached 199 s by 19:42:26.
+
+Blocked route: footprint rejection began at 19:39:25, followed by bounded exploration and localization searches. Repeated ten-second waits began at 19:41:57. Offline replay of the saved final map and final robot pose yields no path to (3100, 1450) mm. Removing three mapped obstacle cells within 500 mm restores a 37-cell path. This proves the local map caused this planner failure; it does not establish that the removed physical obstacles were absent.
+
+Recovery implementation: once per blocked-goal recovery, after bounded localization searches fail, clear mapped obstacle cells within 500 mm of the current localized pose, rebuild obstacle clearance, invalidate the route cache and replan on the next tick. Preserve distant map cells, room boundaries and live safety checks. If this retry also fails, existing stopped retry behavior remains. Mapper and mission suites: 139 tests pass. Not physically validated yet.

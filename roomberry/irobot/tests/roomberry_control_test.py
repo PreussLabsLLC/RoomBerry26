@@ -1,12 +1,13 @@
-# @(#)roomberry_control_test.py 2.3.13 2026/10/28 20:00:00
+# @(#)roomberry_control_test.py 3.1.grout.19 2026/11/05
 import csv
 import logging
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from threading import Event
+from threading import Event, Thread
 from time import monotonic, sleep
 from types import SimpleNamespace
+from unittest.mock import Mock, patch, call
 
 from irobot.openinterface.constants import DRIVE, MODES
 from roomberry_control import (
@@ -128,6 +129,60 @@ class FakeRobot:
 
 
 class RobotCommandArbiterTest(unittest.TestCase):
+    def test_wheel_size_factor_scales_encoder_translation_and_yaw(self):
+        from roomberry_control import WHEEL_SIZE_ADJUSTMENT
+        from irobot.openinterface.constants import ROBOT
+        control = RobotCommandArbiter(None, 0, logging.getLogger('scale'), robot=FakeRobot())
+        packet = SimpleNamespace(left_encoder_counts=65530, right_encoder_counts=65530)
+        self.assertEqual(control._odometry_deltas(packet), (0, 0))
+        packet.left_encoder_counts, packet.right_encoder_counts = 4, 14
+        distance, angle = control._odometry_deltas(packet)
+        factor = (4799-174)/4583.020565923183
+        self.assertAlmostEqual(WHEEL_SIZE_ADJUSTMENT, factor)
+        self.assertAlmostEqual(distance, 15*ROBOT.TICK_TO_DISTANCE*factor)
+        self.assertAlmostEqual(angle, 10*ROBOT.TICK_TO_DISTANCE*factor/235*180/3.141592653589793)
+
+    def test_blue_bump_led_latches_contact_and_clears_without_retriggering_held_bumper(self):
+        robot = FakeRobot()
+        robot.set_leds = Mock()
+        control = RobotCommandArbiter(None, 0, logging.getLogger('bump-led'), robot=robot)
+        control._poll_sensors()
+        robot.set_leds.assert_called_with(debris=False)
+        robot.packet.bumps_and_wheel_drops.bump_left = True
+        control._poll_sensors()
+        robot.set_leds.assert_called_with(debris=True)
+        robot.packet.bumps_and_wheel_drops.bump_left = False
+        control._poll_sensors()
+        self.assertTrue(control._bump_indicator)
+        control.set_bump_indicator(False)
+        control._poll_sensors()
+        robot.set_leds.assert_called_with(debris=False)
+        robot.packet.bumps_and_wheel_drops.bump_right = True
+        control._poll_sensors()
+        control.set_bump_indicator(False)
+        control._poll_sensors()
+        robot.set_leds.assert_called_with(debris=False)
+        self.assertFalse(control._bump_indicator)
+
+    def test_bump_light_expires_and_new_bump_restarts_timer(self):
+        robot=FakeRobot();robot.set_leds=Mock()
+        control=RobotCommandArbiter(None,0,logging.getLogger('bump-expiry'),robot=robot)
+        with patch('roomberry_control.monotonic',return_value=100.):
+            control.set_bump_indicator(True);control._update_bump_led()
+        robot.set_leds.assert_called_with(debris=True)
+        with patch('roomberry_control.monotonic',return_value=109.):
+            control._update_bump_led()
+            self.assertTrue(control._bump_indicator)
+            control.set_bump_indicator(True)
+        with patch('roomberry_control.monotonic',return_value=110.1):
+            control._update_bump_led()
+            self.assertTrue(control._bump_indicator)
+        with patch('roomberry_control.monotonic',return_value=119.):
+            control._update_bump_led()
+        robot.set_leds.assert_called_with(debris=False)
+        self.assertFalse(control._bump_indicator)
+        self.assertIsNone(control._bump_indicator_until)
+
     def setUp(self):
         self.robot = FakeRobot()
         self.controller = RobotCommandArbiter(
@@ -141,6 +196,39 @@ class RobotCommandArbiterTest(unittest.TestCase):
 
     def tearDown(self):
         self.controller.close()
+
+    def test_mode_transition_refreshes_cached_passive_sample_before_next_drive(self):
+        robot = FakeRobot()
+        robot.packet.oi_mode = MODES.PASSIVE
+        robot._change_mode = lambda mode: setattr(robot.packet, 'oi_mode', mode)
+        control = RobotCommandArbiter(None, 0, logging.getLogger('safe-transition'),
+                                      robot=robot, motion_ramp={'enabled':False})
+        control._sensors, control._sensor_time = robot.packet, monotonic()
+        control._startup_sensor_samples = STARTUP_SENSOR_SAMPLES
+        def command(operation, **kwargs):
+            c = dict(operation=operation, kwargs=kwargs, expires_at=monotonic()+5,
+                     result=[], done=Event())
+            control._run_command(c)
+            self.assertEqual(len(c['result']), 1, c['result'])
+        command('_change_mode', mode=MODES.SAFE)
+        self.assertGreater(robot.sensor_reads, 0)
+        self.assertEqual(control.snapshot()['sensors'].oi_mode, MODES.SAFE)
+        command('drive_direct', left_velocity=50, right_velocity=50)
+        self.assertIn(('drive_direct',50,50), robot.drive_commands)
+
+    def test_gridrunner_io_deadman_brakes_without_mission_ticks(self):
+        self.controller.execute('_change_mode',mode=2)
+        self.controller.begin_motion_lease(.15)
+        self.controller.execute('drive_direct',left_velocity=40,right_velocity=40)
+        self.assertTrue(self._wait_for(lambda:self.controller.snapshot()['motion_lease_expired']
+                                      and self.controller.snapshot()['applied_left_velocity_mm_s'] == 0))
+        self.assertEqual(self.controller.snapshot()['applied_left_velocity_mm_s'],0)
+        with self.assertRaisesRegex(RuntimeError,'lease expired'):
+            self.controller.renew_motion_lease()
+        with self.assertRaisesRegex(RuntimeError,'lease expired'):
+            self.controller.execute('drive_direct',left_velocity=40,right_velocity=40)
+        self.controller.end_motion_lease()
+        self.controller.execute('drive_direct',left_velocity=40,right_velocity=40)
 
     def test_polls_and_accumulates_signed_odometry(self):
         self.assertTrue(self._wait_for(lambda: self.robot.sensor_reads >= 2))
@@ -428,8 +516,8 @@ class WheelRampTest(unittest.TestCase):
         self.controller._poll_sensors()
         self.now = self.controller._ramp_time
 
-    def command(self, operation, **kwargs):
-        command = dict(operation=operation, kwargs=kwargs, result=[], done=Event(),
+    def command(self, operation, steps=False, **kwargs):
+        command = dict(operation=operation, kwargs=kwargs, steps=steps, result=[], done=Event(),
                        expires_at=monotonic()+5)
         self.controller._run_command(command)
         if len(command['result']) == 2:
@@ -441,6 +529,108 @@ class WheelRampTest(unittest.TestCase):
         for _ in range(count):
             self.now += dt
             self.controller._advance_ramp(self.now)
+
+    def test_grout_discrete_start_and_normal_stop(self):
+        with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
+            self.command('drive_direct', left_velocity=150, right_velocity=150, steps=True)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',30,30))
+            self.tick(3)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',30,30))
+            self.tick(2)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',150,150))
+            stop = self.command('soft_stop')
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',30,30))
+            self.assertFalse(stop['done'].is_set())
+            self.tick(3)
+            self.assertFalse(stop['done'].is_set())
+            self.tick(2)
+            self.assertTrue(stop['done'].is_set())
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',0,0))
+
+    def test_grout_pending_step_retunes_without_extending_dwell(self):
+        with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
+            self.command('drive_direct', left_velocity=-150, right_velocity=-150, steps=True)
+            deadline = self.controller._step_until
+            self.tick(2)
+            self.command('drive_direct', left_velocity=-160, right_velocity=-140, steps=True)
+            self.assertEqual(self.controller._step_until, deadline)
+            self.tick(3)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-140,-160))
+
+    def test_emergency_stop_cancels_pending_acceleration(self):
+        self.command('drive_direct', left_velocity=150, right_velocity=150, steps=True)
+        self.command('stop')
+        self.tick(10)
+        self.assertFalse(self.controller._speed_steps)
+        self.assertEqual(self.robot.drive_commands[-1][1], 0)
+
+    def test_speed_window_uses_event_time_not_late_processing(self):
+        with patch('roomberry_control.monotonic', return_value=100.):
+            self.controller._record_wheel_change((30,30))
+        health = dict(received_monotonic=100.4,send_us=2000000,bump_us=1700000)
+        hit=self.controller.phone_bump_speed_change(health)
+        self.assertAlmostEqual(hit['delay_ms'],100.)
+        health['bump_us']=1800000  # Event was 200 ms after the change.
+        self.assertIsNone(self.controller.phone_bump_speed_change(health))
+        health['bump_us']=1500000  # Event preceded the command.
+        self.assertIsNone(self.controller.phone_bump_speed_change(health))
+
+    def test_duplicate_wheel_command_does_not_extend_bump_window(self):
+        with patch('roomberry_control.monotonic', return_value=100.):
+            self.controller._record_wheel_change((30,30))
+        with patch('roomberry_control.monotonic', return_value=100.2):
+            self.controller._record_wheel_change((30,30))
+        self.assertEqual(len(self.controller._wheel_changes),1)
+        self.assertIsNone(self.controller.phone_bump_speed_change(dict(received_monotonic=100.21)))
+
+    def test_mode_display_refreshes_after_firmware_clears_it(self):
+        self.robot.set_ascii_leds=Mock()
+        self.controller.set_drive_display('gridrunner', scanning=True)
+        with patch('roomberry_control.monotonic', return_value=100.):
+            self.controller._update_drive_display(self.robot.packet)
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(self.robot.set_ascii_leds.call_count,1)
+        with patch('roomberry_control.monotonic', return_value=101.01):
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(self.robot.set_ascii_leds.call_count,2)
+        self.assertEqual(''.join(chr(v) for v in self.robot.set_ascii_leds.call_args.kwargs.values()),'SCAN')
+        self.controller.set_drive_display('remote_control', scanning=True)
+        self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(self.controller._drive_display,'rEM ')
+        self.assertEqual(''.join(chr(v) for v in self.robot.set_ascii_leds.call_args.kwargs.values()), 'SCAN')
+        self.controller.set_scan_active(False)
+        self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(''.join(chr(v) for v in self.robot.set_ascii_leds.call_args.kwargs.values()), 'rEM ')
+        self.controller.set_scan_active(True)
+        self.controller.set_drive_display('gridrunner')
+        self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(''.join(chr(v) for v in self.robot.set_ascii_leds.call_args.kwargs.values()), 'SCAN')
+
+    def test_beep_mode_transitions_force_mode_display_rewrite(self):
+        self.robot.packet.oi_mode = MODES.PASSIVE
+        self.robot._change_mode = lambda mode:setattr(self.robot.packet,'oi_mode',mode)
+        modes=[]
+        self.robot.set_ascii_leds=lambda **kwargs:modes.append(self.robot.packet.oi_mode)
+        self.controller._last_drive_display=(MODES.PASSIVE,'IdLE')
+        self.controller._display_written_at=monotonic()
+        with patch('roomberry_control.sleep'):
+            command=self.command('_feedback_beep', notes=[[79,1]])
+        self.assertEqual(len(command['result']),1)
+        self.assertEqual(modes,[MODES.SAFE,MODES.PASSIVE])
+
+    def test_direct_speed_changes_bypass_ramp_and_keep_owner_state_consistent(self):
+        for speed in (150, 30, 150):
+            command = dict(operation='drive_direct', kwargs=dict(left_velocity=speed, right_velocity=speed),
+                           ramp=False, result=[], done=Event(), expires_at=monotonic()+5)
+            self.controller._run_command(command)
+            self.assertEqual(len(command['result']), 1)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct', speed, speed))
+            self.assertEqual(self.controller._ramp_current, (speed, speed))
+            count = len(self.robot.drive_commands)
+            self.tick(2)
+            self.assertEqual(len(self.robot.drive_commands), count)
+        self.command('stop')
+        self.assertEqual(self.controller._ramp_current, (0, 0))
 
     def test_start_and_stop_follow_limits_and_stop_waits_for_zero(self):
         self.command('drive_straight', velocity=50)

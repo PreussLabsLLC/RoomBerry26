@@ -1,4 +1,4 @@
-# @(#)roomberry_startup_test.py 2.3.14 2026/10/28 20:30:00
+# @(#)roomberry_startup_test.py 3.1.grout.19 2026/10/28 20:30:00
 """Serial startup checks without robot hardware."""
 import importlib.util
 import itertools
@@ -36,6 +36,27 @@ class StartupTest(unittest.TestCase):
         self.assertEqual(identity['firmware_version'], 'r3_robot/tags/release-3.2.6:4975 CLEAN')
         self.assertEqual(identity['firmware_release'], '3.2.6')
         connection.__exit__.assert_called_once()
+
+    def test_startup_logs_first_80_characters_even_when_version_is_unknown(self):
+        import roomberry_startup as startup
+        connection = Mock()
+        connection.__enter__ = Mock(return_value=connection)
+        connection.__exit__ = Mock(return_value=False)
+        payload = b'boot\x00unrecognized\r\n' + b'x'*100 + b'\xff\x01END\n'
+        chunks = iter([payload])
+        connection.read.side_effect = lambda size: next(chunks, b'')
+        ticks = itertools.count(0, .25)
+        logger = Mock()
+        with patch.object(startup, 'sleep'), \
+                patch.object(startup, 'monotonic', side_effect=lambda: next(ticks)):
+            identity = startup.reset_and_identify('/fake', logger,
+                serial_factory=Mock(return_value=connection))
+        logger.info.assert_any_call('Roomba startup read, first 80 characters: %r',
+                                    payload.decode(errors='replace')[:80])
+        self.assertIsNone(identity['firmware_release'])
+        logger.info.assert_any_call('Roomba startup read, full text (binary removed):\n%s',
+                                    'bootunrecognized\r\n' + 'x'*100 + 'END\n')
+        self.assertEqual(logger.info.call_args_list[-3].args[1], payload.decode(errors='replace')[:80])
 
     def test_utility_preserves_identity_and_unknown_is_explicit(self):
         utility = load_module('version_utility', ROOT / 'utils/version.py')
@@ -137,7 +158,7 @@ class StartupTest(unittest.TestCase):
         for mode, stage, scan, label in [
                 ('idle', None, False, 'IdLE'),
                 ('discovery', 'wall_follow', False, 'WALL'),
-                ('discovery', 'wall_follow', True, 'SCAn'),
+                ('discovery', 'wall_follow', True, 'SCAN'),
                 ('discovery', 'avoid_back', False, 'bACK'),
                 ('discovery', 'dock_approach', False, 'HOME'),
                 ('remote_control', None, False, 'rEM ')]:

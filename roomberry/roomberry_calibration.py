@@ -1,9 +1,9 @@
-"""Scan-free threshold out-and-back with GroundHog heading feedback."""
-# @(#)roomberry_calibration.py 3.1.threshold.2 2026/11/03 09:20:00
+"""Scan-free threshold out-and-back following the initial GroundHog line."""
+# @(#)roomberry_calibration.py 3.1.line.1 2026/11/03 14:30:00
 
 import json
 import os
-from math import cos, sin, hypot, isfinite, pi
+from math import atan2, cos, sin, hypot, isfinite, pi
 from time import monotonic, time
 
 
@@ -18,12 +18,24 @@ MIN_MOVE_SPEED_MM_S = 25
 HEADING_LIMIT_RAD = 0.30
 HEADING_GAIN = 4.0
 MAX_STEERING = 0.35
+LINE_LOOKAHEAD_MM = 600.0
+MAX_LINE_HEADING_RAD = 0.10
 PHONE_RECEIPT_MAX_AGE_S = 1.0
 PHONE_FRAME_MAX_AGE_US = 500000
 
 
+def line_heading_target(lateral_mm, direction):
+    """Face toward y=0 looking ahead along travel; direction is +1/-1.
+
+    In reverse a positive heading moves the robot right, so the heading
+    target must reverse sign while the original reference line stays fixed.
+    """
+    target = -direction * atan2(lateral_mm, LINE_LOOKAHEAD_MM)
+    return max(-MAX_LINE_HEADING_RAD, min(MAX_LINE_HEADING_RAD, target))
+
+
 class CalibrationDrive:
-    """A local-frame experiment: wheel distance and GroundHog heading control."""
+    """Wheel endpoints with GroundHog heading and lateral line feedback."""
     def __init__(self, mission):
         self.mission = mission
         self.stage = 'phone_anchor'
@@ -228,6 +240,8 @@ class CalibrationDrive:
         record = dict(checkpoint=label, wall_time=time(), monotonic_s=monotonic(), captured_at=captured_at,
                       frame='local start: x forward, y left', distance_target_mm=self.distance_mm,
                       turnaround_reason=self.turnaround_reason,
+                      line_control=dict(lookahead_mm=LINE_LOOKAHEAD_MM,
+                                        max_target_heading_rad=MAX_LINE_HEADING_RAD),
                       phone_bumps=[dict(event) for event in self.phone_bumps],
                       target_reverse_mm=self.distance_mm if label == 'turnaround' else 0,
                       wheel_distance_from_start_mm=distance,
@@ -288,8 +302,7 @@ class CalibrationDrive:
         if phone is None:
             self.abort(reason)
             return
-        error = self.mission._wrap(-phone['heading_rad'])
-        if abs(error) > HEADING_LIMIT_RAD or abs(self.wheels['heading_rad']) > HEADING_LIMIT_RAD:
+        if abs(phone['heading_rad']) > HEADING_LIMIT_RAD or abs(self.wheels['heading_rad']) > HEADING_LIMIT_RAD:
             self.abort('heading drift exceeds straight calibration envelope')
             return
         if self.stage == 'turnaround':
@@ -319,11 +332,15 @@ class CalibrationDrive:
         elif now-self.progress_at > 3:
             self.abort('no wheel progress for three seconds')
             return
-        steering = max(-MAX_STEERING, min(MAX_STEERING, error*HEADING_GAIN)) * (1 if speed > 0 else -1)
+        direction = 1 if speed > 0 else -1
+        target_heading = line_heading_target(phone['y_mm'], direction)
+        error = self.mission._wrap(target_heading-phone['heading_rad'])
+        steering = max(-MAX_STEERING, min(MAX_STEERING, error*HEADING_GAIN)) * direction
         self.mission.logger.info('Calibration sample: %s', json.dumps(dict(
             wall_time=time(), monotonic_s=now, stage=self.stage,
             wheel_distance_from_start_mm=distance-self.origin['distance'],
             wheels_pose=dict(self.wheels), iphone_pose=phone,
+            cross_track_mm=phone['y_mm'], target_heading_rad=target_heading,
             heading_error_rad=error, velocity_mm_s=speed, steering=steering,
             right_velocity_mm_s=int(speed*(1+steering)),
             left_velocity_mm_s=int(speed*(1-steering))), sort_keys=True, allow_nan=False))

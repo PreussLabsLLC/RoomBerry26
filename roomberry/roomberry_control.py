@@ -1,7 +1,8 @@
 """Single-owner Roomba command and sensor-polling service."""
-# @(#)roomberry_control.py 3.1.cal.1 2026/10/31 12:30:00
+# @(#)roomberry_control.py 3.1.grout.19 2026/11/05
 
 from math import isfinite
+from collections import deque
 from roomberry_reverse_monitor import ReverseCurrentMonitor
 from roomberry_startup import reset_and_identify
 from queue import Empty, Queue
@@ -21,6 +22,11 @@ CRITICAL_BATTERY_LEVEL = 0.1
 PERFORMANCE_LOG_INTERVAL = 10.0
 ROBOT_CONNECT_RETRY_INITIAL_SECONDS = 5
 ROBOT_CONNECT_RETRY_MAX_SECONDS = 30
+# Provisional Nov 3 reference: (4799 - body radius 174) / 4583.020565923183.
+WHEEL_SIZE_ADJUSTMENT = 4625.0 / 4583.020565923183
+CONTROL_VERSION = '3.1.grout.19'
+SPEED_STEP_SECONDS = .2
+PHONE_BUMP_QUIET_SECONDS = .15
 # Keep operation LEDs lit long enough to see after a brief sensor trigger.
 LED_HOLD_SECONDS = 2.0
 # The Create 2 light-bumper contact bits assert only at close range, but the
@@ -51,6 +57,12 @@ class RobotCommandArbiter:
         self._reverse_monitor = ReverseCurrentMonitor(logger, reverse_current_monitor)
         self._sensor_fault = None
         self._applied_wheels = (0, 0)
+        self._motion_lease_deadline = None
+        self._motion_lease_expired = False
+        self._bump_indicator = False
+        self._bump_indicator_until = None
+        self._last_bump_led = None
+        self._last_bumper_contact = False
         self._button_state = dict(schedule=False, clock=False)
         self._button_diagnostics = dict(source='unread', group_mask=0, dedicated_mask=None, held_s=0.0)
         self._button_changed_at = monotonic()
@@ -104,6 +116,13 @@ class RobotCommandArbiter:
         self._battery_status = 'unknown'
         self._drive_display = 'IdLE'
         self._last_drive_display = None
+        self._display_written_at = -float('inf')
+        self._speed_steps = False
+        self._step_target = (0, 0)
+        self._step_until = None
+        self._wheel_change_lock = Lock()
+        self._wheel_changes = deque(maxlen=256)
+        self._last_commanded_wheels = (0, 0)
         self._operation_indicators_active = False
         self._last_scheduling_leds = None
         self._scheduling_led_hold_until = [0.0] * 7
@@ -188,13 +207,48 @@ class RobotCommandArbiter:
                             'Unable to close Roomba sensor recording.'
                         )
 
-    def execute(self, operation, timeout=5, **kwargs):
+    def begin_motion_lease(self, duration=.6):
+        """Opt-in GridRunner deadman; explicit mode entry starts a new lease."""
+        if not isfinite(duration) or not .05 <= duration <= 1:
+            raise ValueError('Motion lease must be 0.05–1 second')
+        with self._state_lock:
+            self._motion_lease_deadline = monotonic()+duration
+            self._motion_lease_expired = False
+
+    def renew_motion_lease(self, duration=.6):
+        if not isfinite(duration) or not .05 <= duration <= 1:
+            raise ValueError('Motion lease must be 0.05–1 second')
+        with self._state_lock:
+            if (self._motion_lease_expired or self._motion_lease_deadline is None
+                    or monotonic() >= self._motion_lease_deadline):
+                raise RuntimeError('GridRunner motion lease expired')
+            self._motion_lease_deadline = monotonic()+duration
+
+    def end_motion_lease(self):
+        with self._state_lock:
+            self._motion_lease_deadline = None
+            self._motion_lease_expired = False
+
+    def _check_motion_lease(self):
+        with self._state_lock:
+            expired = self._motion_lease_deadline is not None and monotonic() >= self._motion_lease_deadline
+            if expired:
+                self._motion_lease_deadline = None
+                self._motion_lease_expired = True
+        if expired:
+            self.logger.warning('GridRunner I/O motion lease expired; braking independently of mission loop.')
+            self._brake()
+        return self._motion_lease_expired
+
+    def execute(self, operation, timeout=5, ramp=True, steps=False, **kwargs):
         """Run a legacy operation on the I/O thread and return its result."""
         if not operation or (operation.startswith('_') and operation not in ('_change_mode', '_feedback_beep')):
             raise ValueError('Invalid Roomba operation')
 
         command = {
             'operation': operation,
+            'ramp': bool(ramp),
+            'steps': bool(steps),
             'kwargs': kwargs,
             'result': [],
             'done': Event(),
@@ -211,11 +265,15 @@ class RobotCommandArbiter:
         with self._state_lock:
             age = None if self._sensor_time is None else monotonic() - self._sensor_time
             return {
+                'sensor_monotonic_s': self._sensor_time,
                 'firmware_version': getattr(self.robot, 'boot_firmware_version', None),
                 'firmware_release': getattr(self.robot, 'firmware_release', None),
+                'control_version': CONTROL_VERSION,
+                'wheel_size_adjustment': WHEEL_SIZE_ADJUSTMENT,
                 'sensors': self._sensors,
                 'distance': self._distance,
                 'travelled_distance': self._travelled_distance,
+                'motion_lease_expired': self._motion_lease_expired,
                 'angle': self._angle,
                 'odometry_epoch': self._odometry_epoch,
                 'age': age,
@@ -289,11 +347,13 @@ class RobotCommandArbiter:
         permitted so a scan can always be interrupted safely.
         """
         self._scan_active = bool(active)
+        if not active:
+            self._display_scan_requested = False
 
     def set_drive_display(self, mode, stage=None, scanning=False):
         """Publish a display label; only the I/O owner writes the serial port."""
         label = {'idle': 'IdLE', 'discovery': 'dISC', 'clean': 'CLn ',
-                 'return_to_base': 'HOME', 'remote_control': 'rEM ', 'calibration': 'CAL '}.get(mode, 'IdLE')
+                 'return_to_base': 'HOME', 'remote_control': 'rEM ', 'calibration': 'CAL ', 'gridrunner': 'GRID'}.get(mode, 'IdLE')
         if mode == 'discovery':
             if stage == 'bump':
                 label = 'bUMP'
@@ -305,12 +365,14 @@ class RobotCommandArbiter:
                 label = 'bACK'
             elif stage == 'avoid_turn':
                 label = 'turn'
-        self._drive_display = 'SCAn' if scanning and mode != 'calibration' else label
+        self._drive_display = label
+        self._display_scan_requested = bool(scanning)
 
     def _update_drive_display(self, sensors):
-        label = self._drive_display
+        label = 'SCAN' if self._scan_active or getattr(self, '_display_scan_requested', False) else self._drive_display
         key = (sensors.oi_mode, label)
-        if self._wheel_drop_stopped or key == self._last_drive_display:
+        if self._wheel_drop_stopped or (key == self._last_drive_display and
+                                       monotonic()-self._display_written_at < 1.):
             return
         display = getattr(self.robot, 'set_ascii_leds', None)
         if not callable(display):
@@ -319,8 +381,32 @@ class RobotCommandArbiter:
             display(**{'char' + str(i + 1): ord(char)
                        for i, char in enumerate(label)})
             self._last_drive_display = key
+            self._display_written_at = monotonic()
         except Exception:
             self.logger.exception('Unable to update drive-mode display.')
+
+    def set_bump_indicator(self, active):
+        """Show the latest bump for ten seconds; I/O owner writes hardware."""
+        with self._state_lock:
+            self._bump_indicator = bool(active)
+            self._bump_indicator_until = monotonic()+10. if active else None
+
+    def _update_bump_led(self):
+        with self._state_lock:
+            if self._bump_indicator_until is not None and monotonic() >= self._bump_indicator_until:
+                self._bump_indicator = False
+                self._bump_indicator_until = None
+            active = self._bump_indicator
+        if active == self._last_bump_led:
+            return
+        setter = getattr(self.robot, 'set_leds', None)
+        if not callable(setter):
+            return
+        try:
+            setter(debris=active)
+            self._last_bump_led = active
+        except Exception:
+            self.logger.exception('Unable to update blue bump LED.')
 
     def _update_operation_leds(self, sensors):
         active = self._operation_indicators_active
@@ -379,6 +465,7 @@ class RobotCommandArbiter:
             except Empty:
                 command = None
 
+            self._check_motion_lease()
             if command is not None:
                 self._run_command(command)
 
@@ -448,6 +535,11 @@ class RobotCommandArbiter:
             if operation == 'soft_stop':
                 if command['kwargs']:
                     raise ValueError('Soft stop takes no arguments')
+                if self._speed_steps:
+                    command['ramp_deferred'] = True
+                    self._ramp_stops.append(command)
+                    self._request_speed_step((0, 0))
+                    return
                 if self._ramp_enabled and self._ramp_current != (0.0, 0.0):
                     self._ramp_target = (0.0, 0.0)
                     command['ramp_deferred'] = True
@@ -467,6 +559,7 @@ class RobotCommandArbiter:
                     if passive_feedback:
                         self._brake()
                         self.robot._change_mode(MODES.SAFE)  # Driver verifies packet 35.
+                        self._last_drive_display = None
                         # Passive firmware may ignore display writes: refresh in Safe.
                         self._update_drive_display(self.robot)
                     self.robot.set_song(song_number=BUTTON_BEEP_SONG,
@@ -478,6 +571,8 @@ class RobotCommandArbiter:
                 finally:
                     if passive_feedback:
                         self.robot._change_mode(MODES.PASSIVE)
+                        self._last_drive_display = None
+                        self._update_drive_display(self.robot)
             elif operation == '_change_mode':
                 if set(command['kwargs']) != {'mode'}:
                     raise ValueError('Mode change requires only a mode value')
@@ -492,17 +587,30 @@ class RobotCommandArbiter:
                             sensors.bumps_and_wheel_drops.wheel_drop_right):
                         raise RuntimeError('Cannot rearm after wheel drop until fresh grounded sensors arrive')
                 self._brake()
+                self._update_bump_led()  # Clear a mode's latch before leaving Safe.
                 result = self.robot._change_mode(mode)
+                self._last_drive_display = None
+                self._last_bump_led = None  # Firmware may reset LEDs on OI changes.
                 self._wheel_drop_stopped = False
+                # Authorize the next motion against a fresh mode packet rather
+                # than the Passive sample cached before this transition.
+                self._poll_sensors()
             else:
                 if operation in ('set_song', 'play_song') and self.robot.oi_mode != MODES.SAFE:
                     raise RuntimeError('Feedback requires Safe mode; refusing to rearm for a beep')
                 wheels = self._wheel_target(operation, command['kwargs'])
                 if operation in MOTION_OPERATIONS:
                     self._check_motion_allowed(operation, command['kwargs'])
-                if self._ramp_enabled and wheels is not None:
-                    if self._ramp_stops and wheels != (0.0, 0.0):
-                        raise RuntimeError('Motion rejected while a soft stop is finishing')
+                if wheels is not None and self._ramp_stops and wheels != (0.0, 0.0):
+                    raise RuntimeError('Motion rejected while a soft stop is finishing')
+                if wheels is not None and command.get('steps', False):
+                    self._request_speed_step(wheels)
+                    command['result'].append(None)
+                    return
+                direct_wheels = wheels is not None and not command.get('ramp', True)
+                if direct_wheels:
+                    self._cancel_ramp()
+                if self._ramp_enabled and wheels is not None and not direct_wheels:
                     if self._ramp_current == self._ramp_target == (0.0, 0.0):
                         self._ramp_time = monotonic()
                     self._ramp_target = wheels
@@ -521,6 +629,11 @@ class RobotCommandArbiter:
                 result = method(**command['kwargs'])
                 if wheels is not None:
                     self._applied_wheels = tuple(int(v) for v in wheels)
+                    self._record_wheel_change(self._applied_wheels)
+                    if direct_wheels:
+                        self._ramp_current = self._ramp_target = tuple(wheels)
+                        self._ramp_sent = self._applied_wheels
+                        self._ramp_time = monotonic()
                 elif operation in ('drive_pwm', 'clean', 'clean_max', 'clean_spot', 'seek_dock'):
                     self._applied_wheels = None
             command['result'].append(result)
@@ -541,6 +654,8 @@ class RobotCommandArbiter:
         if self._is_zero_motion(operation, kwargs):
             self._recovery_active = False
             return
+        if self._check_motion_lease():
+            raise RuntimeError('Motion rejected because GridRunner motion lease expired')
         if self._sensor_fault:
             raise RuntimeError('Motion rejected because the latest sensor poll failed')
         if self._wheel_drop_stopped:
@@ -619,7 +734,8 @@ class RobotCommandArbiter:
         left_count = getattr(sensors, 'left_encoder_counts', None)
         right_count = getattr(sensors, 'right_encoder_counts', None)
         if left_count is None or right_count is None:
-            return float(sensors.distance), float(sensors.angle)
+            return (float(sensors.distance) * WHEEL_SIZE_ADJUSTMENT,
+                    float(sensors.angle) * WHEEL_SIZE_ADJUSTMENT)
 
         counts = (int(left_count) & 0xFFFF, int(right_count) & 0xFFFF)
         previous = self._last_encoder_counts
@@ -635,8 +751,8 @@ class RobotCommandArbiter:
         if max(abs(left_delta), abs(right_delta)) > 4096:
             return 0.0, 0.0
 
-        left_mm = left_delta * ROBOT.TICK_TO_DISTANCE
-        right_mm = right_delta * ROBOT.TICK_TO_DISTANCE
+        left_mm = left_delta * ROBOT.TICK_TO_DISTANCE * WHEEL_SIZE_ADJUSTMENT
+        right_mm = right_delta * ROBOT.TICK_TO_DISTANCE * WHEEL_SIZE_ADJUSTMENT
         distance_mm = (left_mm + right_mm) / 2.0
         angle_degrees = (
             (right_mm - left_mm) / ROBOT.WHEEL_BASE * 180.0 / 3.141592653589793
@@ -709,6 +825,10 @@ class RobotCommandArbiter:
             sensors = self.robot.sensor_group100
             self._validate_sensors(sensors)
             drops = sensors.bumps_and_wheel_drops
+            contact = bool(drops.bump_left or drops.bump_right)
+            if contact and not self._last_bumper_contact:
+                self.set_bump_indicator(True)
+            self._last_bumper_contact = contact
             if (self._startup_sensor_samples + 1 >= STARTUP_SENSOR_SAMPLES and
                     (drops.wheel_drop_left or drops.wheel_drop_right) and
                     not self._wheel_drop_stopped):
@@ -742,6 +862,7 @@ class RobotCommandArbiter:
                 self._last_clock_pressed = clock_pressed
             self._sensor_fault = None
             if not self._wheel_drop_stopped:
+                self._update_bump_led()
                 self._update_operation_leds(sensors)
                 self._update_drive_display(sensors)
             self._startup_sensor_samples += 1
@@ -974,16 +1095,89 @@ class RobotCommandArbiter:
                 command['result'].append(error)
             command['done'].set()
 
+    def _record_wheel_change(self, wheels):
+        wheels = tuple(int(v) for v in wheels)
+        with self._wheel_change_lock:
+            if wheels != self._last_commanded_wheels:
+                self._wheel_changes.append(dict(at=monotonic(), before=self._last_commanded_wheels,
+                                                after=wheels))
+                self._last_commanded_wheels = wheels
+
+    def phone_bump_speed_change(self, health):
+        """Match event time, not delayed processing time, to actual wheel writes."""
+        event = health.get('received_monotonic', monotonic())
+        send, bump = health.get('send_us'), health.get('bump_us')
+        if isinstance(send, (int, float)) and isinstance(bump, (int, float)) and 0 < bump <= send:
+            event -= (send-bump)/1e6
+        with self._wheel_change_lock:
+            changes = list(self._wheel_changes)
+        for change in reversed(changes):
+            if 0 <= event-change['at'] < PHONE_BUMP_QUIET_SECONDS:
+                return dict(change, event_at=event, delay_ms=1000*(event-change['at']))
+        return None
+
+    def _request_speed_step(self, wheels):
+        if not self._speed_steps:
+            current = self._applied_wheels or (0, 0)
+            self._cancel_ramp()
+            self._applied_wheels = current
+            self._speed_steps = True
+        self._step_target = tuple(int(v) for v in wheels)
+        if self._step_until is None:
+            self._apply_speed_step(monotonic())
+
+    def _apply_speed_step(self, now):
+        current, target = self._applied_wheels, self._step_target
+        reverse = any(a*b < 0 for a,b in zip(current, target))
+        fast_current = max(abs(v) for v in current) > 30
+        fast_target = max(abs(v) for v in target) > 30
+        def low(values):
+            return tuple(30 if v > 0 else -30 if v < 0 else 0 for v in values)
+        if reverse:
+            sent = low(current) if fast_current else (0, 0)
+        elif fast_current and target == (0, 0):
+            sent = low(current)
+        elif current == (0, 0) and fast_target:
+            sent = low(target)
+        else:
+            sent = target
+        if sent != current:
+            self.robot.drive_direct(right_velocity=sent[1], left_velocity=sent[0])
+            self._record_wheel_change(sent)
+            self._applied_wheels = sent
+            self._ramp_current = self._ramp_target = sent
+            self._ramp_sent = sent
+            self.logger.info('Grout speed step: left=%d right=%d target_left=%d target_right=%d',
+                             *sent, *target)
+        if sent != target:
+            self._step_until = now+SPEED_STEP_SECONDS
+        elif sent == (0, 0):
+            self._complete_ramp_stops()
+
     def _cancel_ramp(self):
+        self._speed_steps = False
+        self._step_until = None
         self._applied_wheels = (0, 0)
         self._ramp_current = self._ramp_target = (0.0, 0.0)
         self._ramp_sent = (0, 0)
         self._ramp_time = monotonic()
-        self.logger.log(5, 'Wheel ramp cancelled for immediate brake.')
+        self.logger.log(5, 'Wheel ramp cancelled.')
 
     def _advance_ramp(self, now=None):
         """One nonblocking I/O-thread step; poll safety between successive steps."""
         now = monotonic() if now is None else now
+        if self._speed_steps:
+            if self._step_until is not None and now >= self._step_until:
+                try:
+                    if any(now > c['expires_at'] for c in self._ramp_stops):
+                        raise RuntimeError('Stepped stop deadline reached')
+                    self._check_motion_allowed('drive_direct', dict(
+                        left_velocity=int(self._step_target[0]), right_velocity=int(self._step_target[1])))
+                    self._step_until = None
+                    self._apply_speed_step(now)
+                except Exception:
+                    self._brake()
+            return
         if not self._ramp_enabled or self._ramp_current == self._ramp_target:
             self._ramp_time = now
             self._complete_ramp_stops()
@@ -1020,6 +1214,7 @@ class RobotCommandArbiter:
             self.robot.drive_direct(right_velocity=sent[1], left_velocity=sent[0])
             self._ramp_sent = sent
             self._applied_wheels = sent
+            self._record_wheel_change(sent)
             self.logger.log(5, 'Wheel ramp applied: left=%d right=%d mm/s.', *sent)
         self._ramp_current = updated
         if updated == (0.0, 0.0):
@@ -1031,6 +1226,7 @@ class RobotCommandArbiter:
         try:
             if not self._wheel_drop_stopped:
                 result = self.robot.drive(0, DRIVE.STRAIGHT)
+                self._record_wheel_change((0, 0))
                 self.logger.log(5, 'Wheel ramp applied: left=0 right=0 mm/s (immediate brake).')
             else:
                 result = None

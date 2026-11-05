@@ -1,0 +1,34 @@
+{
+  "records": 2600,
+  "valid_pose_packets": 2588,
+  "feature_median": 4.0,
+  "mount_yaw_deg": 93.82442724022349,
+  "yaw_fit_windows": 540,
+  "coverage": [
+    "17:10:06",
+    "17:14:26"
+  ],
+  "max_excess_receipt_delay_s": 5.541184425354004,
+  "battery_changes": [
+    {
+      "time": "17:10:06",
+      "level": 89,
+      "state": 2
+    },
+    {
+      "time": "17:14:12",
+      "level": 90,
+      "state": 2
+    }
+  ],
+  "stop_robot_xy_mm": [
+    2059.3214142762536,
+    525.8503707819185
+  ],
+  "stop_phone_xy_mm": [
+    1649.5208918110038,
+    533.8372157158872
+  ],
+  "max_valid_axle_step_mm": 15.381556880627572,
+  "sequence_discontinuities": 0
+}

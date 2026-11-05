@@ -1,7 +1,8 @@
-# @(#)roomberry_mapper_test.py 2.3.recovery.1 2026/10/30 17:25:00
+# @(#)roomberry_mapper_test.py 3.1.grout.3 2026/11/04 11:45:00
 import json
 import os
 import unittest
+from unittest.mock import patch
 from math import atan2,hypot
 from tempfile import TemporaryDirectory
 
@@ -9,6 +10,28 @@ from roomberry_mapper import BLOCKED, RoomberryMapper
 
 
 class RoomberryMapperPersistenceTest(unittest.TestCase):
+    def test_coverage_checks_only_nearby_cells_and_can_defer_disk_io(self):
+        mapper = RoomberryMapper(104, 92, 174, cell_size_mm=87)
+        with patch.object(mapper, 'cell_center', wraps=mapper.cell_center) as centers, \
+                patch.object(mapper, '_persist') as persist:
+            mapper.update_pose(7556, 1237, 0, persist=False)
+            mapper.record_cleaned_sweep(7556, 1237, persist=False)
+        self.assertLessEqual(centers.call_count, 9)
+        persist.assert_not_called()
+        self.assertGreater(mapper.status()['mowed_cookies'], 0)
+
+    def test_bounded_coverage_matches_full_grid_reference_at_edges_and_large_radii(self):
+        for x, y, radius in ((0,0,120), (-80,150,174), (220,270,0), (3000,3000,30), (160,190,1000)):
+            mapper = RoomberryMapper(8, 9, 174, origin=(15,25), cell_size_mm=87)
+            expected = {(c,r) for r in range(mapper.rows) for c in range(mapper.cols)
+                        if hypot(mapper.cell_center((c,r))[0]-x,
+                                 mapper.cell_center((c,r))[1]-y) <= radius}
+            mapper.record_cleaned_sweep(x,y,radius_mm=radius,persist=False)
+            state = mapper.snapshot()
+            actual = {(c,r) for r in range(mapper.rows) for c in range(mapper.cols)
+                      if state['cookies'][r][c] == 'mowed'}
+            self.assertEqual(actual, expected)
+
     def setUp(self):
         self._temp = TemporaryDirectory()
         self.state_path = os.path.join(self._temp.name, "map-state.json")

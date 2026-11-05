@@ -1,0 +1,92 @@
+{
+  "records": 4727,
+  "valid_pose_packets": 4600,
+  "feature_median": 4.0,
+  "mount_yaw_deg": 92.79028890412744,
+  "yaw_fit_windows": 1355,
+  "coverage": [
+    "17:42:17",
+    "17:50:10"
+  ],
+  "max_excess_receipt_delay_s": 5.736161231994629,
+  "battery_changes": [
+    {
+      "time": "17:42:17",
+      "level": 97,
+      "state": 2
+    },
+    {
+      "time": "17:47:33",
+      "level": 98,
+      "state": 2
+    }
+  ],
+  "stop_robot_xy_mm": [
+    1799.527478203251,
+    1982.8071773100526
+  ],
+  "stop_phone_xy_mm": [
+    1788.8532448497851,
+    1983.862127529676
+  ],
+  "max_valid_axle_step_mm": 43.72246378261009,
+  "sequence_discontinuities": 0,
+  "tracking_gaps": [
+    {
+      "start": "17:47:28",
+      "end": "17:47:33",
+      "duration_s": 4.499803066253662,
+      "tracking": 1,
+      "reason": 3
+    },
+    {
+      "start": "17:47:42",
+      "end": "17:47:47",
+      "duration_s": 5.3997650146484375,
+      "tracking": 1,
+      "reason": 3
+    },
+    {
+      "start": "17:48:33",
+      "end": "17:48:34",
+      "duration_s": 1.4999349117279053,
+      "tracking": 1,
+      "reason": 3
+    },
+    {
+      "start": "17:48:42",
+      "end": "17:48:43",
+      "duration_s": 1.299942970275879,
+      "tracking": 1,
+      "reason": 3
+    }
+  ],
+  "sessions": 1,
+  "alignments": 1
+}
+17:42:50 111 1.6 feature 3 Idle AprilTag localization: 
+17:42:54 109 1.5 feature 3 Stationary AprilTag scan requested: target_tag=1 stage=initial_scan view=None target_
+17:43:01 108 1.7 feature 3 Discovery initial_scan: tags=[1] expected=1 surface=carpet note=expected tag visible;
+17:43:09 118 0.8 feature 13 Stationary AprilTag scan requested: target_tag=1 stage=retreat_scan view=None target_
+17:43:19 0 0.0 feature 3 Discovery retreat_scan: tags=[1] expected=1 surface=carpet note=expected tag visible 
+17:43:33 77 -8.6 feature 1 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_scan view=None t
+17:43:41 70 -6.3 feature 1 Discovery tag2_approach_scan: tags=[] expected=2 surface=carpet note=expected tag mis
+17:43:42 65 -6.2 feature 1 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_scan view=None t
+17:43:50 60 -3.4 feature 1 Discovery tag2_approach_scan: tags=[] expected=2 surface=carpet note=expected tag mis
+17:43:52 71 -10.0 feature 3 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_scan view=None t
+17:43:58 277 5.5 feature 3 Discovery tag2_approach_scan: tags=[2] expected=2 surface=carpet note=expected tag vi
+17:44:24 430 -18.0 feature 4 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach view=0 target_h
+17:47:09 760 5.6 feature 4 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:47:38 753 -14.4 feature 4 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:48:05 887 -16.3 feature 3 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach view=0 target_h
+17:48:14 885 -18.8 feature 3 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach view=0 target_h
+17:48:26 12 -6.9 feature 8 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=0 target_
+17:48:34 17 -10.5 feature 6 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=1 target_
+17:48:44 8 -1.0 feature 6 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=2 target_
+17:48:53 9 -6.9 feature 4 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:49:03 10 -6.9 feature 4 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:49:13 10 -7.1 feature 4 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:49:23 11 -7.0 feature 3 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:49:33 11 -7.1 feature 2 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:49:43 11 -7.2 feature 2 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ
+17:49:53 11 -7.1 feature 2 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach view=None targ

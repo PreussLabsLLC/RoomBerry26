@@ -1,0 +1,47 @@
+{
+  "battery_voltage_v": {
+    "min": 15.919,
+    "min_time": "2026-10-30T21:19:13.727",
+    "max": 17.673,
+    "max_time": "2026-10-30T21:12:09.709",
+    "median": 16.309
+  },
+  "battery_current_a": {
+    "min": -0.914,
+    "min_time": "2026-10-30T21:19:13.557",
+    "max": -0.016,
+    "max_time": "2026-10-30T21:12:11.146",
+    "median": -0.492
+  },
+  "battery_percent": {
+    "min": 90.8,
+    "min_time": "2026-10-30T21:19:15.850",
+    "max": 100.0,
+    "max_time": "2026-10-30T21:12:09.709",
+    "median": 92.0
+  },
+  "temperature_c": {
+    "min": 41.0,
+    "min_time": "2026-10-30T21:12:09.709",
+    "max": 42.0,
+    "max_time": "2026-10-30T21:13:02.664",
+    "median": 42.0
+  },
+  "left_motor_current_a": {
+    "min": -0.031,
+    "min_time": "2026-10-30T21:12:46.115",
+    "max": 0.798,
+    "max_time": "2026-10-30T21:16:21.658",
+    "median": 0.122
+  },
+  "right_motor_current_a": {
+    "min": -0.033,
+    "min_time": "2026-10-30T21:12:46.115",
+    "max": 0.797,
+    "max_time": "2026-10-30T21:19:13.557",
+    "median": 0.12
+  },
+  "sensor_poll_failures": 10,
+  "serial_write_timeout_tracebacks": 10,
+  "phone_valid_fraction": 0.9921386457030552
+}

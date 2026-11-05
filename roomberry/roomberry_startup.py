@@ -21,6 +21,10 @@ def reset_and_identify(port, logger, baud_rate=115200, serial_factory=None):
         while monotonic() < deadline:
             output.extend(connection.read(1024))
     text = output.decode('utf-8', errors='replace')
+    logger.info('Roomba startup read, first 80 characters: %r', text[:80])
+    clean_text = ''.join(chr(value) for value in output
+                         if 32 <= value <= 126 or value in (9, 10, 13))
+    logger.info('Roomba startup read, full text (binary removed):\n%s', clean_text)
     match = re.search(r'r3[_-]robot/tags/release-(\d+\.\d+\.\d+)[^\r\n]*', text)
     identity = dict(boot_message=text,
                     firmware_version=match.group(0) if match else None,

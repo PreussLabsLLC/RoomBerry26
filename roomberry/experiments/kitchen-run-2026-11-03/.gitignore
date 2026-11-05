@@ -1,0 +1,4 @@
+# @(#).gitignore 3.1.groundtruth.1 2026/11/03
+# Original 391 MiB recording remains a local input; see provenance.json.
+/IMG_0917.MOV
+/__pycache__/

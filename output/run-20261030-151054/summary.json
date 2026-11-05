@@ -1,0 +1,40 @@
+{
+  "records": 3101,
+  "mount_yaw_deg": 93.1869357537582,
+  "yaw_fit_intervals": 527,
+  "valid_pose_packets": 2298,
+  "invalid_pose_packets": 803,
+  "feature_median": 3.0,
+  "battery_changes": [
+    {
+      "time": "15:10:54",
+      "battery_pct": 82,
+      "battery_state": 1
+    },
+    {
+      "time": "15:10:59",
+      "battery_pct": 81,
+      "battery_state": 2
+    },
+    {
+      "time": "15:11:40",
+      "battery_pct": 82,
+      "battery_state": 2
+    },
+    {
+      "time": "15:13:03",
+      "battery_pct": 83,
+      "battery_state": 2
+    },
+    {
+      "time": "15:14:05",
+      "battery_pct": 83,
+      "battery_state": 1
+    }
+  ],
+  "coverage": [
+    "15:10:54",
+    "15:16:04"
+  ],
+  "extra_receipt_delay_max_s": 5.522164821624756
+}

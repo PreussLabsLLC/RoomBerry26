@@ -1,4 +1,4 @@
-# @(#)roomberry_mission_test.py 3.1.cal.1 2026/10/31 12:30:00
+# @(#)roomberry_mission_test.py 3.1.grout.4 2026/11/04 12:30:00
 import json
 import logging
 import unittest
@@ -285,7 +285,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual(self.mission._discovery_stage, "initial_scan")
         self.assertIsNotNone(self.mission._discovery_scan_time)
 
-    def test_clock_button_replaces_discovery_with_calibration(self):
+    def test_clock_button_replaces_discovery_with_gridrunner(self):
         self.mission.set_mode(MODE_DISCOVERY)
         self.mission._active_command = ('drive_straight', (('velocity', -50),))
         sensors = SimpleNamespace(
@@ -306,10 +306,10 @@ class RoomberryMissionTest(unittest.TestCase):
         with self.assertLogs(self.logger, level="INFO") as captured:
             self.mission._tick()
 
-        self.assertIn("starting tag 15 calibration", captured.output[-1])
-        self.assertEqual(self.mission._mode, MODE_CALIBRATION)
-        self.assertEqual(self.mission.calibration.stage, 'phone_anchor')
-        self.localizer.invalidate_pose.assert_called_once()
+        self.assertIn("starting GridRunner", captured.output[-1])
+        self.assertEqual(self.mission._mode, "gridrunner")
+        self.assertEqual(self.mission.gridrunner.stage, "waiting")
+        self.localizer.invalidate_pose.assert_called_once_with()
         self.robot.execute.assert_any_call("stop", timeout=2)
 
     def test_discovery_tick_preserves_start_travelled(self):
@@ -623,8 +623,8 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._shutdown.is_set.side_effect = [False, True]
         self.mission._run()
         self.assertTrue(self.mission._scan_active)
-        self.assertEqual(self.mission._mode, MODE_CALIBRATION)
-        self.assertEqual(self.mission.calibration.stage, 'phone_anchor')
+        self.assertEqual(self.mission._mode, MODE_IDLE)
+        self.assertIn('scan interrupted', self.mission.gridrunner.result['reason'])
 
     def test_clock_button_edge_beeps(self):
         sensors = self.discovery_sensors()
@@ -636,7 +636,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.mission._tick()
 
         self.robot.beep.assert_called_once_with(event='mode_change')
-        self.assertEqual(self.mission._mode, MODE_CALIBRATION)
+        self.assertEqual(self.mission._mode, "gridrunner")
 
     @staticmethod
     def _waypoint_action(waypoint=(1000.0, 0.0)):

@@ -1,0 +1,391 @@
+{
+  "start": 1793742395.2794745,
+  "turnaround": 1793742474.031893,
+  "finish": 1793742554.2135015,
+  "elapsed_s": 158.93402695655823,
+  "outbound_s": 78.7524185180664,
+  "return_elapsed_s": 80.18160843849182,
+  "motion_packets": 1590,
+  "valid_packets": 1590,
+  "continuities": [
+    "0"
+  ],
+  "reasons": {
+    "0": 1590
+  },
+  "accepted_frame_increment": 4768,
+  "rejected_frame_increment": 0,
+  "missing_motion_sequences": 0,
+  "processing_us": {
+    "min": 23126.0,
+    "median": 27932.0,
+    "max": 34710.0
+  },
+  "candidates": {
+    "min": 333.0,
+    "median": 439.0,
+    "max": 665.0
+  },
+  "inliers": {
+    "min": 323.0,
+    "median": 435.0,
+    "max": 665.0
+  },
+  "height_mm": {
+    "min": 85.0,
+    "median": 85.0,
+    "max": 85.0
+  },
+  "residual_mm": {
+    "min": 0.004405024461448193,
+    "median": 0.0856822095811367,
+    "max": 1.277061939239502
+  },
+  "cpu_pct": {
+    "min": 53.78874969482422,
+    "median": 55.87546920776367,
+    "max": 58.25371551513672
+  },
+  "battery_pct": {
+    "min": 74.0,
+    "median": 76.0,
+    "max": 78.0
+  },
+  "thermal_states": {
+    "0": 1591
+  },
+  "image_sizes": [
+    [
+      "480",
+      "640"
+    ]
+  ],
+  "frame_age_ms": {
+    "min": 66.171,
+    "median": 88.60849999999999,
+    "max": 110.193
+  },
+  "checkpoints": [
+    {
+      "bumper": {
+        "left": false,
+        "right": false
+      },
+      "captured_at": null,
+      "checkpoint": "start",
+      "distance_target_mm": 5000.0,
+      "frame": "local start: x forward, y left",
+      "iphone_minus_tag": null,
+      "iphone_minus_wheels": {
+        "distance_mm": 0.0,
+        "dx_mm": 0.0,
+        "dy_mm": 0.0,
+        "heading_rad": 0.0
+      },
+      "iphone_pose": {
+        "calibration": 10386551900723776980,
+        "continuity": 0,
+        "end_us": 3142287575,
+        "heading_rad": 0.0,
+        "seq": 1518,
+        "session": 13338831590178131288,
+        "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+        "x_mm": 0.0,
+        "y_mm": 0.0
+      },
+      "iphone_unavailable": null,
+      "monotonic_s": 338169.889524373,
+      "phone_bumps": [],
+      "tag_pose": null,
+      "tag_rejections": null,
+      "target_reverse_mm": 0,
+      "turnaround_reason": null,
+      "wall_time": 1793742395.2794745,
+      "wheel_distance_from_start_mm": 0.0,
+      "wheels_minus_tag": null,
+      "wheels_pose": {
+        "heading_rad": 0.0,
+        "x_mm": 0.0,
+        "y_mm": 0.0
+      }
+    },
+    {
+      "bumper": {
+        "left": false,
+        "right": false
+      },
+      "captured_at": null,
+      "checkpoint": "turnaround",
+      "distance_target_mm": 5000.0,
+      "frame": "local start: x forward, y left",
+      "iphone_minus_tag": null,
+      "iphone_minus_wheels": {
+        "distance_mm": 163.5767436640535,
+        "dx_mm": 156.57796090287775,
+        "dy_mm": -47.33596124757956,
+        "heading_rad": -0.014122359850904154
+      },
+      "iphone_pose": {
+        "calibration": 10386551900723776980,
+        "continuity": 0,
+        "end_us": 3221070864,
+        "heading_rad": 0.02371295914053917,
+        "seq": 2306,
+        "session": 13338831590178131288,
+        "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+        "x_mm": -4423.410552210906,
+        "y_mm": -99.79713742677332
+      },
+      "iphone_unavailable": null,
+      "monotonic_s": 338248.641944916,
+      "phone_bumps": [
+        {
+          "action": "threshold-stop",
+          "calibration": 10386551900723776980,
+          "count": 1,
+          "peak_mm_s2": 4617.44091796875,
+          "session": 13338831590178131288,
+          "stage": "reverse",
+          "wall_time": 1793742474.018104
+        }
+      ],
+      "tag_pose": null,
+      "tag_rejections": null,
+      "target_reverse_mm": 5000.0,
+      "turnaround_reason": "phone bump",
+      "wall_time": 1793742474.031893,
+      "wheel_distance_from_start_mm": -4583.020565923183,
+      "wheels_minus_tag": null,
+      "wheels_pose": {
+        "heading_rad": 0.03783531899144332,
+        "x_mm": -4579.9885131137835,
+        "y_mm": -52.46117617919376
+      }
+    },
+    {
+      "bumper": {
+        "left": false,
+        "right": false
+      },
+      "captured_at": null,
+      "checkpoint": "finish",
+      "distance_target_mm": 5000.0,
+      "frame": "local start: x forward, y left",
+      "iphone_minus_tag": null,
+      "iphone_minus_wheels": {
+        "distance_mm": 47.80037848026564,
+        "dx_mm": -27.165797607357895,
+        "dy_mm": -39.330593984997364,
+        "heading_rad": 0.00783522151300442
+      },
+      "iphone_pose": {
+        "calibration": 10386551900723776980,
+        "continuity": 0,
+        "end_us": 3301287299,
+        "heading_rad": 0.0021599236642941833,
+        "seq": 3108,
+        "session": 13338831590178131288,
+        "timing": "arrival freshness only; phone/Pi clocks unsynchronized",
+        "x_mm": -36.36657099926361,
+        "y_mm": -232.6805176846013
+      },
+      "iphone_unavailable": null,
+      "monotonic_s": 338328.823550479,
+      "phone_bumps": [
+        {
+          "action": "threshold-stop",
+          "calibration": 10386551900723776980,
+          "count": 1,
+          "peak_mm_s2": 4617.44091796875,
+          "session": 13338831590178131288,
+          "stage": "reverse",
+          "wall_time": 1793742474.018104
+        }
+      ],
+      "tag_pose": null,
+      "tag_rejections": null,
+      "target_reverse_mm": 0,
+      "turnaround_reason": "phone bump",
+      "wall_time": 1793742554.2135015,
+      "wheel_distance_from_start_mm": -9.558147460216448,
+      "wheels_minus_tag": null,
+      "wheels_pose": {
+        "heading_rad": -0.005675297848710237,
+        "x_mm": -9.200773391905713,
+        "y_mm": -193.34992369960395
+      }
+    }
+  ],
+  "segment_accepted_fps": 30.00634123103004,
+  "reverse": {
+    "samples": 388,
+    "max_steering": 0.25640439987182617,
+    "saturated_samples": 0,
+    "mean_steering": 0.05413120009677758,
+    "wheels_pose": {
+      "max_abs_heading_deg": 3.902047370533846,
+      "distance_weighted_heading_deg": 0.6559027780291214,
+      "dx_mm": -4579.9885131137835,
+      "dy_mm": -52.46117617919376,
+      "path_mm": 4583.020565923182,
+      "heading_predicted_dy_mm": -52.46117617919381,
+      "unexplained_dy_mm": 4.973799150320701e-14,
+      "net_motion_angle_deg": 0.6562620249391159
+    },
+    "iphone_pose": {
+      "max_abs_heading_deg": 3.6727224903100866,
+      "distance_weighted_heading_deg": 0.7568200407223548,
+      "dx_mm": -4423.410552210906,
+      "dy_mm": -99.79713742677332,
+      "path_mm": 4426.956026690748,
+      "heading_predicted_dy_mm": -58.45887613895459,
+      "unexplained_dy_mm": -41.33826128781873,
+      "net_motion_angle_deg": 1.2924382341931782
+    }
+  },
+  "return": {
+    "samples": 390,
+    "max_steering": 0.33771225810050964,
+    "saturated_samples": 0,
+    "mean_steering": 0.15655894628636396,
+    "wheels_pose": {
+      "max_abs_heading_deg": 4.44399839421895,
+      "distance_weighted_heading_deg": -1.7473396004802206,
+      "dx_mm": 4570.787739721878,
+      "dy_mm": -140.8887475204102,
+      "path_mm": 4593.467838089621,
+      "heading_predicted_dy_mm": -140.8937977752476,
+      "unexplained_dy_mm": 0.005050254837414059,
+      "net_motion_angle_deg": -1.7655108956253345
+    },
+    "iphone_pose": {
+      "max_abs_heading_deg": 4.837371769747987,
+      "distance_weighted_heading_deg": -2.2416574027715743,
+      "dx_mm": 4387.043981211642,
+      "dy_mm": -132.88338025782798,
+      "path_mm": 4410.14259158459,
+      "heading_predicted_dy_mm": -172.96235314078075,
+      "unexplained_dy_mm": 40.07897288295277,
+      "net_motion_angle_deg": -1.7349563182930399
+    }
+  },
+  "sensors": {
+    "rows": 1117,
+    "left_current_a": {
+      "min": 0.0,
+      "median": 0.106,
+      "max": 0.375
+    },
+    "right_current_a": {
+      "min": 0.0,
+      "median": 0.105,
+      "max": 0.293
+    },
+    "voltage_v": {
+      "min": 13.888,
+      "median": 13.943,
+      "max": 14.444
+    },
+    "hazards": {
+      "bump_left": 0,
+      "bump_right": 0,
+      "hard_hazard": 0,
+      "wheel_drop_left": 0,
+      "wheel_drop_right": 0,
+      "wheel_overcurrent_left": 0,
+      "wheel_overcurrent_right": 0
+    }
+  },
+  "finish_window": [
+    {
+      "timestamp": "2026-11-03T13:49:14.036",
+      "distance_mm": "-9.6",
+      "angle_deg": "-0.33",
+      "applied_left_velocity_mm_s": "25",
+      "applied_right_velocity_mm_s": "24",
+      "bump_left": "0",
+      "bump_right": "0",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:14.197",
+      "distance_mm": "-4.4",
+      "angle_deg": "-0.43",
+      "applied_left_velocity_mm_s": "25",
+      "applied_right_velocity_mm_s": "24",
+      "bump_left": "0",
+      "bump_right": "0",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:15.115",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:15.273",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:15.432",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:15.588",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:15.743",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:15.899",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    },
+    {
+      "timestamp": "2026-11-03T13:49:16.058",
+      "distance_mm": "-0.7",
+      "angle_deg": "-0.98",
+      "applied_left_velocity_mm_s": "0",
+      "applied_right_velocity_mm_s": "0",
+      "bump_left": "1",
+      "bump_right": "1",
+      "hard_hazard": "0"
+    }
+  ]
+}

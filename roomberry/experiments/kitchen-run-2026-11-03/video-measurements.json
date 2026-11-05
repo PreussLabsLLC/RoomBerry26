@@ -1,0 +1,405 @@
+[
+  {
+    "video_s": 0,
+    "visible": true,
+    "center": [
+      310.3341786261602,
+      -165.61084718535963
+    ],
+    "radius_mm": 184.88675940903386,
+    "axes_mm": [
+      385.80215468794347,
+      354.4108127900221
+    ],
+    "pixel": [
+      591.0,
+      235.5
+    ],
+    "bounds": [
+      503,
+      157,
+      679,
+      314
+    ],
+    "heading_proxy_deg": -0.4290757326970511,
+    "camera_shift_px": [
+      0.0,
+      0.0
+    ],
+    "camera_reference_patches": 18,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 20,
+    "visible": true,
+    "center": [
+      318.7919698666278,
+      82.98405107915613
+    ],
+    "radius_mm": 187.9476716415286,
+    "axes_mm": [
+      395.23366863921854,
+      357.50321977469974
+    ],
+    "pixel": [
+      587.0,
+      340.0
+    ],
+    "bounds": [
+      496,
+      255,
+      678,
+      425
+    ],
+    "heading_proxy_deg": -0.18359407063773,
+    "camera_shift_px": [
+      1.0,
+      0.0
+    ],
+    "camera_reference_patches": 17,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 30,
+    "visible": true,
+    "center": [
+      321.1506683786627,
+      682.6512321406519
+    ],
+    "radius_mm": 179.00291896293103,
+    "axes_mm": [
+      364.7493110737523,
+      351.38703788554386
+    ],
+    "pixel": [
+      564.0,
+      616.5
+    ],
+    "bounds": [
+      468,
+      527,
+      660,
+      706
+    ],
+    "heading_proxy_deg": -0.6892428160854938,
+    "camera_shift_px": [
+      1.0,
+      1.0
+    ],
+    "camera_reference_patches": 16,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 40,
+    "visible": true,
+    "center": [
+      325.028125526011,
+      1280.9534438562196
+    ],
+    "radius_mm": 174.99922999568255,
+    "axes_mm": [
+      356.3845617411927,
+      343.7267916371927
+    ],
+    "pixel": [
+      538.5,
+      932.5
+    ],
+    "bounds": [
+      438,
+      831,
+      639,
+      1034
+    ],
+    "heading_proxy_deg": -7.1824674683368075,
+    "camera_shift_px": [
+      1.0,
+      0.5
+    ],
+    "camera_reference_patches": 16,
+    "camera_patch_scatter_px": 0.5,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 50,
+    "visible": true,
+    "center": [
+      343.6583715680245,
+      1890.0258634968227
+    ],
+    "radius_mm": 178.00231668447225,
+    "axes_mm": [
+      359.30436749664403,
+      352.7352029232997
+    ],
+    "pixel": [
+      518.5,
+      1309.0
+    ],
+    "bounds": [
+      405,
+      1191,
+      632,
+      1427
+    ],
+    "heading_proxy_deg": -7.143944004633757,
+    "camera_shift_px": [
+      2.0,
+      1.0
+    ],
+    "camera_reference_patches": 17,
+    "camera_patch_scatter_px": 1.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 54,
+    "visible": true,
+    "center": [
+      360.51723520023467,
+      2128.9064384126373
+    ],
+    "radius_mm": 176.37922250444274,
+    "axes_mm": [
+      362.81170640555507,
+      342.98375253081855
+    ],
+    "pixel": [
+      515.5,
+      1474.5
+    ],
+    "bounds": [
+      397,
+      1352,
+      634,
+      1597
+    ],
+    "heading_proxy_deg": null,
+    "camera_shift_px": [
+      2.0,
+      1.0
+    ],
+    "camera_reference_patches": 18,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 136,
+    "visible": true,
+    "center": [
+      547.7782866423186,
+      2100.739179765878
+    ],
+    "radius_mm": 179.10801680912735,
+    "axes_mm": [
+      364.4837219977255,
+      352.05612486034516
+    ],
+    "pixel": [
+      639.5,
+      1466.0
+    ],
+    "bounds": [
+      522,
+      1340,
+      757,
+      1592
+    ],
+    "heading_proxy_deg": null,
+    "camera_shift_px": [
+      3.0,
+      0.0
+    ],
+    "camera_reference_patches": 18,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 140,
+    "visible": true,
+    "center": [
+      553.4393736229915,
+      1838.9568706867126
+    ],
+    "radius_mm": 182.52548444371715,
+    "axes_mm": [
+      374.4342470850278,
+      355.90283453797673
+    ],
+    "pixel": [
+      653.5,
+      1287.5
+    ],
+    "bounds": [
+      537,
+      1169,
+      770,
+      1406
+    ],
+    "heading_proxy_deg": -14.934860559805161,
+    "camera_shift_px": [
+      3.0,
+      0.0
+    ],
+    "camera_reference_patches": 17,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 150,
+    "visible": true,
+    "center": [
+      553.6140188951333,
+      1232.0628952478066
+    ],
+    "radius_mm": 177.76212586721732,
+    "axes_mm": [
+      366.5939214844464,
+      344.7888417230409
+    ],
+    "pixel": [
+      675.0,
+      917.5
+    ],
+    "bounds": [
+      570,
+      819,
+      780,
+      1016
+    ],
+    "heading_proxy_deg": -8.6442965255681,
+    "camera_shift_px": [
+      3.0,
+      0.0
+    ],
+    "camera_reference_patches": 17,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 160,
+    "visible": true,
+    "center": [
+      562.2109702524734,
+      643.5629034445983
+    ],
+    "radius_mm": 183.6589981204168,
+    "axes_mm": [
+      388.0030972145429,
+      347.7356529651021
+    ],
+    "pixel": [
+      697.5,
+      609.5
+    ],
+    "bounds": [
+      603,
+      515,
+      792,
+      704
+    ],
+    "heading_proxy_deg": -1.8099682880586534,
+    "camera_shift_px": [
+      3.0,
+      0.0
+    ],
+    "camera_reference_patches": 17,
+    "camera_patch_scatter_px": 0.0,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 170,
+    "visible": true,
+    "center": [
+      577.9954602566255,
+      43.75272486526789
+    ],
+    "radius_mm": 183.14549298887658,
+    "axes_mm": [
+      386.6800243957035,
+      346.9770299570855
+    ],
+    "pixel": [
+      721.5,
+      336.0
+    ],
+    "bounds": [
+      633,
+      254,
+      810,
+      418
+    ],
+    "heading_proxy_deg": -1.9344295013392407,
+    "camera_shift_px": [
+      3.5,
+      0.0
+    ],
+    "camera_reference_patches": 18,
+    "camera_patch_scatter_px": 0.5,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 175,
+    "visible": true,
+    "center": [
+      562.2279556489686,
+      -164.96991371297815
+    ],
+    "radius_mm": 185.38371981796928,
+    "axes_mm": [
+      390.28883026383653,
+      352.2224661189002
+    ],
+    "pixel": [
+      718.0,
+      248.0
+    ],
+    "bounds": [
+      630,
+      169,
+      806,
+      327
+    ],
+    "heading_proxy_deg": -2.0254247531451752,
+    "camera_shift_px": [
+      3.0,
+      0.0
+    ],
+    "camera_reference_patches": 18,
+    "camera_patch_scatter_px": 0.5,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  },
+  {
+    "video_s": 178,
+    "visible": true,
+    "center": [
+      563.2923545629505,
+      -163.92138354004027
+    ],
+    "radius_mm": 185.9374018384693,
+    "axes_mm": [
+      392.3548573289085,
+      352.46376341871894
+    ],
+    "pixel": [
+      719.0,
+      248.5
+    ],
+    "bounds": [
+      631,
+      169,
+      807,
+      328
+    ],
+    "heading_proxy_deg": -2.2123961416783295,
+    "camera_shift_px": [
+      3.5,
+      0.0
+    ],
+    "camera_reference_patches": 18,
+    "camera_patch_scatter_px": 0.5,
+    "method": "visually reviewed body ellipse projected onto floor; NOT height-corrected"
+  }
+]

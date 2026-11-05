@@ -1,4 +1,4 @@
-<!-- @(#)overhead-ground-truth.md 3.1.threshold.2 2026/11/03 09:20:00 -->
+<!-- @(#)overhead-ground-truth.md 3.1.grout.4 2026/11/04 12:30:00 -->
 # Overhead ground truth from the tile grid
 
 The kitchen floor is a metric reference: 1 ft (304.8 mm nominal) tiles with
@@ -60,7 +60,7 @@ occlude a scan.
 3. Let the robot sit still for about a second.
 4. Manually align the robot at tag 15 facing the tag, along the grout line.
    Calibration does not scan or verify this placement.
-5. Start GroundHog tracking and start calibration with Clock or the web control.
+5. Start GroundHog tracking and start calibration with the web Calibrate control.
    The robot captures a stationary local baseline, reverses at up to 50 mm/s until a new iPhone bump or the
    5000 mm wheel-distance limit, stops for one second, then drives forward to its starting
    wheel distance and stops. There are no tag scans, intermediate stops, turns,
@@ -85,25 +85,48 @@ The calibration status reports both configured values.
 Timer-driven camera captures and tag scans are currently disabled globally;
 `snapshot_interval` no longer schedules scans. Explicit scan requests remain
 available outside calibration. During calibration, Clock cancels the active
-run; release and press Clock again to start a fresh run from the current
-position. Realign at tag 15 before restarting if the robot has moved.
+run. Restart calibration through the web Calibrate control; Clock now starts
+GridRunner when no calibration is active. Realign at tag 15 before restarting
+calibration if the robot has moved.
 
-GroundHog relative heading drives a proportional steering correction (gain 4.0,
-limit 0.35). Wheel distance controls the endpoints; wheel and GroundHog positions
+GridRunner build 3.1.grout.4 now provides a separate continuous grout mission:
+slow through fresh line loss, reverse until a phone bump, then return forward
+with stationary tag 15 scans at 2/1.5/1/0.5 m and a checked front-bumper endpoint.
+Keep the phone app Reverse throughout. See
+[grout mission controls](grout-run-controls.md) for stages, bounds and operation.
+
+GroundHog lateral position now supplies a small target heading toward the
+original starting line (`y=0`). The look-ahead is 600 mm and target heading is
+limited to ±0.10 rad (5.7°). The target reverses sign for reverse travel;
+the reference line stays fixed through the turnaround and forward return.
+For example, 30 mm right of the line requests about -2.86° heading in reverse
+and +2.86° heading going forward. On the line, the target is the initial heading.
+The existing proportional heading correction retains gain 4.0 and steering
+limit 0.35. No integral or increased heading gain is added. This aims to reduce
+lateral drift but does not guarantee zero endpoint error with biased estimates.
+
+Wheel distance controls the endpoints; wheel and GroundHog positions
 remain separate estimates in a local frame with the origin at the start and +X
 along the initial robot heading. No world/tag position is inferred. GroundHog
 tracking loss or continuity changes abort the run, as do physical hazards and
-heading drift above 0.30 rad in either estimate. Clock cancels the run.
+absolute heading drift above 0.30 rad in either estimate, even when the desired
+heading is offset toward the line. Clock cancels the run. Update measured mount
+values in GroundHog before starting a fresh run; a calibration change during a
+run invalidates its continuity. The Pi consumes GroundHog's robot-center motion.
 
 `Calibration sample` JSON log entries record wall and monotonic times, wheel
-pose, GroundHog pose and frame sequence, heading error, steering, and wheel
+pose, GroundHog pose and frame sequence, `cross_track_mm`, `target_heading_rad`,
+heading error relative to that target, steering, and wheel
 velocity commands during travel. `Calibration checkpoint` entries include the turnaround reason (phone bump or
-distance limit) and mark start, turnaround, and finish for alignment with the overhead recording. The initial
-heading gain and steering limit require validation on the physical floor.
+distance limit), line-control limits, and start, turnaround, and finish for
+alignment with the overhead recording. Validate the new line correction on
+the physical floor, comparing lateral endpoint error with overhead truth.
 
 
-Do not turn during the calibration run. Turns add wheel scrub that contaminates
-the scale estimate. Run the whole sequence twice: once at 4K/30 and once at
+Avoid manual or in-place turns during the calibration run. Steering now makes
+small course corrections; compare the actual overhead path as well as endpoint
+displacement rather than assuming perfectly straight motion. Run the whole
+sequence twice: once at 4K/30 and once at
 4K/60, and compare. If the two disagree by more than 0.5 %, something in the
 setup moved.
 

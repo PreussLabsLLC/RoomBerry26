@@ -23,6 +23,71 @@ class DetectorWithoutPoseMethod:
         }]
 
 
+class GILHoldingDetector:
+    def detect(self, gray):
+        # Reproduce a native binding that holds the GIL throughout detection.
+        import ctypes
+        ctypes.PyDLL(None).usleep(800000)
+        return []
+
+
+class AprilTagProcessTest(unittest.TestCase):
+    def test_native_gil_hold_does_not_starve_sensor_polling(self):
+        import logging
+        from roomberry_control import RobotCommandArbiter
+        from roomberry_control_test import FakeRobot
+        from time import monotonic
+        class PollingRobot(FakeRobot):
+            def __init__(self):
+                super().__init__()
+                self.poll_times = []
+
+            @property
+            def sensor_group100(self):
+                self.poll_times.append(monotonic())
+                return super().sensor_group100
+
+        robot = PollingRobot()
+        control = RobotCommandArbiter(None, 0, logging.getLogger('isolated-detector'),
+                                      robot=robot, poll_interval=.02)
+        self.addCleanup(control.close)
+        control.start()
+        detector = AprilTagDetector(detector=GILHoldingDetector(), isolate_process=True)
+        self.addCleanup(detector.close)
+        before = robot.sensor_reads
+        self.assertEqual(detector.detect(np.zeros((24,32,3), dtype=np.uint8)), [])
+        self.assertGreater(robot.sensor_reads-before, 10)
+        self.assertLess(control.snapshot()['age'], .5)
+        self.assertLess(max(b-a for a,b in zip(robot.poll_times, robot.poll_times[1:])), .5)
+        self.assertGreaterEqual(detector.last_timings_ms['native_detect'], 750)
+
+    def test_process_preserves_pose_geometry_and_reuses_worker(self):
+        detector = AprilTagDetector(detector=DetectorWithoutPoseMethod(), isolate_process=True,
+                                    tag_size_m=.1, camera_intrinsics=(500,500,320,240))
+        self.addCleanup(detector.close)
+        pixels = np.zeros((480,640,3), dtype=np.uint8)
+        result = detector.detect(pixels)
+        pid = detector._process.pid
+        expected = AprilTagDetector(detector=DetectorWithoutPoseMethod(), tag_size_m=.1,
+                                    camera_intrinsics=(500,500,320,240)).detect(pixels)
+        again = detector.detect(pixels)
+        for detections in (result, expected, again):
+            for row in detections:
+                row.pop('pose_ms', None)
+        self.assertEqual(result, expected)
+        self.assertEqual(again, expected)
+        self.assertEqual(detector._process.pid, pid)
+
+    def test_timeout_terminates_worker_and_leaves_it_restartable(self):
+        detector = AprilTagDetector(detector=GILHoldingDetector(), isolate_process=True)
+        self.addCleanup(detector.close)
+        with patch('roomberry_camera.DETECTOR_TIMEOUT_SECONDS', .1):
+            with self.assertRaises(TimeoutError):
+                detector.detect(np.zeros((24,32,3), dtype=np.uint8))
+        self.assertIsNone(detector._process)
+        self.assertIsNone(detector._connection)
+
+
 class AprilTagPoseFallbackTest(unittest.TestCase):
     def test_native_binding_disables_internal_decimation(self):
         constructor = Mock()

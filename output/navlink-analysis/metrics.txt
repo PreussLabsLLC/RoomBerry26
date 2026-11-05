@@ -1,0 +1,63 @@
+inferred camera-to-forward yaw degrees -179.5349863706955 intervals 1092
+nav receipt coverage 13:13:56.042 13:20:09.600 records 3722
+estimated capture coverage 13:13:55.595 13:20:07.696
+excess receipt delay percentiles seconds [0.         0.0069859  3.30902363 4.54686552 5.26531076]
+alignment rotation degrees -133.67903183809585 anchor 13:14:39.062
+tracking [('2', '0', '111')]
+feature percentiles [ 1.  4. 30. 73.]
+z change mm -172.80075073242188
+battery endpoints 77.0 20.0
+phone send duration 372.099721
+receipt duration 373.55752873420715
+receipt gap 13:13:59.252 13:13:59.680 seconds 0.42821502685546875 send gap 0.100246 next intervals [0.00041294 0.00031829 0.0149529  0.06407332 0.08153582]
+receipt gap 13:14:21.648 13:14:26.010 seconds 4.362428665161133 send gap 0.099966 next intervals [0.00101924 0.00054383 0.00032806 0.00034881 0.00033116]
+receipt gap 13:14:32.748 13:14:36.974 seconds 4.226399183273315 send gap 0.099957 next intervals [0.00141788 0.00079322 0.01259375 0.00052714 0.00063181]
+receipt gap 13:14:50.548 13:14:55.636 seconds 5.087908506393433 send gap 0.099521 next intervals [0.00445819 0.0004847  0.00108814 0.00763011 0.00042081]
+receipt gap 13:15:16.460 13:15:19.114 seconds 2.6541192531585693 send gap 0.10001 next intervals [0.00090384 0.00038695 0.000319   0.0003159  0.00031519]
+receipt gap 13:15:45.460 13:15:50.541 seconds 5.08066463470459 send gap 0.099597 next intervals [0.00473785 0.00045729 0.00032687 0.00031781 0.00031519]
+receipt gap 13:16:15.157 13:16:19.557 seconds 4.399601221084595 send gap 0.09925 next intervals [0.00048518 0.00033522 0.00031996 0.00031686 0.000314  ]
+receipt gap 13:16:48.350 13:16:53.591 seconds 5.241128921508789 send gap 0.100574 next intervals [0.00088787 0.00038815 0.00032878 0.00037003 0.00033092]
+receipt gap 13:16:57.353 13:17:02.706 seconds 5.353000164031982 send gap 0.100694 next intervals [0.02200699 0.00053287 0.00035906 0.00032806 0.00031996]
+receipt gap 13:17:08.349 13:17:12.849 seconds 4.500787258148193 send gap 0.100015 next intervals [0.00169492 0.00165319 0.01478577 0.00050306 0.00037384]
+receipt gap 13:17:19.052 13:17:23.607 seconds 4.555351734161377 send gap 0.100039 next intervals [0.01582193 0.00076795 0.00038505 0.0003531  0.000314  ]
+receipt gap 13:17:47.948 13:17:53.163 seconds 5.214810848236084 send gap 0.100271 next intervals [0.00042582 0.00035095 0.00032902 0.00032115 0.00032306]
+receipt gap 13:18:21.646 13:18:26.531 seconds 4.885573387145996 send gap 0.09994 next intervals [0.00331211 0.00041294 0.00032306 0.00032592 0.00033879]
+receipt gap 13:18:30.254 13:18:35.203 seconds 4.949286937713623 send gap 0.100014 next intervals [0.00047588 0.00039434 0.00032687 0.000319   0.0003221 ]
+receipt gap 13:18:59.644 13:19:02.738 seconds 3.0943102836608887 send gap 0.100529 next intervals [0.00043988 0.00094724 0.00055766 0.00036216 0.00040388]
+receipt gap 13:19:50.055 13:19:53.151 seconds 3.095820188522339 send gap 0.100026 next intervals [0.00083089 0.00036597 0.00035214 0.00031781 0.00031614]
+receipt gap 13:19:58.144 13:19:59.721 seconds 1.5765399932861328 send gap 0.099946 next intervals [0.00043702 0.00045395 0.00032091 0.00031304 0.00031328]
+receipt gap 13:20:05.455 13:20:09.592 seconds 4.136790752410889 send gap 0.100013 next intervals [0.00083899 0.00038981 0.00032616 0.00031805 0.0003159 ]
+POSE COMPARISONS
+13:14:28.864 separation 1 heading diff -0.1 age 0.2 Idle AprilTag localization: 
+13:14:31.328 separation 2 heading diff 0.1 age 3.0 Stationary AprilTag scan requested: target_tag=1 stage=initial_scan vi
+13:14:39.062 separation 0 heading diff 0.0 age 0.0 Discovery initial_scan: tags=[1] expected=1 surface=carpet note=expect
+13:14:49.076 separation 154 heading diff -0.9 age 9.4 Stationary AprilTag scan requested: target_tag=1 stage=retreat_scan vi
+13:14:57.673 separation 224 heading diff 1.9 age 0.1 Discovery retreat_scan: tags=[1] expected=1 surface=carpet note=expect
+13:15:15.018 separation 310 heading diff 0.7 age 16.7 Stationary AprilTag scan requested: target_tag=2 stage=tag2_approach_s
+13:15:21.207 separation 155 heading diff 2.8 age 0.1 Discovery tag2_approach_scan: tags=[2] expected=2 surface=carpet note=
+13:15:44.008 separation 188 heading diff -5.8 age 22.2 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:16:13.728 separation 91 heading diff 1.4 age 19.8 Stationary AprilTag scan requested: target_tag=16 stage=visit_approach
+13:16:46.930 separation 244 heading diff -13.5 age 53.6 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:16:55.897 separation 251 heading diff -15.5 age 63.3 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:17:06.883 separation 307 heading diff -13.5 age 74.3 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:17:17.619 separation 256 heading diff -16.1 age 85.0 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:17:37.724 separation 646 heading diff -26.9 age 105.1 Discovery bumper contact during visit_approach: bump_left=False bump_r
+13:17:37.761 separation 645 heading diff -26.9 age 105.1 Discovery obstacle contact on the right; stage=visit_approach signals=
+13:17:46.505 separation 635 heading diff -26.0 age 111.1 Stationary AprilTag scan requested: target_tag=15 stage=visit_approach
+13:18:20.176 separation 358 heading diff -36.4 age 146.9 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:18:28.825 separation 371 heading diff -38.6 age 156.2 Stationary AprilTag scan requested: target_tag=1 stage=visit_approach 
+13:18:58.314 separation 753 heading diff -14.9 age 20.0 Stationary AprilTag scan requested: target_tag=15 stage=visit_approach
+13:19:20.856 separation 850 heading diff -7.3 age 43.5 Discovery bumper contact during visit_approach: bump_left=True bump_ri
+13:19:20.901 separation 850 heading diff -7.3 age 43.5 Discovery obstacle contact on the left; stage=visit_approach signals={
+13:19:35.680 separation 682 heading diff -6.5 age 58.3 Discovery obstacle contact on the right; stage=wall_follow signals={'l
+13:19:48.657 separation 808 heading diff -6.8 age 70.7 Stationary AprilTag scan requested: target_tag=15 stage=wall_follow vi
+13:19:56.879 separation 714 heading diff -8.7 age 79.5 Stationary AprilTag scan requested: target_tag=15 stage=wall_follow vi
+13:20:04.058 separation 841 heading diff -7.2 age 86.6 Stationary AprilTag scan requested: target_tag=15 stage=wall_follow vi
+INTERVALS: wheel distance, phone path, wheel yaw, phone yaw
+13:14:39 13:14:49 wheel signed -539 wheel absolute 539 phone path 491 phone displacement 383 wheel yaw -18.6 phone yaw -17.5 gyro yaw -15.7
+13:14:58 13:15:15 wheel signed 726 wheel absolute 754 phone path 892 phone displacement 620 wheel yaw -50.7 phone yaw -49.6 gyro yaw -52.4
+13:15:22 13:15:44 wheel signed 402 wheel absolute 781 phone path 1268 phone displacement 317 wheel yaw -236.8 phone yaw -227.5 gyro yaw -227.7
+13:15:54 13:16:13 wheel signed 1263 wheel absolute 1268 phone path 1452 phone displacement 1161 wheel yaw 36.2 phone yaw 38.9 gyro yaw 36.9
+13:16:14 13:16:46 wheel signed 1206 wheel absolute 1259 phone path 1355 phone displacement 1026 wheel yaw -183.9 phone yaw -167.9 gyro yaw -168.9
+13:18:39 13:18:58 wheel signed 985 wheel absolute 990 phone path 1147 phone displacement 797 wheel yaw 53.1 phone yaw 47.2 gyro yaw 49.5
+13:18:59 13:19:20 wheel signed 867 wheel absolute 868 phone path 945 phone displacement 689 wheel yaw 59.4 phone yaw 56.7 gyro yaw 54.5

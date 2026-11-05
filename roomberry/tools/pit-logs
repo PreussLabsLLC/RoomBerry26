@@ -1,0 +1,7 @@
+# @(#)sync-from-pi 2.3.map-log.1 2026/10/30 18:30:00
+
+set -x
+
+cd ..
+
+rsync -Lave ssh pi@pi:/home/pi/Projects/Roomberry/roomberry/output .

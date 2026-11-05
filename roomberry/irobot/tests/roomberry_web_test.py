@@ -1,4 +1,4 @@
-# @(#)roomberry_web_test.py 3.1.overhead.2 2026/11/02 20:30:00
+# @(#)roomberry_web_test.py 3.1.grout.16 2026/11/05
 """Local console routes, precise JSON identities and safe mission command routing."""
 import io
 import json
@@ -12,6 +12,35 @@ from roomberry_web import command_index, groundhog_snapshot
 
 
 class LocalConsoleTest(unittest.TestCase):
+    def test_restart_oi_uses_coordinator_and_button_is_present(self):
+        self.assertTrue(self.handler._mission_operation('restart_oi', {}))
+        self.handler.server.mission.restart_oi.assert_called_once_with()
+        self.handler.server.roomba_control.execute.assert_not_called()
+        self.handler.path = '/'
+        self.handler.do_GET()
+        self.assertIn('op=restart_oi', self.handler.wfile.getvalue().decode())
+
+    def test_steering_pad_commands_use_measured_mission_steps(self):
+        for direction in ('left','right','forward','backward','forward_500','backward_500'):
+            self.assertTrue(self.handler._mission_operation('step_'+direction, {}))
+            self.handler.server.mission.manual_step.assert_called_with(direction)
+        self.handler.server.roomba_control.execute.assert_not_called()
+        with self.assertRaises(ValueError):
+            self.handler._mission_operation('step_forward', {'distance': 500})
+
+    def test_return_to_tag15_routes_to_coordinator(self):
+        self.assertTrue(self.handler._mission_operation('return_to_tag15', {}))
+        self.handler.server.mission.return_to_tag15.assert_called_once_with()
+        self.handler.server.roomba_control.execute.assert_not_called()
+        self.assertTrue(any(c['name'] == 'return_to_tag15' for c in command_index()['commands']))
+
+    def test_reset_uses_driver_path_and_run_modes_use_mission(self):
+        self.assertFalse(self.handler._mission_operation('reset', {}))
+        self.handler.server.roomba_control.execute.assert_not_called()
+        for mode in ('clean', 'return_to_base', 'remote_control'):
+            self.assertTrue(self.handler._mission_operation(mode, {}))
+            self.handler.server.mission.set_mode.assert_called_with(mode)
+
     def setUp(self):
         self.handler=RoomberryHandler.__new__(RoomberryHandler)
         self.handler.server=SimpleNamespace(logger=Mock(),mission=Mock(),roomba_control=Mock(),navlink=None)

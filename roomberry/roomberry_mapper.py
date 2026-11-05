@@ -8,7 +8,7 @@ Coordinates are millimeters in a fixed room frame. The map origin is the lower
 left corner; heading is radians counter-clockwise from +X.
 """
 
-# @(#)roomberry_mapper.py 2.3.recovery.1 2026/10/30 17:25:00
+# @(#)roomberry_mapper.py 3.1.grout.3 2026/11/04 11:45:00
 from collections import deque
 from math import ceil, cos, hypot, floor, isfinite, sin
 from threading import Lock, RLock
@@ -200,7 +200,7 @@ class RoomberryMapper:
             self.origin_y + (row + 0.5) * self.cell_size_mm,
         )
 
-    def update_pose(self, x_mm, y_mm, heading_rad, localized=True):
+    def update_pose(self, x_mm, y_mm, heading_rad, localized=True, persist=True):
         """Set the latest fused pose. Unlocalized poses disable route planning."""
         cell = self.world_to_cell(x_mm, y_mm)
         recorded = False
@@ -218,7 +218,7 @@ class RoomberryMapper:
                     self._trail.append(pt)
                     self._dirty = True
                     recorded = True
-        if recorded: self._persist()
+        if recorded and persist: self._persist()
 
     def mark_obstacle(self, x_mm, y_mm, radius_mm=None):
         """Mark an observed obstacle point and optional physical radius."""
@@ -274,13 +274,19 @@ class RoomberryMapper:
         self._persist()
         return True
 
-    def record_cleaned_sweep(self, x_mm, y_mm, radius_mm=None):
+    def record_cleaned_sweep(self, x_mm, y_mm, radius_mm=None, persist=True):
         """Mark cookie targets covered by the vacuum's path as mowed."""
         radius = self.cleaning_radius_mm if radius_mm is None else max(0.0, float(radius_mm))
+        x_mm, y_mm = float(x_mm), float(y_mm)
+        # Visit only cells in the footprint's bounding box, not the whole room.
+        c0 = max(0, int(floor((x_mm-radius-self.origin_x)/self.cell_size_mm)))
+        c1 = min(self.cols-1, int(floor((x_mm+radius-self.origin_x)/self.cell_size_mm)))
+        r0 = max(0, int(floor((y_mm-radius-self.origin_y)/self.cell_size_mm)))
+        r1 = min(self.rows-1, int(floor((y_mm+radius-self.origin_y)/self.cell_size_mm)))
         changed = False
         with self._lock:
-            for row in range(self.rows):
-                for col in range(self.cols):
+            for row in range(r0, r1+1):
+                for col in range(c0, c1+1):
                     if self._cookies[row][col] != COOKIE_PENDING:
                         continue
                     cx, cy = self.cell_center((col, row))
@@ -289,7 +295,7 @@ class RoomberryMapper:
                         changed = True
             if changed:
                 self._dirty = True
-        if changed: self._persist()
+        if changed and persist: self._persist()
 
     def plan_next(self):
         """Return the next shortest-path waypoint, or None if no route is available.

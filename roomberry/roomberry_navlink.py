@@ -1,5 +1,7 @@
 """NavLink v1 UDP recorder for pose, relative motion and phone health observations."""
-# @(#)roomberry_navlink.py 3.1.compass.1 2026/10/31 12:10:00
+# @(#)roomberry_navlink.py 3.1.grid.1 2026/11/03 20:30:00
+
+from roomberry_gridrunner import GRID_FIELDS, decode_grid_packet
 
 import argparse
 import csv
@@ -169,13 +171,15 @@ def decode_compass_packet(data):
 
 
 def packet_fields(values):
-    return {1: FIELDS, 2: GROUND_FIELDS, 3: HEALTH_FIELDS, 4: COMPASS_FIELDS}[values[2]]
+    return {1: FIELDS, 2: GROUND_FIELDS, 3: HEALTH_FIELDS, 4: COMPASS_FIELDS, 5: GRID_FIELDS}[values[2]]
 
 
 def decode_packet(data):
     """Validate framing and representation; this does not qualify navigation."""
     if len(data) != PACKET.size:
         raise ValueError('length')
+    if data[5] == 5:
+        return decode_grid_packet(data)
     if data[5] == 2:
         return decode_ground_packet(data)
     if data[5] == 3:
@@ -245,9 +249,17 @@ class NavLinkReceiver:
         self._compass = None
         self._compass_identity = None
         self._compass_retired = []
+        self._grid = None
+        self._grid_identity = None
+        self._grid_seq = None
+        self._grid_retired = []
+        self._grid_clock_offset = None
 
     def _observe(self, values, received_at):
         """Keep ordered observations separately from the unfiltered recording."""
+        if values[2] == 5:
+            self._observe_grid(values, received_at)
+            return
         if values[2] == 4:
             self._observe_compass(values, received_at)
             return
@@ -273,6 +285,32 @@ class NavLinkReceiver:
             self._clock_offset = offset if self._clock_offset is None else min(self._clock_offset, offset)
             row['frame_monotonic'] = row['frame_us'] / 1e6 + self._clock_offset
             self._observation = row
+
+    def _observe_grid(self, values, received_at):
+        row = dict(zip(GRID_FIELDS,values))
+        identity = (row['session'],row['calibration'])
+        with self._observation_lock:
+            if identity in self._grid_retired:
+                return
+            if identity != self._grid_identity:
+                if self._grid_identity is not None:
+                    self._grid_retired.append(self._grid_identity)
+                    self._grid_retired = self._grid_retired[-32:]
+                self._grid_identity = identity
+                self._grid_seq = None
+                self._grid_clock_offset = None
+            if self._grid_seq is not None and not 0 < (row['seq']-self._grid_seq)&0xffffffff < 0x80000000:
+                return
+            self._grid_seq = row['seq']
+            offset = received_at-row['send_us']/1e6
+            self._grid_clock_offset = offset if self._grid_clock_offset is None else min(self._grid_clock_offset,offset)
+            row['received_monotonic'] = received_at
+            row['frame_monotonic'] = row['frame_us']/1e6+self._grid_clock_offset
+            self._grid = row
+
+    def latest_grid_observation(self):
+        with self._observation_lock:
+            return None if self._grid is None else dict(self._grid)
 
     def latest_observation(self):
         with self._observation_lock:
@@ -489,7 +527,7 @@ def export_csv(path, output):
     """Stream a binary recording to CSV; tolerate an incomplete final record."""
     writer = csv.writer(output)
     columns = list(FIELDS[4:-1]) + ['type']
-    for fields in (GROUND_FIELDS, HEALTH_FIELDS, COMPASS_FIELDS):
+    for fields in (GROUND_FIELDS, HEALTH_FIELDS, COMPASS_FIELDS, GRID_FIELDS):
         columns += [k for k in fields[4:] if k not in ('reserved', 'padding') and k not in columns]
     writer.writerow(('receive_epoch_ns', 'receive_monotonic_ns') + tuple(columns))
     with Path(path).open('rb') as source:

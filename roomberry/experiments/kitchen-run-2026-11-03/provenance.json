@@ -1,0 +1,17 @@
+{
+  "video": {
+    "filename": "IMG_0917.MOV",
+    "size_bytes": 409560264,
+    "sha256": "50538e44b44963a273a2909d05cb3f627a9091f388ee3a8197fb5ff1dd7706b4"
+  },
+  "sensors": {
+    "filename": "roomberry-sensors-20261103-134454.csv",
+    "size_bytes": 924555,
+    "sha256": "8572a54159b5447740570e073aec94740a2a6974385518c99fd973b14565a68e"
+  },
+  "navlink": {
+    "filename": "roomberry-navlink-20261103-134454-0000.bin",
+    "size_bytes": 1032496,
+    "sha256": "0f4f33520c87ea44cebe2a7e44ecc424eb6d74d5cfe7eb2e00ab1137058200c6"
+  }
+}

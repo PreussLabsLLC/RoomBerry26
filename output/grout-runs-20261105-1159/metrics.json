@@ -1,0 +1,53 @@
+[
+  {
+    "run": 1,
+    "start": "11:59:50",
+    "outbound_mm": 3103.447230575229,
+    "return_net_mm": 3155.0,
+    "closure_mm": 51.55276942477121,
+    "return_path_mm": 3163.1000000000004,
+    "threshold_sensor_mm": -3084.6,
+    "end_sensor_mm": 70.4,
+    "clearance_mm": 152.8,
+    "outbound_locked_samples": 151,
+    "outbound_samples": 154,
+    "checkpoints": 0,
+    "accepted_checkpoints": 0,
+    "scans": 18,
+    "scan_seconds": 94.83931461320026
+  },
+  {
+    "run": 2,
+    "start": "12:06:27",
+    "outbound_mm": 4530.561887670972,
+    "return_net_mm": 4563.7,
+    "closure_mm": 33.138112329027535,
+    "return_path_mm": 4566.1,
+    "threshold_sensor_mm": -4439.9,
+    "end_sensor_mm": 123.8,
+    "clearance_mm": 152.1,
+    "outbound_locked_samples": 217,
+    "outbound_samples": 217,
+    "checkpoints": 10,
+    "accepted_checkpoints": 2,
+    "scans": 15,
+    "scan_seconds": 69.62878395087318
+  },
+  {
+    "run": 3,
+    "start": "12:10:00",
+    "outbound_mm": 4570.041953632753,
+    "return_net_mm": 4600.7,
+    "closure_mm": 30.658046367247152,
+    "return_path_mm": 4601.199999999997,
+    "threshold_sensor_mm": -4426.9,
+    "end_sensor_mm": 173.8,
+    "clearance_mm": 152.5,
+    "outbound_locked_samples": 219,
+    "outbound_samples": 219,
+    "checkpoints": 7,
+    "accepted_checkpoints": 2,
+    "scans": 7,
+    "scan_seconds": 35.74918502103537
+  }
+]
