@@ -1126,3 +1126,8 @@ at know location. The run will span about 15.75 tiles or 4.799 m.
   Credential-pattern and file-size reviews clear;49 pending source files have
   one SCCS ID each. Source whitespace checks clear. Generated SVG/CSV whitespace
   retained as emitted. No robot deployment or motion performed.
+
+- Main check-in completed: local e852ff1; GitHub publication94af033 pushed to
+  PreussLabsLLC/RoomBerry26 main. A GridRunner-screen.PNG screenshot appeared
+  during final checks; reviewed and included in a follow-up asset commit in
+  both repositories. Main source validation remains555/555 tests passing.
