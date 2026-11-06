@@ -1,4 +1,4 @@
-// @(#)GridPacket.swift 3.1.grid.1 2026/11/03 20:30:00
+// @(#)GridPacket.swift 3.1.tiles.2 2026/11/05 17:30:00
 import Foundation
 
 struct GridPacket {
@@ -12,6 +12,8 @@ struct GridPacket {
     var sendUS: UInt64 = 0
     var detection = GridDetection()
     var config = GridConfiguration()
+    // Tile crossings occupy the 28-byte type-5 trailer; see encoded().
+    var crossing = GridCrossingState()
     var width: UInt16 = 480
     var height: UInt16 = 640
     func encoded() -> Data {
@@ -26,8 +28,20 @@ struct GridPacket {
         let values = [d.first.x,d.first.y,d.second.x,d.second.y,d.offset,d.angle,d.confidence,
                       flags & 1 != 0 ? d.correction : 0,config.gain,config.limit,config.leftMM,config.heightMM]
         for value in values { precondition(value.isFinite); put(Float(value).bitPattern) }
-        put(width); put(height); data.append(Data(repeating:0,count:28))
+        put(width); put(height)
+        // 28-byte crossing trailer, replacing the former reserved padding:
+        // magic, version, flags, count, last-crossing uptime us, band row,
+        // confidence, interval seconds. A legacy all-zero trailer stays valid.
+        let c = crossing
+        precondition(c.y.isFinite && c.confidence.isFinite && c.lastInterval.isFinite)
+        put(GridPacket.crossingMagic); put(GridPacket.crossingVersion)
+        put(UInt16(c.valid ? 1 : 0)); put(c.count)
+        put(c.count > 0 ? GroundPacket.us(c.lastCrossing) : 0)
+        put(Float(c.y).bitPattern); put(Float(c.confidence).bitPattern)
+        put(Float(c.lastInterval).bitPattern)
         precondition(data.count == 128)
         return data
     }
+    private static let crossingMagic: UInt8 = 0xc7
+    private static let crossingVersion: UInt8 = 1
 }

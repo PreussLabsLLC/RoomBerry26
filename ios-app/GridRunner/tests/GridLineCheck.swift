@@ -1,4 +1,4 @@
-// @(#)GridLineCheck.swift 3.1.grid.1 2026/11/03 20:30:00
+// @(#)GridLineCheck.swift 3.1.tiles.2 2026/11/05 17:30:00
 import Foundation
 import simd
 
@@ -46,7 +46,9 @@ import simd
         precondition(!detect(image(second:true)).valid)
         config.direction = -1
         var p=GridPacket();p.session=11;p.calibration=22;p.sequence=7;p.flags=3;p.reason=0
-        p.frameUS=1000000;p.sendUS=1010000;p.config=config;p.direction=config.direction;p.detection=detect(image())
+        p.frameUS=2900000;p.sendUS=3010000;p.config=config;p.direction=config.direction;p.detection=detect(image())
+        p.crossing.valid=true;p.crossing.count=3;p.crossing.lastCrossing=2.9
+        p.crossing.y=0.5012;p.crossing.confidence=0.97;p.crossing.lastInterval=3.06
         print(p.encoded().map { String(format:"%02x",$0) }.joined())
         print("offset, angle, both travel polarities, camera-centered mount compensation, transverse stripes, loss and ambiguity verified")
     }

@@ -1,5 +1,124 @@
-<!-- @(#)CAPTAINSLOG.md 3.1 2026/11/02 17:40:00 -->
+<!-- @(#)CAPTAINSLOG.md 3.1.tiles.6 2026/11/06 10:00:00 -->
 # Captains Log
+
+### November 6 short-outbound guard + confirm fixes (3.1.tiles.6)
+
+- Scan-free approach now requires outbound ≥1000 mm; zero-length re-runs
+  at the grout end stay in 'return' instead of aborting instantly on the
+  seeded (lying) range. Short-run return is bounded by outbound+5000 mm
+  travel without contact.
+- Line-end confirmation accepts 3 losses interleaved with good frames
+  (only 3 good frames cancel), fixing the 4528 mm 'could not be confirmed'
+  outbound fault.
+- Fresh GridDrive in an ongoing phone session re-baselines the crossing
+  count instead of logging missed=13 spans on re-run.
+- 70 gridrunner tests pass. Pi sync + restart pending; no iOS change.
+
+### November 6 scan-free return + speed steps (3.1.tiles.5 / 3.1.grout.20)
+
+- Return no longer scans checkpoints or seeks tag fixes: grout steering
+  drives home, front bumper ends the approach; line-loss/overtravel aborts.
+  `_scan`/`_scan_tick` remain for explicit Tag15Return recovery only. Map
+  flushing is on mode-exit/shutdown (`_flush_map`), so scan pauses were
+  never needed for SD writes. Explicit tag homing (`return_to_tag15`) is
+  unchanged.
+- Speeds pit-calibrated: slow/approach/pivot 30 → 40 mm/s (firmware floors
+  <~40), cruise 100, I/O steps now 0 → 40 → 70 → 100 (`roomberry_control`).
+  Launch tolerates a sleeping Roomba: waiting stage now waits up to 10 s
+  for fresh sensors instead of aborting instantly.
+- Tests: 110 gridrunner+control pass, incl. updated step timing and
+  scan-free handoff/abort expectations. Pi sync + restart pending; no iOS
+  change in this build.
+
+### November 5 return line-loss resilience (3.1.tiles.4)
+
+- Root cause from the 17:32 run: immediately after turnaround the stripe
+  rode at scan_x 0.17–0.20 (left search edge) and flickered flags=3/2.
+  The 1 s degraded timer expired mid-flicker and handed off to tag
+  recovery before the stripe could stabilize.
+- Pi: return/approach loss grace **1 s → 3 s** (`GRID_RETURN_LOSS_GRACE_S`);
+  steering reuses the **last-good line correction/heading for 1.5 s**
+  (`GRID_LAST_GOOD_STEER_S`) instead of snapping to heading hold; samples
+  log `last_good_line_age_s`.
+- iOS: scan window widened `width/8..7w/8` → `width/16..15w/16`; no-stripe
+  now NSLogs top/bottom hit counts for edge diagnostics. Build 3.1.5
+  installed on Peters 10.
+- Tests: 67 gridrunner tests pass, incl. new grace/last-good steering test.
+
+### November 5 tile-crossing durable table + calibration report (3.1.tiles.3)
+
+- `build_crossing_report()` in `roomberry_gridrunner.py` turns the in-memory
+  crossings into a durable per-tile table: per-span tile span (304.8 mm),
+  absolute wheel delta, error mm/%, missed counts, leg reset between outbound
+  and return, and a summary (mean error, median + total wheel/tile ratios).
+- The table is stored in the `GridDrive` result (`crossings`,
+  `crossing_report`) on both complete and abort, logged once as
+  `GridRunner crossing report:` JSON, and exposed in the gridrunner status
+  snapshot. `tools/tile-crossings.py` rebuilds CSV + Markdown from any
+  `roomberry.log` offline. Observation only; no steering/scale change.
+- Tests: per-tile + leg reset, missed-span widening, abort persistence.
+  All 66 gridrunner tests pass. Next: reinstall GridRunner 3.1 build 4 on
+  Peters 10, sync/restart the Pi, run a full kitchen out-and-back, and
+  compare the report's median ratio against the provisional wheel factor.
+
+### November 5 tile-crossing recording — iOS phase 3 + Pi table
+
+- Replaced the type-5 reserved 28-byte padding with a crossing trailer:
+  magic `0xC7`, version 1, valid-band flags, monotonic count, interpolated
+  last-crossing uptime (us), band row, confidence and last interval (s).
+  `GridPacket.encoded()` still produces exactly 128 bytes; the old all-zero
+  trailer remains decodable as the legacy pre-crossing format.
+- Python `GRID_PACKET` is now `<4sBBHQQIHbBQQ12fHHBBHIQfff`; `GRID_FIELDS` and
+  `decode_grid_packet` validate the trailer (magic/version/flags, 0..1 row and
+  confidence, 0..600 s interval, count/time consistency, crossing time not
+  after send time). NavLink recording and CSV export pick up the new columns
+  automatically.
+- `GridDrive` watches the phone count per `(session, calibration)` and logs one
+  `GridRunner crossing:` JSON record per new count with crossing time, interval,
+  stage, direction, wheel distance/heading and tag distance. A skipped packet
+  is recorded as `missed=N` without inventing a time. Samples and the complete
+  result now include `tiles=N`. No steering or stop behavior changed.
+- Added wire/Swift/legacy and Pi recording tests: 63 gridrunner tests pass,
+  including the real Swift encoder/decoder round trip. Full suite: 484 tests,
+  15 pre-existing import errors for missing PIL/numpy/serial/six only.
+  Release build succeeded (`/tmp/GridRunner-tiles-wire-build.log`).
+- App build bumped to 3.1 build 4. Next: reinstall on Peters 10, sync/restart
+  the Pi service, then verify `GridRunner crossing:` rows in `roomberry.log`
+  and the exported NavLink CSV against a full run.
+
+### November 5 transverse tile-crossing detector — iOS phases 1–2
+
+- Added `GridCrossing.swift`: two vertical strips at22%/78% image width either
+  side of the longitudinal line avoid the centre grout and LED corona. Per-row
+  medians and a local bright-tile background find a dark run independently in
+  each strip; width3–64px, contrast, ambiguity and a yaw-tolerant centre
+  agreement reject one-sided texture and reflections while allowing a few
+  degrees of robot tilt.
+- Added a direction-agnostic crossing state machine. A confirmed band must be
+  seen for2 approach frames, passes a fixed50% reference row, interpolates its
+  crossing time, then clears the row for2 frames beyond30mm with a1.5s minimum
+  interval. It only observes; no steering, speed or stop changes.
+- `GridCamera` runs the detector on the same luma frame as line detection,
+  resets the tracker on session start and snapshots `crossing` on stop. Each
+  crossing logs `count/time/y/confidence/interval`; periodic samples add
+  `tiles=`. `GridPacket` carries local crossing state only: the128-byte wire
+  packet and28 zero trailer bytes are unchanged. Pi table/recording deferred.
+- Overlay adds a white dashed reference row, two white strip guides, orange
+  band markers and a green flash/dot on a counted crossing. Status shows
+  `Tiles N · last interval X s`. Help text updated.
+- New `tests/GridCrossingCheck.swift` compiles the real detector with synthetic
+  images: moving band, reverse travel, stationary band, reversal before the row,
+  one-sided texture, a slightly tilted band, misaligned strips, low contrast,
+  LED corona, jitter and a15-tile sequence. `roomberry_gridrunner_test.py` now
+  compiles/runs it with `-O` and also links `GridCrossing.swift` into the
+  existing wire test.
+- Validation: focused Swift crossing check reports `crossings=15 expected=15`;
+  all5 `GridWireTest` cases pass. Signed Release build succeeded and ios-deploy
+  installed GridRunner3.1 build3 on Peters10 (iPhone X, iOS16.7.16). Logs:
+  `/tmp/GridRunner-tiles-release-build.log`,
+  `/tmp/GridRunner-tiles-install.log`. No app launch or robot motion requested.
+- Next: Pi decoding of the reserved type-5 trailer, crossing/odometry table and
+  recordings, then a physical15-tile verification in both directions.
 
 ### November 4 continuous grout out-and-back with tag-15 return
 - Build 3.1.grout.4 changes Clock/web GridRunner into one reverse-out/forward-

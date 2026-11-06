@@ -1,4 +1,4 @@
-// @(#)GridCamera.swift 3.1.grid.1 2026/11/03 20:30:00
+// @(#)GridCamera.swift 3.1.tiles.1 2026/11/05 16:00:00
 import AVFoundation
 import CoreMotion
 import simd
@@ -17,6 +17,8 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private var gravity = SIMD3<Double>(0,0,-1)
     private var gravityTime = 0.0
     private var config = GridConfiguration()
+    private var crossingTracker = GridCrossingTracker()
+    private var crossingState = GridCrossingState()
     private var timer: DispatchSourceTimer?
     private var camera: AVCaptureDevice?
     private var configured = false
@@ -56,10 +58,12 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         activeSession = session; sequence = 0; gravityTime = 0
         packet = GridPacket(); packet.session = session; packet.calibration = config.identity
         packet.config = config; packet.direction = config.direction
+        crossingState = GridCrossingState()
         lock.unlock()
         queue.async {
             guard self.isActive(session) else { return }
             self.config = config; self.captureSession = session
+            self.crossingTracker.reset()
             do {
                 if !self.configured { try self.configure() }
                 guard self.motion.isDeviceMotionAvailable else { throw Failure.message("Device motion unavailable") }
@@ -99,6 +103,7 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         sequence &+= 1; stopped.sequence = sequence; stopped.flags = 0; stopped.reason = 3
         stopped.sendUS = GroundPacket.us(ProcessInfo.processInfo.systemUptime)
         stopped.detection.correction = 0
+        stopped.crossing = crossingState
         lock.unlock()
         if session != 0 { onPacket?(stopped) }
         health.stop()
@@ -119,10 +124,10 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         lock.unlock()
         onPacket?(p)
-        NSLog("GridRunner seq=%u valid=%d rows=(%0.4f,%0.4f)/(%0.4f,%0.4f) offset=%0.2f angle=%0.4f confidence=%0.3f correction=%0.4f direction=%d reason=%u",
+        NSLog("GridRunner seq=%u valid=%d rows=(%0.4f,%0.4f)/(%0.4f,%0.4f) offset=%0.2f angle=%0.4f confidence=%0.3f correction=%0.4f direction=%d reason=%u tiles=%u",
               p.sequence,p.flags == 3 ? 1:0,p.detection.first.x,p.detection.first.y,
               p.detection.second.x,p.detection.second.y,p.detection.offset,p.detection.angle,
-              p.detection.confidence,p.detection.correction,Int(p.direction),p.reason)
+              p.detection.confidence,p.detection.correction,Int(p.direction),p.reason,p.crossing.count)
         DispatchQueue.main.async { self.onOverlay?(p) }
     }
     private func configure() throws {
@@ -182,6 +187,19 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
                 if let base = CVPixelBufferGetBaseAddressOfPlane(buffer,0) {
                     p.detection = GridLine.detect(luma:base.assumingMemoryBound(to:UInt8.self),width:width,height:height,
                                                   stride:CVPixelBufferGetBytesPerRowOfPlane(buffer,0),k:k,gravity:g,config:config)
+                    let band = GridCrossing.detect(luma:base.assumingMemoryBound(to:UInt8.self),width:width,height:height,
+                                                   stride:CVPixelBufferGetBytesPerRowOfPlane(buffer,0),
+                                                   config:self.crossingTracker.config)
+                    self.lock.lock()
+                    let event = self.crossingTracker.update(band,time:time)
+                    self.crossingState = self.crossingTracker.state
+                    let crossing = self.crossingState
+                    self.lock.unlock()
+                    p.crossing = crossing
+                    if let event = event {
+                        NSLog("GridRunner tile crossing count=%u time=%.6f y=%.4f confidence=%.3f interval=%.3f",
+                              event.count,event.time,event.y,event.confidence,event.interval)
+                    }
                     p.flags = p.detection.valid ? 3:2; p.reason = p.detection.valid ? 0:1
                 } else { p.reason = 6 }
                 CVPixelBufferUnlockBaseAddress(buffer,.readOnly)

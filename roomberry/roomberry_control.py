@@ -1,5 +1,5 @@
 """Single-owner Roomba command and sensor-polling service."""
-# @(#)roomberry_control.py 3.1.grout.19 2026/11/05
+# @(#)roomberry_control.py 3.1.grout.20 2026/11/06
 
 from math import isfinite
 from collections import deque
@@ -1127,18 +1127,24 @@ class RobotCommandArbiter:
             self._apply_speed_step(monotonic())
 
     def _apply_speed_step(self, now):
+        # Pit-stop bench: firmware upgrades anything below ~40 mm/s to ~40,
+        # so the low step is 40 and cruise steps go 40 -> 70 -> target.
         current, target = self._applied_wheels, self._step_target
         reverse = any(a*b < 0 for a,b in zip(current, target))
-        fast_current = max(abs(v) for v in current) > 30
-        fast_target = max(abs(v) for v in target) > 30
+        fast_current = max(abs(v) for v in current) > 40
+        fast_target = max(abs(v) for v in target) > 40
         def low(values):
-            return tuple(30 if v > 0 else -30 if v < 0 else 0 for v in values)
+            return tuple(40 if v > 0 else -40 if v < 0 else 0 for v in values)
+        def mid(values):
+            return tuple(max(-70, min(70, v)) for v in values)
         if reverse:
             sent = low(current) if fast_current else (0, 0)
         elif fast_current and target == (0, 0):
             sent = low(current)
         elif current == (0, 0) and fast_target:
             sent = low(target)
+        elif not fast_current and current != (0, 0) and fast_target and mid(target) != target:
+            sent = mid(target)
         else:
             sent = target
         if sent != current:

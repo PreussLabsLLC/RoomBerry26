@@ -1,4 +1,4 @@
-<!-- @(#)grout-run-controls.md 3.1.grout.19 2026/11/05 -->
+<!-- @(#)grout-run-controls.md 3.1.tiles.6 2026/11/06 -->
 # November 4 run controls and wheel-size adjustment
 
 Pi control build: `3.1.grout.19`. Open the Pi's `/` local console and press
@@ -509,3 +509,54 @@ the display. Scan duration/acceptance rules are unchanged.
 
 Sync `roomberry_gridrunner.py` and `roomberry_control.py`, restart and verify
 .19. No iPhone rebuild is needed.
+
+### Tile-crossing recording and calibration report (build 3.1.tiles.3)
+
+The iPhone GridRunner 3.1 build 4 app now fills the 28-byte type-5 trailer with
+the transverse-grout counter: magic `0xC7`, version 1, a valid-band flag, the
+monotonic `count`, the interpolated last-crossing uptime, the band row,
+confidence and last interval. Old apps that still send 28 zero bytes decode
+unchanged and yield no crossings.
+
+The Pi logs one `GridRunner crossing:` JSON line per new count, including the
+crossing time, interval, stage, direction, wheel distance from the run origin,
+wheel heading and tag distance. `GridRunner sample` now also carries `tiles=N`.
+The NavLink binary recording keeps every type-5 packet, and
+`roomberry_navlink.py --csv` exports the new `crossing_*` columns. A skipped
+counter value is logged as `missed=N`; it is never assigned an invented time.
+This is observation only: crossings do not steer, slow or stop the robot.
+
+The durable per-tile calibration table (`build_crossing_report`, 304.8 mm per
+tile) is stored in the `GridDrive` result (`crossings` + `crossing_report`,
+on both complete and abort), logged once as a `GridRunner crossing report:`
+JSON line, and exposed via the gridrunner status snapshot. Each span reports
+wheel travel vs its tile span (error mm / %); the first crossing of each leg
+(outbound `driving` vs return stages) has no delta, and a missed count widens
+the span instead of inventing a crossing. Rebuild it offline from any
+`roomberry.log` with `tools/tile-crossings.py --log ... --output ...`
+(CSV + Markdown). Use the median wheel/tile ratio to judge the provisional
+wheel factor; the report never applies a scale correction.
+
+Return line-loss resilience (3.1.tiles.4): the degraded grace before tag
+recovery is now 3 s at 30 mm/s (`GRID_RETURN_LOSS_GRACE_S`), steering on the
+last-good line correction for the first 1.5 s (`GRID_LAST_GOOD_STEER_S`),
+and the iOS scan window is widened to `width/16..15·width/16`. This addresses
+post-turnaround edge flicker that previously handed off after only 1 s.
+
+Scan-free return + speed steps (3.1.tiles.5 / 3.1.grout.20): the return no
+longer scans checkpoints or seeks tag fixes — grout steering drives home and
+the front bumper ends the approach; line-loss or overtravel aborts instead of
+handing off. Map flushing still happens on leaving the active mode (and on
+shutdown), so the scan pauses were never needed for SD writes. Speeds are
+pit-stop calibrated: slow/approach/pivot 40 mm/s (firmware floors anything
+below ~40), cruise 100, with I/O steps 0 → 40 → 70 → 100. At launch,
+GridDrive now waits up to 10 s for fresh sensors instead of aborting on a
+sleeping Roomba.
+
+Short-outbound guard + confirm fixes (3.1.tiles.6): the scan-free approach
+now requires a real outbound (≥1000 mm) — a zero-length re-run already at
+the grout end no longer trips the approach bound instantly on the seeded
+pose. The outbound line-end confirm also accepts 3 losses interleaved with
+good frames (only 3 good frames cancel), and a fresh GridDrive in an ongoing
+phone session re-baselines the crossing count instead of logging a missed
+span.

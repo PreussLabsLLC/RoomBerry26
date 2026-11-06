@@ -1,5 +1,5 @@
 """GridRunner packets and a grout-line-end out-and-back with tag checkpoints."""
-# @(#)roomberry_gridrunner.py 3.1.grout.19 2026/11/05
+# @(#)roomberry_gridrunner.py 3.1.tiles.6 2026/11/06
 import json
 import math
 import struct
@@ -8,26 +8,101 @@ from roomberry_phone_bumps import PhoneBumpPolicy
 from time import monotonic, time
 
 MODE_GRIDRUNNER = 'gridrunner'
-GRID_PACKET = struct.Struct('<4sBBHQQIHbBQQ12fHH28s')
+GRID_PACKET = struct.Struct('<4sBBHQQIHbBQQ12fHHBBHIQfff')
 GRID_FIELDS = ('magic','version','type','length','session','calibration','seq','flags',
                'direction','reason','frame_us','send_us','scan1_x','scan1_y','scan2_x','scan2_y',
                'offset_mm','line_angle_rad','confidence','correction','gain','correction_limit',
-               'lens_left_mm','height_mm','image_width','image_height','padding')
+               'lens_left_mm','height_mm','image_width','image_height',
+               'crossing_magic','crossing_version','crossing_flags','crossing_count',
+               'crossing_us','crossing_y','crossing_confidence','crossing_interval_s')
+GRID_CROSSING_MAGIC = 0xc7
+GRID_CROSSING_VERSION = 1
 GRID_SPEED = 100
-GRID_SLOW_SPEED = 30
+# Pit-stop bench: firmware raises anything below ~40 mm/s to ~40, so 30 was
+# fictional. Slow/approach/pivot are 40; I/O steps go 40 -> 70 -> 100.
+GRID_SLOW_SPEED = 40
 GRID_APPROACH_SPEED = GRID_SLOW_SPEED
 GRID_MAX_STEERING = .35
 GRID_LOOKAHEAD_MM = 600.
 GRID_FRAME_MAX_AGE_S = .25
 GRID_RECEIPT_MAX_AGE_S = .5
 GRID_STEERING_MULTIPLIER = 2.0
-GRID_PIVOT_SPEED = 30
+GRID_PIVOT_SPEED = GRID_SLOW_SPEED
 GRID_ALIGN_ENTER_RAD = math.radians(5)
 GRID_ALIGN_EXIT_RAD = math.radians(2)
 GRID_MIN_CONFIDENCE = .65
 GRID_REACQUIRE_CONFIDENCE = .75
 GRID_LINE_END_CONFIRM_S = 1.0
 GRID_THRESHOLD_CLEARANCE_MM = 150.
+# Return/approach line-loss grace before handing to tag recovery: the stripe
+# flickers at the search edge right after turnaround, so allow up to 3 s of
+# slow travel on the last-good line heading before a scan handoff.
+GRID_RETURN_LOSS_GRACE_S = 3.0
+GRID_LAST_GOOD_STEER_S = 1.5
+TILE_MM = 304.8  # nominal kitchen tile pitch; one crossing = one tile span
+
+
+
+
+def build_crossing_report(crossings, tile_mm=TILE_MM):
+    """Per-tile wheel-vs-tile calibration rows from recorded crossings.
+
+    Crossings are in recording order. ``count`` is monotonic per phone
+    session, so the tile span since the previous recorded crossing is
+    ``advance * tile_mm`` where ``advance`` is the count difference
+    (1 + missed). Wheel travel is the absolute encoder distance between
+    the two crossings. The first crossing of a leg (direction change or
+    stage change) has no predecessor, so its delta fields are None:
+    its absolute distance is still reported via ``tile_mm_total``.
+    Pure/observation-only: never steers or stops the robot.
+    """
+    rows = []
+    prev = None
+    prev_leg = None
+    first_count = None
+    for rec in crossings:
+        count = int(rec['count'])
+        leg = 'out' if rec.get('stage') == 'driving' else (
+            'back' if rec.get('stage') in ('return', 'approach', 'threshold_clearance', 'turnaround')
+            else rec.get('stage'))
+        if leg != prev_leg:
+            prev = None
+            first_count = count
+        advance = ((count - int(prev['count'])) & 0xffffffff) if prev is not None else None
+        tile_span = advance * tile_mm if advance is not None else None
+        wheel_delta = (abs(float(rec['wheel_distance_mm']) - float(prev['wheel_distance_mm']))
+                       if prev is not None else None)
+        error = (wheel_delta - tile_span) if wheel_delta is not None else None
+        rows.append(dict(
+            count=count, missed=int(rec.get('missed', 0)),
+            crossing_us=int(rec.get('crossing_us', 0)),
+            interval_s=rec.get('interval_s'), y=rec.get('y'),
+            confidence=rec.get('confidence'),
+            session=rec.get('session'), calibration=rec.get('calibration'),
+            stage=rec.get('stage'), direction=rec.get('direction'),
+            wheel_distance_mm=rec.get('wheel_distance_mm'),
+            wheel_heading_deg=rec.get('wheel_heading_deg'),
+            tag_distance_mm=rec.get('tag_distance_mm'),
+            tile_mm_total=(count - first_count) * tile_mm,
+            tile_mm_span=tile_span, wheel_delta_mm=wheel_delta,
+            error_mm=error,
+            error_pct=(100.0 * error / tile_span
+                       if error is not None and tile_span else None)))
+        prev = rec
+        prev_leg = leg
+    deltas = [r['error_mm'] for r in rows if r['error_mm'] is not None]
+    ratios = [r['wheel_delta_mm'] / r['tile_mm_span'] for r in rows
+              if r['wheel_delta_mm'] is not None and r['tile_mm_span']]
+    summary = dict(
+        tile_mm=tile_mm, crossings=len(rows),
+        missed=sum(int(r.get('missed', 0)) for r in rows),
+        mean_error_mm=(sum(deltas) / len(deltas)) if deltas else None,
+        median_ratio=(sorted(ratios)[len(ratios) // 2] if ratios else None),
+        total_tile_mm=sum(r['tile_mm_span'] for r in rows if r['tile_mm_span']),
+        total_wheel_ratio=(sum(r['wheel_delta_mm'] for r in rows if r['wheel_delta_mm'] is not None)
+                           / sum(r['tile_mm_span'] for r in rows if r['tile_mm_span'])
+                           if any(r['tile_mm_span'] for r in rows) else None))
+    return dict(rows=rows, summary=summary)
 
 
 def grid_correction(offset, angle, direction, gain, limit, target_offset=0.):
@@ -45,8 +120,27 @@ def decode_grid_packet(data):
         raise ValueError('grid header')
     if not r['session'] or not r['calibration'] or r['flags'] & ~3 or r['direction'] not in (-1,1):
         raise ValueError('grid identity/flags/direction')
-    if r['reason'] > 6 or r['padding'] != bytes(28) or not r['frame_us'] <= r['send_us']:
-        raise ValueError('grid reason/padding/time')
+    if r['reason'] > 6 or not r['frame_us'] <= r['send_us']:
+        raise ValueError('grid reason/time')
+    if data[-28:] == bytes(28):
+        pass  # Legacy app: reserved trailer was all zero.
+    elif (r['crossing_magic'] != GRID_CROSSING_MAGIC
+          or r['crossing_version'] != GRID_CROSSING_VERSION or r['crossing_flags'] & ~1):
+        raise ValueError('grid crossing header')
+    else:
+        if not math.isfinite(r['crossing_y']) or not 0 <= r['crossing_y'] <= 1:
+            raise ValueError('grid crossing row')
+        if not math.isfinite(r['crossing_confidence']) or not 0 <= r['crossing_confidence'] <= 1:
+            raise ValueError('grid crossing confidence')
+        if not math.isfinite(r['crossing_interval_s']) or not 0 <= r['crossing_interval_s'] <= 600:
+            raise ValueError('grid crossing interval')
+        if r['crossing_count']:
+            if not r['crossing_us'] or r['crossing_us'] > r['send_us']:
+                raise ValueError('grid crossing time')
+        elif r['crossing_us'] or r['crossing_interval_s']:
+            raise ValueError('grid crossing count')
+        if r['crossing_flags'] & 1 and not 0 < r['crossing_y'] < 1:
+            raise ValueError('grid crossing state')
     if not all(math.isfinite(v) for v in values[12:24]):
         raise ValueError('grid nonfinite')
     if not (0.1 <= r['gain'] <= 8 and 0 < r['correction_limit'] <= GRID_MAX_STEERING
@@ -87,7 +181,9 @@ class GridDrive:
         self.good_frames = 0
         self.good_seq = None
         self.hold_until = None
-        self.checkpoints = [2000., 1500., 1000., 500.]
+        # Scan-free return: no periodic tag checkpoints or scans; the line
+        # alone steers home and the front bumper ends the approach.
+        self.checkpoints = []
         self.records = []
         self.pose = None
         self.odom = None
@@ -112,10 +208,24 @@ class GridDrive:
         self.line_end_seq = None
         self.line_end_frames = 0
         self.line_end_good_frames = 0
+        self.crossing_identity = None
+        self.crossing_count = 0
+        self.crossings = []
+        self.last_good_line = None
+
+    def _tile_report(self):
+        """Durable per-tile calibration table; observation only."""
+        report = build_crossing_report(self.crossings)
+        self.mission.logger.info('GridRunner crossing report: %s',
+                                 json.dumps(report, sort_keys=True))
+        return report
 
     def abort(self, reason):
         self.stage = 'stopped'
-        self.result = dict(status='stopped', reason=reason)
+        self.result = dict(status='stopped', reason=reason,
+                           tiles=self.crossing_count,
+                           crossings=list(self.crossings),
+                           crossing_report=self._tile_report())
         self.mission.logger.warning('GridRunner stopped: %s', reason)
         self.mission.set_mode('idle')
 
@@ -226,8 +336,47 @@ class GridDrive:
             return math.hypot(self.tag['x']-self.pose['x_mm'], self.tag['y']-self.pose['y_mm'])
         return max(0., self.origin-float(state['distance']))+174.
 
+    def _record_crossing(self, row, state):
+        """Log each new transverse-grout count with the matching wheel state.
+
+        The phone count is monotonic per session; a skipped count is recorded
+        as missed rather than inventing a crossing time.
+        """
+        if row.get('crossing_magic') != GRID_CROSSING_MAGIC:
+            return
+        identity = (row['session'], row['calibration'])
+        count = int(row['crossing_count'])
+        if identity != self.crossing_identity:
+            # A fresh GridDrive in an ongoing phone session first sees a
+            # nonzero count: crossings that predate it are not new events
+            # and must not be logged as a missed span. A count of 1 is a
+            # genuine first crossing of a fresh session; record normally.
+            self.crossing_identity = identity
+            self.crossing_count = count
+            if count > 1:
+                return
+            self.crossing_count = 0
+        advance = (count-self.crossing_count) & 0xffffffff
+        if not 0 < advance < 0x80000000:
+            return
+        self.crossing_count = count
+        distance = float(state['distance'])
+        record = dict(
+            count=count, missed=max(0, advance-1),
+            crossing_us=int(row['crossing_us']),
+            y=round(row['crossing_y'], 4),
+            confidence=round(row['crossing_confidence'], 3),
+            interval_s=round(row['crossing_interval_s'], 3),
+            session=row['session'], calibration=row['calibration'],
+            stage=self.stage, direction=self.direction,
+            wheel_distance_mm=distance-(self.origin if self.origin is not None else 0.),
+            wheel_heading_deg=float(state['angle']),
+            tag_distance_mm=self._range(state))
+        self.crossings.append(record)
+        self.mission.logger.info('GridRunner crossing: %s', json.dumps(record, sort_keys=True))
+
     def _expected_contact(self):
-        if self.stage != 'approach' or not self.final_fix or self.pose is None:
+        if self.stage not in ('return', 'approach') or self.pose is None:
             return False
         dx, dy = self.tag['x']-self.pose['x_mm'], self.tag['y']-self.pose['y_mm']
         heading = self.tag['heading']
@@ -359,6 +508,11 @@ class GridDrive:
         safe = (state.get('ready') and state.get('age') is not None and 0 <= state['age'] <= .5
                 and not state.get('oi_stopped') and not self.mission._hard_hazard_reasons(state))
         if not safe:
+            # A asleep Roomba at launch is not fatal: wait for fresh sensors
+            # (serial hiccups settle) until the waiting timeout.
+            if self.stage == 'waiting' and now-self.started <= 10:
+                self.mission._send_stop('GridRunner waiting for fresh Roomba sensors')
+                return
             self.abort('unsafe/stale Roomba sensors or bumper contact')
             return
         if self.identity is not None and not self._integrate(state):
@@ -366,7 +520,10 @@ class GridDrive:
         if contact and self._expected_contact():
             self.stage = 'complete'
             self.result = dict(status='complete', reason='tag 15 front bumper contact',
-                               outbound_mm=self.outbound_mm, checkpoints=self.records, final_pose=dict(self.pose))
+                               outbound_mm=self.outbound_mm, checkpoints=self.records,
+                               tiles=self.crossing_count, crossings=list(self.crossings),
+                               crossing_report=self._tile_report(),
+                               final_pose=dict(self.pose))
             self.mission._update_run_map(state)
             self.mission.set_mode('idle')
             return
@@ -420,6 +577,7 @@ class GridDrive:
         elif identity != self.identity or row['direction'] != self.direction or config != self.config:
             self.abort('phone session/configuration/direction changed; restart explicitly')
             return
+        self._record_crossing(row, state)
         event = self.bump_policy.observe(health, self._ignore_speed_bump)
         self.bump_count = health['bump_count']
         if event is not None:
@@ -435,6 +593,7 @@ class GridDrive:
                 self._pause('GridRunner outbound grout-line end check')
                 self.line_end_started = now
                 self.line_end_frames = self.line_end_good_frames = 0
+                self.line_end_loss_total = self.line_end_good_total = 0
                 self.line_end_seq = None
                 self.mission.logger.info('GridRunner line-end brake: outbound_mm=%.1f seq=%s',
                                          self.origin-float(state['distance']), row['seq'])
@@ -444,18 +603,25 @@ class GridDrive:
                     if explicit_loss:
                         self.line_end_frames += 1
                         self.line_end_good_frames = 0
+                        self.line_end_loss_total = getattr(self, 'line_end_loss_total', 0) + 1
                     elif usable and row['confidence'] >= GRID_REACQUIRE_CONFIDENCE:
                         self.line_end_good_frames += 1
                         self.line_end_frames = 0
+                        self.line_end_good_total = getattr(self, 'line_end_good_total', 0) + 1
                     else:
                         self.line_end_frames = self.line_end_good_frames = 0
                 self.last = dict(stage=self.stage, tracking='checking grout-line end',
+                    tiles=self.crossing_count,
                     velocity_mm_s=0, left_velocity_mm_s=0, right_velocity_mm_s=0,
                     confidence=row['confidence'], wheel_distance_mm=float(state['distance'])-self.origin,
                     frame_age_s=now-row['frame_monotonic'], line_lost_s=now-self.line_end_started,
                     seq=row['seq'], steering_mode='stopped', offset_mm=None,
                     correction=0, target_offset_mm=self.target_offset_mm)
-                if explicit_loss and self.line_end_frames >= 3 and now-self.line_end_started >= GRID_LINE_END_CONFIRM_S:
+                # Confirm on 3 losses within the window even if flicker
+                # interleaves good frames (they only cancel at 3 total).
+                if (self.line_end_frames >= 3 or (getattr(self, 'line_end_loss_total', 0) >= 3
+                        and getattr(self, 'line_end_good_total', 0) < 3)) \
+                        and now-self.line_end_started >= GRID_LINE_END_CONFIRM_S:
                     self.outbound_mm = self.origin-float(state['distance'])
                     self.threshold = dict(wall_time=time(), reason='grout-line end',
                         wheel_distance_mm=self.outbound_mm, confirmation_s=now-self.line_end_started,
@@ -478,7 +644,7 @@ class GridDrive:
         if (abs(float(state['angle'])-self.initial_heading) > math.degrees(.35)
                 and (self.stage == 'driving' or not usable)):
             if self.stage in ('return','approach'):
-                self._recover_tags(state, 'return heading envelope exceeded')
+                self.abort('return heading envelope exceeded (scan-free)')
             else:
                 self.abort('heading exceeds straight run envelope')
             return
@@ -532,19 +698,21 @@ class GridDrive:
                                          travelled, self.clearance_good_frames)
             if complete and self.clearance_good_frames >= 3:
                 self.stage = 'return'
+                self.return_origin = distance
                 self.lost_at = self.lost_distance = None
                 self.good_frames = 0
                 self.last_distance, self.progress_at = distance, now
                 self.mission.robot_control.begin_motion_lease(.6)
             elif complete:
                 if now-self.clearance_stopped_at >= 1.:
-                    self._recover_tags(state, 'no stable grout line after 150 mm threshold clearance')
+                    self.abort('no stable grout line after 150 mm threshold clearance (scan-free)')
                 return
             else:
                 if now-self.clearance_progress_at > 3:
                     self.abort('no wheel progress during threshold clearance')
                     return
                 self.last = dict(stage=self.stage, tracking='clearing threshold', steering_mode='straight',
+                    tiles=self.crossing_count,
                     velocity_mm_s=GRID_SLOW_SPEED, left_velocity_mm_s=GRID_SLOW_SPEED,
                     right_velocity_mm_s=GRID_SLOW_SPEED, clearance_mm=travelled,
                     wheel_distance_mm=distance-self.origin, confidence=row['confidence'],
@@ -566,15 +734,23 @@ class GridDrive:
             return
         if self.stage in ('return','approach'):
             remaining = self._range(state)
-            if not self.final_fix and remaining <= 510:
-                self._scan(500.)
-                return
-            if self.checkpoints and remaining <= self.checkpoints[0]+10:
-                self._scan(self.checkpoints[0])
-                return
+            # Only a full-length outbound from tag 15 yields a trustworthy
+            # seeded pose. A short/zero-length outbound (re-run already at
+            # the grout end) seeds the pose at the tag, so range lies:
+            # stay in 'return' and finish on contact instead of tripping
+            # the approach bound instantly.
+            if (self.stage == 'return' and remaining <= 510
+                    and self.outbound_mm is not None and self.outbound_mm >= 1000):
+                self.stage = 'approach'
+                self.last_tag_distance = distance
+                self.mission.logger.info('GridRunner scan-free approach: range_mm=%.1f', remaining)
             if self.stage == 'approach' and (remaining < self.tag['radius']-50
                     or distance-self.last_tag_distance > 650):
-                self._recover_tags(state, 'approach position/travel bound without contact')
+                self.abort('approach position/travel bound without contact (scan-free)')
+                return
+            if (self.stage == 'return' and self.outbound_mm is not None
+                    and distance-getattr(self, 'return_origin', distance) > self.outbound_mm + 5000):
+                self.abort('return travel bound without contact (scan-free)')
                 return
         if abs(distance-self.last_distance) >= 3:
             if (distance-self.last_distance)*direction < 0:
@@ -601,13 +777,10 @@ class GridDrive:
                 self.lost_at = self.lost_distance = None
         degraded = self.lost_at is not None
         if degraded and self.stage in ('driving','return') and (now-self.lost_at > 30 or abs(distance-self.lost_distance) > 750):
-            if self.stage == 'return':
-                self._recover_tags(state, 'line recovery exhausted')
-            else:
-                self.abort('line absent beyond 30 seconds or 750 mm slow-travel allowance')
+            self.abort('line absent beyond 30 seconds or 750 mm slow-travel allowance')
             return
-        if degraded and self.stage in ('return','approach') and now-self.lost_at >= 1.:
-            self._recover_tags(state, 'no reliable return grout line for one second')
+        if degraded and self.stage in ('return','approach') and now-self.lost_at >= GRID_RETURN_LOSS_GRACE_S:
+            self.abort('no reliable return grout line for three seconds (scan-free)')
             return
         speed = direction*(GRID_APPROACH_SPEED if self.stage == 'approach' else
                            GRID_SLOW_SPEED if degraded else GRID_SPEED)
@@ -621,6 +794,17 @@ class GridDrive:
                 self.target_offset_mm)
             if self.stage == 'driving' and row['confidence'] >= GRID_REACQUIRE_CONFIDENCE:
                 self.hold_heading = float(state['angle'])
+            self.last_good_line = dict(correction=line_correction,
+                                       heading_error=line_heading_error,
+                                       at=now, offset_mm=row['offset_mm'],
+                                       angle=row['line_angle_rad'])
+        # While the stripe flickers at the search edge, steer briefly on the
+        # last-good line heading instead of snapping to heading hold.
+        if degraded and self.stage in ('return','approach') and self.last_good_line is not None \
+                and now-self.lost_at < GRID_LAST_GOOD_STEER_S:
+            buffered = self.last_good_line
+            line_correction = buffered['correction']
+            line_heading_error = buffered['heading_error']
         if self.stage == 'driving' and line_correction is not None:
             correction = line_correction
         else:
@@ -667,8 +851,10 @@ class GridDrive:
             steering_mode = 'settling'
             left_velocity = right_velocity = applied_speed = 0
         self.last = dict(seq=row['seq'], stage=self.stage, tracking='slow' if degraded else 'locked',
+            tiles=self.crossing_count,
             tag_distance_mm=self._range(state),
             line_lost_s=0 if not degraded else now-self.lost_at,
+            last_good_line_age_s=(None if self.last_good_line is None else now-self.last_good_line['at']),
             scan1=[row['scan1_x'],row['scan1_y']] if usable else None,
             scan2=[row['scan2_x'],row['scan2_y']] if usable else None,
             offset_mm=row['offset_mm'] if usable else None, line_angle_rad=row['line_angle_rad'] if usable else None,

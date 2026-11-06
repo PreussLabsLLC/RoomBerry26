@@ -1,10 +1,11 @@
-<!-- @(#)README.md 3.1.grout.8 2026/11/04 12:30:00 -->
+<!-- @(#)README.md 3.1.tiles.2 2026/11/05 17:30:00 -->
 # GridRunner
 
 Independent iOS 15+ app for following one straight dark grout line. GroundHog's
 app, defaults, bundle identifier and camera pipeline remain unchanged. This
 project compiles existing GroundHog geometry and phone-health helpers directly.
-No OpenCV dependency or intersection counter is included.
+No OpenCV dependency is included. A transverse-grout crossing counter observes
+and logs tile boundaries; it does not steer or stop the robot.
 
 ## First run
 
@@ -16,7 +17,10 @@ No OpenCV dependency or intersection counter is included.
    settings; confirm the actual mount before running.
 3. Align Rosie at tag 15, facing it, with the phone camera directly over the longitudinal grout line. Choose
    **Reverse** and start the camera stream. Yellow marks sampled rows, green
-   marks accepted centers, cyan marks the camera-center target. Check line lock.
+   marks accepted centers, cyan marks the camera-center target. The white
+   dashed row and two vertical guides show the tile-crossing detector; orange
+   marks a detected transverse grout band and flashes green when a crossing is
+   counted. Check line lock.
 4. Press Rosie's **Clock** button or web **Start grout out-and-back**. Pi build
    **3.1.grout.8** reverses at 50 mm/s, slows to 30 mm/s through fresh line-loss
    observations, and restores speed after stable reacquisition. A new phone
@@ -43,7 +47,8 @@ The camera supplies 480×640 luma images. Two horizontal scanlines near 35% and
 65% image height find narrow dark runs against a light local background. Each
 row may shift ±24 pixels to avoid a transverse grout stripe. Ambiguous pairs,
 weak contrast, excessive line angle, old frames or excessive phone tilt are
-rejected. This handles a transverse stripe without counting intersections.
+rejected. This keeps a transverse stripe from breaking line tracking; the
+separate counter below records such stripes.
 
 Camera intrinsics, gravity, height, yaw and lens offsets project the detected
 centers onto the floor. The measured lateral mount offset is included before estimating robot-relative
@@ -65,6 +70,55 @@ the effective gain, retaining the phone limit. Pi hard
 limit is 0.35. Settings cannot change while streaming; changes require rearm.
 These gains require physical floor validation.
 
+## Tile crossings (phase 3)
+
+Each transverse grout line is treated as a one-tile landmark. Two vertical
+strips at 22% and 78% of image width are sampled either side of the tracked
+longitudinal line, keeping clear of the centre line and the LED corona. Per-row
+medians suppress specular pixels; each strip is compared with a local
+bright-tile background. Each strip must contain a dark run of 3–64 pixels with
+enough local contrast, and the two run centres must be close enough to allow a
+few degrees of robot yaw. One-sided texture, reflections, low contrast and
+ambiguous double bands are rejected.
+
+A small state machine counts the band when it passes a fixed reference row at
+50% image height. It requires two consecutive approach frames, interpolates the
+crossing time between bracketing frames, and then waits until the band clears
+the row for two frames plus a 1.5 s minimum before accepting another. Motion is
+observed from the band's own movement, not from the app's Reverse/Forward
+setting, so the return leg is counted even though the selector stays on Reverse.
+No crossing commands steering, speed or a stop.
+
+The status panel shows `Tiles N · last interval X s`. The iOS console logs one
+line per crossing:
+
+```
+GridRunner tile crossing count=7 time=... y=0.5012 confidence=0.98 interval=3.06
+```
+
+and includes `tiles=N` on every periodic sample.
+
+The 28 reserved type-5 trailer bytes now carry the crossing state, so the Pi
+can record every tile itself:
+
+```
+UInt8 magic 0xC7 · UInt8 version 1 · UInt16 flags (bit 0 = band valid)
+UInt32 count · UInt64 last-crossing uptime us
+Float32 band row · Float32 confidence · Float32 last interval seconds
+```
+
+A legacy app still sending 28 zero bytes remains decodable and produces no
+crossings. The Pi logs one JSON record per new count:
+
+```
+GridRunner crossing: {"count": 7, "crossing_us": ..., "interval_s": 3.06,
+  "stage": "driving", "wheel_distance_mm": -2140.2, ...}
+```
+
+The persistent record is the NavLink binary log (all type-5 packets) and its
+CSV export, which now includes the crossing columns. A skipped count is logged
+with `missed=N` rather than inventing a crossing time.
+
 ## Stops and logging
 
 Arming waits up to 10 seconds for a fresh line and matching health. Only explicit
@@ -84,7 +138,7 @@ CSV export includes their fields.
 
 Existing UDP destination and logging remain unchanged (`pi`/`pi.local`:5010).
 Every packet is 128 bytes, little endian, Python layout
-`<4sBBHQQIHbBQQ12fHH28s`:
+`<4sBBHQQIHbBQQ12fHHBBHIQfff`:
 
 - `NVLK`, version 1, type 5, length 128; session/configuration UInt64 IDs;
   UInt32 sequence; UInt16 flags; signed Int8 direction; UInt8 reason.
@@ -92,7 +146,11 @@ Every packet is 128 bytes, little endian, Python layout
 - Twelve Float32 values: scan1 x/y, scan2 x/y (normalized portrait image),
   offset mm, line angle radians, confidence, correction, gain, correction
   limit, lens left mm, camera height mm.
-- UInt16 image width/height; 28 zero padding bytes.
+- UInt16 image width/height.
+- 28-byte tile-crossing trailer: UInt8 magic `0xC7`, UInt8 version `1`,
+  UInt16 flags (bit 0 band valid), UInt32 count, UInt64 last-crossing uptime
+  microseconds, Float32 band row, Float32 confidence, Float32 last interval
+  seconds. An all-zero trailer is accepted as the legacy pre-crossing format.
 
 Flags: bit 0 valid line, bit 1 streaming requested. Valid running is 3;
 invalid running is 2; explicit stop is 0. Reasons: 0 valid, 1 lost line,
@@ -105,7 +163,10 @@ recomputes correction; UDP callbacks never command motors directly.
 `roomberry_gridrunner_test.py` exercises packet validation, logging/export,
 ordering, safety/timeout transitions and forward/reverse polarity. It compiles
 and runs `tests/GridLineCheck.swift` against synthetic floor images and decodes
-the Swift packet in Python. Control tests cover motor-lease expiry independently
+the Swift packet in Python, including the crossing trailer. `tests/GridCrossingCheck.swift` compiles the real
+detector and state machine and checks moving/reverse bands, stationary jitter,
+reversal, one-sided texture, misaligned strips, low contrast, LED corona and a
+15-tile sequence. Control tests cover motor-lease expiry independently
 of the mission thread. Build with:
 
 ```

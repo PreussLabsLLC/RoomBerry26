@@ -1,4 +1,4 @@
-# @(#)roomberry_gridrunner_test.py 3.1.grout.19 2026/11/05
+# @(#)roomberry_gridrunner_test.py 3.1.tiles.6 2026/11/06
 """Grid wire contract, freshness, motion ownership, Clock and safety checks."""
 import csv
 import io
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch,Mock
 import roomberry_calibration_test as fixture
-from roomberry_gridrunner import GRID_PACKET,GRID_FIELDS,decode_grid_packet,grid_correction
+from roomberry_gridrunner import GRID_PACKET,GRID_FIELDS,decode_grid_packet,grid_correction,build_crossing_report
 from roomberry_navlink import NavLinkReceiver,decode_packet,export_csv
 from roomberry_control import RobotCommandArbiter
 
@@ -24,24 +24,47 @@ def packet(**changes):
              seq=1,flags=3,direction=-1,reason=0,frame_us=1000000,send_us=1010000,
              scan1_x=.55,scan1_y=.35,scan2_x=.55,scan2_y=.65,offset_mm=-13,
              line_angle_rad=0,confidence=1,correction=0,gain=2,correction_limit=.25,
-             lens_left_mm=-13,height_mm=85,image_width=480,image_height=640,padding=bytes(28))
+             lens_left_mm=-13,height_mm=85,image_width=480,image_height=640,
+             crossing_magic=0xc7,crossing_version=1,crossing_flags=0,crossing_count=0,
+             crossing_us=0,crossing_y=0.,crossing_confidence=0.,crossing_interval_s=0.)
     row.update(changes)
     return GRID_PACKET.pack(*(row[k] for k in GRID_FIELDS))
+
+
+def legacy_packet(**changes):
+    """Pre-crossing app: type-5 trailer was 28 zero bytes."""
+    data=bytearray(packet(**changes))
+    data[-28:]=bytes(28)
+    return bytes(data)
 
 
 class GridWireTest(unittest.TestCase):
     def test_wire_validation_and_correction_contract(self):
         self.assertEqual(len(packet()),128)
         self.assertEqual(decode_packet(packet())[2],5)
-        for kw in [dict(direction=0),dict(confidence=float('nan')),dict(flags=7),dict(padding=b'x'*28),
-                   dict(frame_us=1),dict(scan1_y=.9),dict(correction=.1),dict(gain=0),dict(correction_limit=.4),
-                   dict(confidence=.1),dict(height_mm=0),dict(session=0)]:
+        for kw in [dict(direction=0),dict(confidence=float('nan')),dict(flags=7),
+                   dict(crossing_magic=0xc8),dict(crossing_version=2),dict(crossing_flags=2),
+                   dict(crossing_count=1),dict(crossing_y=1.5),dict(crossing_confidence=2),
+                   dict(crossing_interval_s=-1),dict(crossing_us=2000000),
+                   dict(frame_us=1),dict(scan1_y=.9),dict(correction=.1),dict(gain=0),
+                   dict(correction_limit=.4),dict(confidence=.1),dict(height_mm=0),dict(session=0)]:
             with self.subTest(kw=kw),self.assertRaises(ValueError):decode_grid_packet(packet(**kw))
         decode_grid_packet(packet(flags=2,reason=1,frame_us=0))
         decode_grid_packet(packet(flags=0,reason=3))
         for direction in (-1,1):
             self.assertGreater(grid_correction(20,0,direction,2,.25),0)
             self.assertGreater(grid_correction(0,.05,direction,2,.25)*direction,0)
+
+    def test_crossing_trailer_and_legacy_padding(self):
+        values=dict(zip(GRID_FIELDS,decode_grid_packet(packet(
+            crossing_flags=1,crossing_count=4,crossing_us=990000,crossing_y=.5,
+            crossing_confidence=.9,crossing_interval_s=3.06))))
+        self.assertEqual(values['crossing_count'],4)
+        self.assertAlmostEqual(values['crossing_y'],.5)
+        self.assertAlmostEqual(values['crossing_interval_s'],3.06,places=4)
+        legacy=dict(zip(GRID_FIELDS,decode_grid_packet(legacy_packet())))
+        self.assertEqual(legacy['crossing_magic'],0)
+        self.assertEqual(legacy['crossing_count'],0)
 
     def test_order_retired_sessions_and_frozen_frame(self):
         receiver=NavLinkReceiver()
@@ -71,6 +94,7 @@ class GridWireTest(unittest.TestCase):
             binary=str(Path(directory)/'grid-check')
             sources=[root/'ios-app/GroundHog/GroundHog/GroundMotion.swift',
                      root/'ios-app/GridRunner/GridRunner/GridLine.swift',
+                     root/'ios-app/GridRunner/GridRunner/GridCrossing.swift',
                      root/'ios-app/GridRunner/GridRunner/GridPacket.swift',
                      root/'ios-app/GridRunner/tests/GridLineCheck.swift']
             result=subprocess.run(['swiftc','-module-cache-path',str(Path(directory)/'cache'),
@@ -82,7 +106,27 @@ class GridWireTest(unittest.TestCase):
             self.assertEqual(values['session'],11)
             self.assertEqual(values['lens_left_mm'],26)
             self.assertLess(abs(values['offset_mm']-26),.15)
+            self.assertEqual(values['crossing_magic'],0xc7)
+            self.assertEqual(values['crossing_count'],3)
+            self.assertEqual(values['crossing_us'],2900000)
+            self.assertAlmostEqual(values['crossing_y'],.5012,places=4)
+            self.assertAlmostEqual(values['crossing_interval_s'],3.06,places=4)
             self.assertIn('transverse stripes',result.stdout)
+
+    @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('swiftc'),'requires Swift')
+    def test_actual_swift_crossing_detector(self):
+        root=Path(__file__).resolve().parents[3]
+        with TemporaryDirectory() as directory:
+            binary=str(Path(directory)/'crossing-check')
+            sources=[root/'ios-app/GridRunner/GridRunner/GridCrossing.swift',
+                     root/'ios-app/GridRunner/tests/GridCrossingCheck.swift']
+            result=subprocess.run(['swiftc','-O','-module-cache-path',str(Path(directory)/'cache'),
+                                   *map(str,sources),'-o',binary],capture_output=True,text=True,timeout=90)
+            self.assertEqual(result.returncode,0,result.stderr)
+            result=subprocess.run([binary],capture_output=True,text=True,timeout=10)
+            self.assertEqual(result.returncode,0,result.stderr)
+            self.assertIn('crossings=15 expected=15',result.stdout)
+            self.assertIn('tile crossings:',result.stdout)
 
 
 class GridDriveTest(unittest.TestCase):
@@ -118,6 +162,133 @@ class GridDriveTest(unittest.TestCase):
         self.f.now+=8
         self.tick()
         self.assertEqual(self.g.stage,'driving')
+
+    def test_tile_crossings_are_recorded_once_with_odometry(self):
+        self.tick()
+        self.row.update(crossing_flags=1,crossing_count=1,crossing_us=990000,
+                        crossing_y=.5,crossing_confidence=.9,crossing_interval_s=0.)
+        self.tick(delta=-100)
+        self.assertEqual(len(self.g.crossings),1)
+        record=self.g.crossings[0]
+        self.assertEqual(record['count'],1)
+        self.assertEqual(record['wheel_distance_mm'],-100)
+        self.assertEqual(record['stage'],'driving')
+        self.assertEqual(record['session'],11)
+        self.assertEqual(self.g.last['tiles'],1)
+        # A repeated observation of the same count must not duplicate the event.
+        self.tick()
+        self.assertEqual(len(self.g.crossings),1)
+        # A skipped packet is recorded as missed instead of inventing a time.
+        self.row.update(crossing_count=4,crossing_us=1000000,crossing_interval_s=3.0)
+        self.tick(delta=-100)
+        self.assertEqual(len(self.g.crossings),2)
+        self.assertEqual(self.g.crossings[1]['missed'],2)
+        self.assertEqual(self.g.crossings[1]['interval_s'],3.0)
+        self.assertEqual(self.g.last['tiles'],4)
+
+    def test_crossing_report_per_tile_and_leg_reset(self):
+        self.tick()
+        for i in range(1, 4):
+            self.row.update(crossing_flags=1, crossing_count=i, crossing_us=900000 + i * 1000,
+                            crossing_y=.5, crossing_confidence=.9,
+                            crossing_interval_s=3.0 if i > 1 else 0.)
+            self.tick(delta=-100)
+        self.assertEqual(len(self.g.crossings), 3)
+        report = build_crossing_report(self.g.crossings)
+        rows, summary = report['rows'], report['summary']
+        self.assertEqual([r['tile_mm_span'] for r in rows], [None, 304.8, 304.8])
+        self.assertAlmostEqual(rows[1]['wheel_delta_mm'], 100)
+        self.assertAlmostEqual(rows[1]['error_mm'], 100 - 304.8)
+        self.assertAlmostEqual(summary['median_ratio'], 100 / 304.8)
+        self.assertAlmostEqual(summary['total_wheel_ratio'], 100 / 304.8)
+        # A return-leg crossing starts a new leg: no delta across turnaround.
+        self.g.stage = 'return'
+        self.row.update(crossing_count=4, crossing_us=903000, crossing_interval_s=3.0)
+        self.tick(delta=50)
+        rows = build_crossing_report(self.g.crossings)['rows']
+        self.assertIsNone(rows[-1]['wheel_delta_mm'])
+        self.assertEqual(rows[-1]['tile_mm_total'], 0.0)
+
+    def test_crossing_report_counts_missed_span(self):
+        self.tick()
+        self.row.update(crossing_flags=1, crossing_count=1, crossing_us=990000,
+                        crossing_y=.5, crossing_confidence=.9, crossing_interval_s=0.)
+        self.tick(delta=-100)
+        self.row.update(crossing_count=4, crossing_us=1000000, crossing_interval_s=3.0)
+        self.tick(delta=-100)
+        rows = build_crossing_report(self.g.crossings)['rows']
+        self.assertAlmostEqual(rows[1]['tile_mm_span'], 3 * 304.8)
+        self.assertAlmostEqual(rows[1]['wheel_delta_mm'], 100)
+        self.assertAlmostEqual(rows[1]['error_mm'], 100 - 3 * 304.8)
+
+    def test_abort_persists_crossings_and_report_in_result(self):
+        self.tick()
+        self.row.update(crossing_flags=1, crossing_count=1, crossing_us=990000,
+                        crossing_y=.5, crossing_confidence=.9, crossing_interval_s=0.)
+        self.tick(delta=-100)
+        self.g.abort('test stop')
+        self.assertEqual(len(self.g.result['crossings']), 1)
+        self.assertEqual(self.g.result['crossings'][0]['count'], 1)
+        self.assertEqual(self.g.result['crossing_report']['summary']['crossings'], 1)
+        self.assertEqual(self.g.result['crossing_report']['rows'][0]['count'], 1)
+
+    def test_mid_session_first_count_is_rebaselined_not_missed(self):
+        # A fresh GridDrive first sees the ongoing session count mid-run;
+        # pre-existing crossings are not new events.
+        self.row.update(crossing_flags=1, crossing_count=14, crossing_us=990000,
+                        crossing_y=.5, crossing_confidence=.9, crossing_interval_s=3.0)
+        self.tick()
+        self.assertEqual(self.g.crossings, [])
+        self.row.update(crossing_count=15, crossing_us=1000000, crossing_interval_s=3.0)
+        self.tick(delta=-100)
+        self.assertEqual(len(self.g.crossings), 1)
+        self.assertEqual(self.g.crossings[0]['count'], 15)
+        self.assertEqual(self.g.crossings[0]['missed'], 0)
+
+    def test_short_outbound_return_never_enters_approach(self):
+        # Zero-length outbound (re-run already at the grout end): the seeded
+        # pose says 'at tag' but must not trip the approach bound instantly.
+        self.tick()
+        self.row.update(flags=2, reason=1, confidence=0)
+        self.tick(delta=-5)
+        for _ in range(7):
+            self.row['seq'] += 1
+            self.tick()
+            if self.g.stage == 'turnaround': break
+        self.assertLess(self.g.outbound_mm, 1000)
+        self.row.update(flags=3, reason=0, confidence=1)
+        self.tick()
+        self.assertEqual(self.g.stage, 'threshold_clearance')
+        self.m.camera.request_scan.reset_mock()
+        for _ in range(15):
+            self.row['seq'] += 1
+            self.tick(delta=10)
+        self.assertEqual(self.g.stage, 'return')
+        self.assertIsNone(self.g.result)
+        self.tick(delta=10)
+        self.assertEqual(self.g.stage, 'return')
+        self.m.camera.request_scan.assert_not_called()
+
+    def test_line_end_confirms_on_intermittent_losses(self):
+        self.tick()
+        self.row.update(flags=2, reason=1, confidence=0)
+        self.tick(delta=-5)
+        # loss, good, loss, good, loss: never 3 in a row, but 3 total.
+        plan = [(2, 1, 0), (3, 0, 1), (2, 1, 0), (3, 0, 1), (2, 1, 0)]
+        for seq, (flags, reason, conf) in enumerate(plan, start=10):
+            self.row.update(flags=flags, reason=reason, confidence=conf, seq=seq)
+            self.tick()
+            if self.g.stage == 'turnaround':
+                break
+        self.assertEqual(self.g.stage, 'turnaround')
+        self.assertEqual(self.g.threshold['reason'], 'grout-line end')
+
+    def test_legacy_zero_trailer_does_not_fabricate_crossings(self):
+        self.tick()
+        self.row.update(crossing_magic=0)
+        self.tick(delta=-100)
+        self.assertEqual(self.g.crossings,[])
+        self.assertEqual(self.g.last['tiles'],0)
 
     def test_camera_target_preserves_mount_and_seeds_robot_right_of_grout(self):
         self.row.update(lens_left_mm=26, offset_mm=26, line_angle_rad=0)
@@ -336,7 +507,7 @@ class GridDriveTest(unittest.TestCase):
                            y_mm=self.g.tag['y']-26, heading_rad=0)
         self.tick(delta=5)
         self.assertAlmostEqual(self.g.last['tag_correction'], 0)
-        self.assertEqual(self.g.last['velocity_mm_s'], 30)
+        self.assertEqual(self.g.last['velocity_mm_s'], 40)
 
     def test_launch_bump_is_logged_consumed_and_not_replayed(self):
         self.tick()
@@ -487,8 +658,8 @@ class GridDriveTest(unittest.TestCase):
             self.row['seq'] += 1
             self.tick(delta=10)
             self.assertEqual(self.g.stage, 'threshold_clearance')
-            self.assertEqual(self.g.last['left_velocity_mm_s'], 30)
-            self.assertEqual(self.g.last['right_velocity_mm_s'], 30)
+            self.assertEqual(self.g.last['left_velocity_mm_s'], 40)
+            self.assertEqual(self.g.last['right_velocity_mm_s'], 40)
         self.row.update(flags=3, reason=0, confidence=1)
         self.row['seq'] += 1
         self.tick(delta=10)
@@ -512,7 +683,8 @@ class GridDriveTest(unittest.TestCase):
         for _ in range(6):
             self.row['seq'] += 1
             self.tick()
-        self.g._recover_tags.assert_called()
+        self.assertEqual(self.g.stage, 'stopped')
+        self.assertIn('no stable grout line', self.g.result['reason'])
 
     def test_clearance_no_progress_and_stale_phone_abort(self):
         self.start_clearance()
@@ -561,26 +733,37 @@ class GridDriveTest(unittest.TestCase):
         self.tick(delta=-5)
         self.assertEqual(self.g.stage,'stopped')
 
-    def test_lost_return_line_hands_to_tags_then_resumes_on_stable_line(self):
+    def test_return_loss_grace_and_last_good_steer_before_handoff(self):
         self.begin_return()
         self.row.update(flags=2,reason=1,confidence=0)
-        for _ in range(7):
+        # Flicker for 1-2 s must not hand off yet; last-good line heading
+        # is reused for steering during the first 1.5 s of loss.
+        for _ in range(5):
             self.tick(delta=5)
-            if self.m.gridrunner is not self.g: break
-        recovery=self.m.gridrunner
-        self.assertEqual(recovery.kind,'return_to_tag15')
-        self.assertEqual(recovery.stage,'scanning')
-        recovery.stage='return'
-        recovery.tag_fix_applied=True
-        recovery.pose['heading_rad']=0
-        recovery.odom=(self.f.state['distance'],self.f.state['angle'])
-        self.row.update(flags=3,reason=0,confidence=1)
-        for seq in (1001,1002,1003):
-            self.f.now+=.2;self.row['seq']=seq;self.refresh()
-            recovery.tick(self.f.state)
-        self.assertIs(self.m.gridrunner,self.g)
-        self.assertEqual(self.g.stage,'return')
-        self.assertIsNone(self.g.result)
+            self.assertIs(self.m.gridrunner,self.g)
+            self.assertEqual(self.g.stage,'return')
+            self.assertEqual(self.g.last['line_correction'], self.g.last_good_line['correction'])
+        for _ in range(10):
+            self.tick(delta=5)
+            self.assertIs(self.m.gridrunner,self.g)
+            self.assertEqual(self.g.stage,'return')
+        self.assertLessEqual(self.g.last['last_good_line_age_s'], 3.1)
+        # Past the 3 s grace the scan-free return aborts.
+        for _ in range(10):
+            self.tick(delta=5)
+            if self.g.stage == 'stopped': break
+        self.assertEqual(self.g.stage, 'stopped')
+        self.assertIn('scan-free', self.g.result['reason'])
+
+    def test_lost_return_line_aborts_scan_free_without_handoff(self):
+        self.begin_return()
+        self.row.update(flags=2,reason=1,confidence=0)
+        for _ in range(20):
+            self.tick(delta=5)
+            if self.g.stage == 'stopped': break
+        self.assertEqual(self.g.stage, 'stopped')
+        self.assertIn('scan-free', self.g.result['reason'])
+        self.assertIs(self.m.gridrunner, self.g)
 
     def test_visible_line_controls_final_approach_even_with_wrong_tag_heading(self):
         self.begin_return()
@@ -617,39 +800,24 @@ class GridDriveTest(unittest.TestCase):
         self.assertAlmostEqual(self.g.last['correction'],
             self.g.last['line_correction'])
 
-    def test_interrupted_checkpoints_are_retried_on_explicit_return(self):
-        for checkpoint in (2000.,1500.,1000.,500.):
-            with self.subTest(checkpoint=checkpoint):
-                self.m.set_mode('gridrunner')
-                self.g = self.m.gridrunner
-                self.begin_return()
-                self.g.checkpoints = [checkpoint]
-                while self.g._range(self.f.state) > checkpoint+10:
-                    self.tick(delta=min(100,self.g._range(self.f.state)-checkpoint))
-                if self.g.stage != 'scanning':
-                    self.tick()
-                self.assertEqual(self.g.stage, 'scanning')
-                self.f.state['age'] = 1
-                self.g.tick(self.f.state, scan_active=True)
-                self.assertEqual(self.m._mode, 'idle')
-                self.assertEqual(self.g.checkpoints, [checkpoint])
-                self.f.state['age'] = 0
-                self.refresh()
-                self.m.return_to_tag15()
-                recovery = self.m.gridrunner
-                self.assertEqual(recovery.stage, 'scanning')
-                self.assertEqual(recovery.kind, 'return_to_tag15')
-                self.assertFalse(recovery.final_fix)
+    def test_scan_free_return_needs_no_checkpoint_scan(self):
+        self.begin_return()
+        self.m.camera.request_scan.reset_mock()
+        while self.g._range(self.f.state) > 510:
+            self.tick(delta=min(100, self.g._range(self.f.state) - 500))
+        if self.g.stage == 'return':
+            self.tick(delta=5)
+        self.assertEqual(self.g.stage, 'approach')
+        self.m.camera.request_scan.assert_not_called()
 
     def test_final_scan_required_even_when_checkpoint_list_is_empty(self):
         self.begin_return()
         self.g.checkpoints = []
         self.g.pose.update(x_mm=self.g.tag['x']-450, y_mm=self.g.tag['y'])
         self.tick(delta=5)
-        self.assertEqual(self.g.stage, 'scanning')
-        self.assertEqual(self.g.scan_checkpoint, 500)
+        self.assertEqual(self.g.stage, 'approach')
 
-    def test_return_line_loss_is_bounded_without_final_tag_fix(self):
+    def test_return_line_loss_is_bounded_scan_free(self):
         self.begin_return()
         self.row.update(flags=2, reason=1, confidence=0)
         self.tick(delta=5)
@@ -657,9 +825,8 @@ class GridDriveTest(unittest.TestCase):
         self.f.state['distance'] += 5
         self.refresh()
         self.g.tick(self.f.state)
-        self.assertIsNone(self.g.result)
-        self.assertEqual(self.m.gridrunner.kind,'return_to_tag15')
-        self.assertEqual(self.m.gridrunner.stage,'scanning')
+        self.assertEqual(self.g.stage, 'stopped')
+        self.assertIn('line absent', self.g.result['reason'])
 
     def test_generic_phone_bump_indicator_does_not_replay_old_events_after_mode_change(self):
         self.m._baseline_phone_bumps()
@@ -675,19 +842,15 @@ class GridDriveTest(unittest.TestCase):
         self.m._observe_phone_bumps()
         self.f.robot.set_bump_indicator.assert_called_once_with(True)
 
-    def test_failed_final_scan_cannot_be_bypassed_by_return_button(self):
+    def test_scan_free_return_still_allows_explicit_tag_return(self):
         self.begin_return()
-        self.g.checkpoints = [500.]
         while self.g._range(self.f.state) > 510:
             self.tick(delta=min(100,self.g._range(self.f.state)-500))
-        self.g._tag_fix = lambda detections: None
-        self.m.camera.latest_detections = ()
-        for _ in range(3):
-            self.m.camera.last_detection_time = self.g.scan_wall+.01
-            self.tick()
-        self.assertEqual(self.m._mode, 'gridrunner')
-        self.assertFalse(self.g.final_fix)
-        self.assertEqual(self.g.checkpoints, [500.])
+        if self.g.stage == 'return':
+            self.tick(delta=5)
+        self.assertEqual(self.g.stage, 'approach')
+        self.g.abort('test stop')
+        self.assertEqual(self.m._mode, 'idle')
         self.refresh()
         self.m.return_to_tag15()
         self.assertEqual(self.m.gridrunner.stage, 'scanning')
@@ -724,45 +887,33 @@ class GridDriveTest(unittest.TestCase):
         self.assertEqual(self.m.gridrunner.kind, 'return_to_tag15')
         self.assertEqual(self.m.gridrunner.stage, 'scanning')
 
-    def test_return_checkpoints_require_final_fix_and_near_target_bumper(self):
+    def test_scan_free_return_completes_on_bumper_near_tag(self):
         self.begin_return()
-        # Use a validated synthetic solver result to exercise the whole mission.
-        self.g._tag_fix = lambda detections: dict(self.g.pose, accepted_tag_ids=(('tag16h5',15),))
-        self.m.camera.latest_detections = ()
-        for checkpoint in (2000,1500,1000,500):
-            while self.g._range(self.f.state) > checkpoint+10:
-                self.tick(delta=min(100,self.g._range(self.f.state)-checkpoint))
-            if self.g.stage != 'scanning':
-                self.tick()
-            self.assertEqual(self.g.stage, 'scanning')
-            self.assertEqual(self.g.scan_checkpoint, checkpoint)
-            self.m.camera.last_detection_time = self.g.scan_wall+.01
-            self.tick()
-            if checkpoint == 500:
-                self.m.camera.last_detection_time = self.g.scan_wall+.01
-                self.tick()
-        self.assertEqual(self.g.stage, 'approach')
-        self.assertEqual(len([r for r in self.g.records if r['accepted']]), 4)
+        self.m.camera.request_scan.reset_mock()
         while self.g._range(self.f.state) > 200:
-            self.tick(delta=40)
+            self.tick(delta=min(100, max(0, self.g._range(self.f.state) - 174)))
+            if self.g.result is not None:
+                break
+        self.assertEqual(self.g.stage, 'approach')
+        self.m.camera.request_scan.assert_not_called()
         self.f.state['sensors'].bumps_and_wheel_drops.bump_left = True
         self.tick()
         self.assertEqual(self.g.result['status'], 'complete')
         self.assertEqual(self.m._mode, 'idle')
 
-    def test_missing_final_tag_stays_stopped_then_aborts(self):
+    def test_missing_final_tag_scan_free_overtravel_aborts(self):
         self.begin_return()
-        self.g.checkpoints = [500.]
-        while self.g._range(self.f.state) > 510:
-            self.tick(delta=min(100,self.g._range(self.f.state)-500))
-        self.g._tag_fix = lambda detections: None
-        self.m.camera.latest_detections = ()
-        for _ in range(3):
-            self.m.camera.last_detection_time = self.g.scan_wall+.01
-            self.tick()
-        self.assertEqual(self.m._mode, 'gridrunner')
-        self.assertEqual(self.m.gridrunner.kind,'return_to_tag15')
-        self.assertFalse(self.m.gridrunner.final_fix)
+        while self.g._range(self.f.state) > 200:
+            self.tick(delta=min(100, max(0, self.g._range(self.f.state) - 174)))
+            if self.g.result is not None:
+                break
+        # No contact at all: the bounded travel guard must stop the run.
+        for _ in range(7):
+            self.tick(delta=100)
+            if self.g.stage == 'stopped':
+                break
+        self.assertEqual(self.g.stage, 'stopped')
+        self.assertIn('approach', self.g.result['reason'])
 
     def test_unexpected_front_contact_aborts_instead_of_claiming_target(self):
         self.begin_return()
@@ -778,9 +929,8 @@ class GridDriveTest(unittest.TestCase):
         self.g.last_tag_distance = self.f.state['distance']
         self.g.pose = dict(x_mm=self.g.tag['x']-120,y_mm=self.g.tag['y'],heading_rad=0)
         self.tick(delta=10)
-        self.assertEqual(self.m._mode, 'gridrunner')
-        self.assertEqual(self.m.gridrunner.kind,'return_to_tag15')
-        self.assertEqual(self.m.gridrunner.stage,'scanning')
+        self.assertEqual(self.g.stage, 'stopped')
+        self.assertIn('approach', self.g.result['reason'])
 
     def test_scan_timeout_stops_without_driving(self):
         self.begin_return()
@@ -881,8 +1031,7 @@ class GridDriveTest(unittest.TestCase):
             self.f.state['angle'] += math.degrees(yaw)
         self.assertTrue(slowed)
         self.assertEqual(self.g.result['status'], 'complete', self.g.result)
-        self.assertEqual([r['checkpoint_mm'] for r in self.g.records if r['accepted']], [2000,1500,1000,500])
-        self.assertEqual(sum(r['accepted'] for r in self.g.records), 4)
+        self.assertEqual(self.g.records, [])  # scan-free: no checkpoint scans
         self.assertLess(abs(y-(tag[1][3]*1000-26)), 40)
 
     def test_physical_hazards_stale_sensors_and_watchdog(self):

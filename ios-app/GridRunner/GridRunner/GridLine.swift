@@ -1,4 +1,4 @@
-// @(#)GridLine.swift 3.1.grid.2 2026/11/03 20:30:00
+// @(#)GridLine.swift 3.1.tiles.6 2026/11/06 20:30:00
 import Foundation
 import simd
 
@@ -44,7 +44,10 @@ struct GridLine {
         return config.mount.robot(floor)+SIMD2(config.forwardMM,config.leftMM)
     }
     static func hits(luma: UnsafePointer<UInt8>, width: Int, height: Int, stride: Int, nominal: Double) -> [Hit] {
-        let x0 = width/8, x1 = 7*width/8
+        // Widened to width/16..15*width/16 (was width/8..7*width/8): after
+        // turnaround the stripe rides near the left search edge and flickers
+        // in/out, which the 1 s degraded timer turned into a tag handoff.
+        let x0 = width/16, x1 = 15*width/16
         var hits: [Hit] = []
         // Still two horizontal scanlines. Nearby alternatives avoid placing a
         // scanline directly along a transverse dark grout stripe. No counting.
@@ -122,7 +125,12 @@ struct GridLine {
             candidates.append((confidence-abs(offset-config.leftMM)*0.001,result))
         } }
         candidates.sort { $0.0 > $1.0 }
-        guard let best = candidates.first else { return empty }
+        guard let best = candidates.first else {
+            if !top.isEmpty || !bottom.isEmpty {
+                NSLog("GridRunner no-stripe: topHits=%d bottomHits=%d", top.count, bottom.count)
+            }
+            return empty
+        }
         if candidates.dropFirst().contains(where: {
             best.0-$0.0<0.1 && (abs(best.1.offset-$0.1.offset)>8 || abs(best.1.angle-$0.1.angle)>0.1)
         }) { return empty }

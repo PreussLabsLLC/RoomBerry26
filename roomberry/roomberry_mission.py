@@ -420,6 +420,7 @@ class RoomberryMission:
                 kind=getattr(self.gridrunner, 'kind', 'grout'),
                 stage=self.gridrunner.stage,result=self.gridrunner.result,last=self.gridrunner.last,
                     checkpoints=self.gridrunner.records,
+                    crossings=getattr(self.gridrunner, 'crossings', []),
                     threshold=self.gridrunner.threshold,
                     next_checkpoint_mm=self.gridrunner.checkpoints[0] if self.gridrunner.checkpoints else None), calibration=None if run is None else dict(
                 stage=run.stage, result=run.result, checkpoints=len(run.records),

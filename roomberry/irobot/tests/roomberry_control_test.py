@@ -533,13 +533,15 @@ class WheelRampTest(unittest.TestCase):
     def test_grout_discrete_start_and_normal_stop(self):
         with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
             self.command('drive_direct', left_velocity=150, right_velocity=150, steps=True)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',30,30))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',40,40))
             self.tick(3)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',30,30))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',40,40))
             self.tick(2)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',70,70))
+            self.tick(5)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',150,150))
             stop = self.command('soft_stop')
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',30,30))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',40,40))
             self.assertFalse(stop['done'].is_set())
             self.tick(3)
             self.assertFalse(stop['done'].is_set())
@@ -550,11 +552,14 @@ class WheelRampTest(unittest.TestCase):
     def test_grout_pending_step_retunes_without_extending_dwell(self):
         with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
             self.command('drive_direct', left_velocity=-150, right_velocity=-150, steps=True)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-40,-40))
             deadline = self.controller._step_until
             self.tick(2)
             self.command('drive_direct', left_velocity=-160, right_velocity=-140, steps=True)
             self.assertEqual(self.controller._step_until, deadline)
             self.tick(3)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-70,-70))
+            self.tick(5)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-140,-160))
 
     def test_emergency_stop_cancels_pending_acceleration(self):

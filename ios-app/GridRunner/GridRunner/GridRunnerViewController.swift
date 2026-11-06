@@ -1,4 +1,4 @@
-// @(#)GridRunnerViewController.swift 3.1.grid.2 2026/11/03 20:30:00
+// @(#)GridRunnerViewController.swift 3.1.tiles.1 2026/11/05 16:00:00
 import UIKit
 import AVFoundation
 
@@ -31,6 +31,7 @@ final class GridPreview: UIView {
 
 final class GridOverlay: UIView {
     var packet: GridPacket? { didSet { setNeedsDisplay() } }
+    private let crossing = GridCrossingConfiguration()
     override func draw(_ rect: CGRect) {
         guard let p = packet, let ctx = UIGraphicsGetCurrentContext() else { return }
         let aspect = CGFloat(p.width)/CGFloat(p.height)
@@ -38,6 +39,8 @@ final class GridOverlay: UIView {
         if area.width/area.height > aspect { area.size.width = area.height*aspect; area.origin.x = (bounds.width-area.width)/2 }
         else { area.size.height = area.width/aspect; area.origin.y = (bounds.height-area.height)/2 }
         func point(_ v: SIMD2<Double>) -> CGPoint { CGPoint(x:area.minX+CGFloat(v.x)*area.width,y:area.minY+CGFloat(v.y)*area.height) }
+        func row(_ y: Double) -> CGFloat { area.minY+CGFloat(y)*area.height }
+        func stripX(_ x: Double) -> CGFloat { area.minX+CGFloat(x)*area.width }
         let d = p.detection
         ctx.setLineWidth(1); ctx.setStrokeColor(UIColor.systemYellow.cgColor)
         for v in [d.first,d.second] {
@@ -46,8 +49,34 @@ final class GridOverlay: UIView {
         }
         ctx.setLineWidth(2); ctx.setStrokeColor(UIColor.systemCyan.cgColor)
         ctx.move(to:point(d.targetFirst)); ctx.addLine(to:point(d.targetSecond)); ctx.strokePath()
+        // Transverse crossing geometry: a fixed row and the two sampling
+        // strips. The row is where a confirmed band is counted.
+        ctx.setLineWidth(1); ctx.setLineDash(phase:0,lengths:[4,4])
+        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.85).cgColor)
+        let reference = row(crossing.referenceY)
+        ctx.move(to:CGPoint(x:area.minX,y:reference)); ctx.addLine(to:CGPoint(x:area.maxX,y:reference)); ctx.strokePath()
+        ctx.setStrokeColor(UIColor.white.withAlphaComponent(0.45).cgColor)
+        for x in [crossing.leftStrip,crossing.rightStrip] {
+            let column = stripX(x)
+            ctx.move(to:CGPoint(x:column,y:area.minY)); ctx.addLine(to:CGPoint(x:column,y:area.maxY)); ctx.strokePath()
+        }
+        ctx.setLineDash(phase:0,lengths:[])
+        if p.crossing.valid {
+            let flash = p.frameUS > 0 && Double(p.frameUS)/1e6 - p.crossing.lastCrossing >= 0
+                && Double(p.frameUS)/1e6 - p.crossing.lastCrossing < 0.4
+            ctx.setLineWidth(4)
+            let half = CGFloat(crossing.stripWidth)/CGFloat(max(1,p.width))*area.width/2
+            for (x,y) in [(crossing.leftStrip,p.crossing.leftY),(crossing.rightStrip,p.crossing.rightY)] {
+                let column = stripX(x)
+                ctx.move(to:CGPoint(x:column-half,y:row(y)))
+                ctx.addLine(to:CGPoint(x:column+half,y:row(y))); ctx.strokePath()
+            }
+            ctx.setFillColor((flash ? UIColor.systemGreen : UIColor.systemOrange).cgColor)
+            let centre = CGPoint(x:area.midX,y:row(p.crossing.y))
+            ctx.fillEllipse(in:CGRect(x:centre.x-4,y:centre.y-4,width:8,height:8))
+        }
         if p.flags == 3 {
-            ctx.setStrokeColor(UIColor.systemGreen.cgColor)
+            ctx.setLineWidth(2); ctx.setStrokeColor(UIColor.systemGreen.cgColor)
             ctx.move(to:point(d.first)); ctx.addLine(to:point(d.second)); ctx.strokePath()
             ctx.setFillColor(UIColor.systemGreen.cgColor)
             for v in [d.first,d.second] { let q = point(v); ctx.fillEllipse(in:CGRect(x:q.x-4,y:q.y-4,width:8,height:8)) }
@@ -84,7 +113,7 @@ final class GridRunnerViewController: UIViewController {
         status.text = "Align over grout. Start stream, then press Rosie's Clock."
         network.numberOfLines = 0; network.font = .systemFont(ofSize:11)
         let help = UILabel(); help.numberOfLines = 0; help.font = .systemFont(ofSize:12)
-        help.text = "50 mm/s · Clock starts GRID; Stop ends the stream. Yellow: scan rows · green: detected grout · cyan: camera-center target. Align the camera over the grout. Motion stops on stale data or hazards."
+        help.text = "50 mm/s · Clock starts GRID; Stop ends the stream. Yellow: scan rows · green: detected grout · cyan: camera-center target. White dashed: transverse crossing row · orange: tile-edge band. Align the camera over the grout. Motion stops on stale data or hazards."
         let stack = UIStackView(arrangedSubviews:[title,status,network,help,direction]); stack.axis = .vertical; stack.spacing = 7
         direction.selectedSegmentIndex = config.direction < 0 ? 0:1
         let names = ["Lens height (mm)","Top-edge angle (°)","Lens forward (mm)","Lens left (mm)","Steering gain","Correction limit"]
@@ -124,7 +153,14 @@ final class GridRunnerViewController: UIViewController {
         camera.onOverlay = { [weak self] p in
             guard let self = self,self.active,self.session == p.session else { return }
             self.overlay.packet = p
-            self.status.text = String(format:"%@\nCamera-line error %+0.1f mm · angle %+0.1f°\nConfidence %0.0f%% · correction %+0.3f\n%@ · seq %u · reason %u",p.flags == 3 ? "LINE LOCKED":"LINE LOST / WAIT",p.detection.offset-p.config.leftMM,p.detection.angle*180 / .pi,p.detection.confidence*100,p.detection.correction,p.direction<0 ? "REVERSE":"FORWARD",p.sequence,p.reason)
+            let tiles: String
+            if p.crossing.count == 0 {
+                tiles = p.crossing.valid ? String(format:"Tiles 0 · band row %0.0f%%",p.crossing.y*100)
+                                         : "Tiles 0 · waiting for a transverse band"
+            } else {
+                tiles = String(format:"Tiles %u · last interval %0.2f s",p.crossing.count,p.crossing.lastInterval)
+            }
+            self.status.text = String(format:"%@\nCamera-line error %+0.1f mm · angle %+0.1f°\nConfidence %0.0f%% · correction %+0.3f\n%@\n%@ · seq %u · reason %u",p.flags == 3 ? "LINE LOCKED":"LINE LOST / WAIT",p.detection.offset-p.config.leftMM,p.detection.angle*180 / .pi,p.detection.confidence*100,p.detection.correction,tiles,p.direction<0 ? "REVERSE":"FORWARD",p.sequence,p.reason)
         }
         camera.onError = { [weak self] message in self?.stop(); self?.status.text = message }
         NotificationCenter.default.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
