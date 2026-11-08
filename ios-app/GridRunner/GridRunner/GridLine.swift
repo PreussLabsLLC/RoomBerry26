@@ -6,7 +6,9 @@ struct GridConfiguration: Codable {
     var heightMM = 85.0
     var yawDegrees = 180.0
     var forwardMM = -200.0
-    var leftMM = -13.0
+    // Re-measured from run residuals: config was 26, the stripe held at
+    // 15 mm offset (tracking error -10.6 mm, constant). Physical ≈ 15.
+    var leftMM = 15.0
     var gain = 2.0
     var limit = 0.25
     var direction: Int8 = -1
@@ -23,10 +25,10 @@ struct GridConfiguration: Codable {
 
 struct GridDetection {
     var valid = false
-    var first = SIMD2(0.5,0.35)
-    var second = SIMD2(0.5,0.65)
-    var targetFirst = SIMD2(0.5,0.35)
-    var targetSecond = SIMD2(0.5,0.65)
+    var first = SIMD2(0.5,0.25)
+    var second = SIMD2(0.5,0.75)
+    var targetFirst = SIMD2(0.5,0.25)
+    var targetSecond = SIMD2(0.5,0.75)
     var offset = 0.0
     var angle = 0.0
     var confidence = 0.0
@@ -99,13 +101,16 @@ struct GridLine {
     static func detect(luma: UnsafePointer<UInt8>, width: Int, height: Int, stride: Int,
                        k: simd_double3x3, gravity: SIMD3<Double>, config: GridConfiguration) -> GridDetection {
         var empty = GridDetection()
-        for (nominal,first) in [(0.35,true),(0.65,false)] {
+        // Scanlines at 25%/75% (were 35%/65%): the LED corona near the
+        // image centre was degrading contrast at the scanline rows and
+        // contributing to intermittent lost-line status.
+        for (nominal,first) in [(0.25,true),(0.75,false)] {
             let y = nominal*Double(height)
             let p = SIMD2(targetX(y:y,width:width,k:k,gravity:gravity,config:config)/Double(width),nominal)
             if first { empty.targetFirst = p } else { empty.targetSecond = p }
         }
-        let top = hits(luma:luma,width:width,height:height,stride:stride,nominal:0.35)
-        let bottom = hits(luma:luma,width:width,height:height,stride:stride,nominal:0.65)
+        let top = hits(luma:luma,width:width,height:height,stride:stride,nominal:0.25)
+        let bottom = hits(luma:luma,width:width,height:height,stride:stride,nominal:0.75)
         var candidates: [(Double,GridDetection)] = []
         for a in top { for b in bottom {
             guard let p = robotPoint(SIMD2(a.x,a.y),k:k,gravity:gravity,config:config),

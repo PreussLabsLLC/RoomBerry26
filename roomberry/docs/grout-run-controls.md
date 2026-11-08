@@ -1,4 +1,4 @@
-<!-- @(#)grout-run-controls.md 3.1.tiles.6 2026/11/06 -->
+<!-- @(#)grout-run-controls.md 3.1.tiles.10 2026/11/06 -->
 # November 4 run controls and wheel-size adjustment
 
 Pi control build: `3.1.grout.19`. Open the Pi's `/` local console and press
@@ -560,3 +560,27 @@ pose. The outbound line-end confirm also accepts 3 losses interleaved with
 good frames (only 3 good frames cancel), and a fresh GridDrive in an ongoing
 phone session re-baselines the crossing count instead of logging a missed
 span.
+
+Heading drift fix (3.1.tiles.7): pose heading was wheel-yaw integration
+only, so a left/right imbalance integrated into degrees of +y drift on the
+map. The pose now fuses the grout line angle (`tag heading - line_angle`,
+weak 0.02/tick) to bound that drift, the initial pose records an anchor y
+on the tag-15 heading line, and return steering adds a bounded anchor term
+once lateral drift exceeds 120 mm. GridRunner scanlines also moved from
+35 %/65 % to 25 %/75 % of the frame (LED corona avoidance), and the crossing
+tracker now needs 2.5 s minimum interval plus a 50 mm re-arm hysteresis
+(one grout line = one count). Starting GridRunner clears the map's visited
+cookies and trail; blocked room cells stay, and tag positions (config-file
+landmarks) are untouched.
+
+Lost-line return + PID (3.1.tiles.9): with the stripe lost, the return now
+dead-reckons on the fused wheel pose toward the surveyed tag 15 (it should
+re-enter view) instead of aborting at 3 s; only the 30 s / 750 mm
+slow-travel bound aborts. Line steering is PID (Ki 0.15, Kd 0.08, integral
+clamped) instead of proportional-only to cut the weave.
+
+Lens + stale + skips (3.1.tiles.10): camera `lens_left` is 15 mm (residual
+analysis showed −10.6 mm constant tracking error at 26 mm config). Stale
+phone frames brake-hold for 1 s before aborting. Transverse ambiguity gate
+relaxed (0.95 score ratio) to reduce skipped crossings. On first launch
+the app's stored configuration migrates to the new offset key.

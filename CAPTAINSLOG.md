@@ -1,5 +1,127 @@
-<!-- @(#)CAPTAINSLOG.md 3.1.tiles.6 2026/11/06 10:00:00 -->
+<!-- @(#)CAPTAINSLOG.md 3.1.tiles.10 2026/11/06 10:00:00 -->
 # Captains Log
+
+### 2026-11-08 — Local and GitHub check-in: RoomTrek and tile refinements
+
+- User requests all pending changes checked in locally and on GitHub. Preserve
+  local master and independent publication main history; origin/main fetched
+  and verified equal before copying30 changed source/doc/asset files.
+- Local check-in includes53 pending files including runtime state/map archives;
+  publication keeps established runtime-log/local-agent exclusions (23 files).
+  Preserve publication-only files and legacy frontend. No robot deployment.
+- Includes standalone RoomTrek, app artwork, map transfer/pose diagnostics and
+  approved optional type6 sender; GridRunner heading fusion/PID/line-loss,
+  crossing/scanline/lens refinements, coverage reset and regression tests.
+- Correct free-account notes: Personal Team provisioning must run through Xcode;
+  manual paid-portal registration advice was inapplicable. Sputnik installation
+  remains unverified; use newer Mac/Xcode for iOS18, retain old setup for iPhoneX.
+- Full Python suite570/570 passed (108.437s); GridRunner Release build passed;
+  RoomTrek host checks passed, signed Release previously passed. Source SCCS,
+  credential-pattern, file-size and whitespace reviews clear. Generated map CSV
+  CRLF retained. Physical map portability/accuracy testing remains outstanding.
+
+
+### 2026-11-08 — RoomTrek provisioning refresh attempt
+
+- User authorizes registering Sputnik and regenerating its profile. Generic
+  signed build with allowProvisioningUpdates/allowProvisioningDeviceRegistration
+  succeeds, but embedded profile still lists only the two older phones.
+- Device-targeted registration remains blocked by Xcode14.2's missing iOS18
+  device support. No configured App Store Connect API key/fastlane tools found
+  in standard locations. Sputnik has not been registered by this attempt.
+- Manual Apple Developer Devices registration required: Sputnik,
+  UDID00008030-001D581226E2802E, team D7C5ZZCATF. Then refresh RoomTrek profile,
+  inspect inclusion and retry installation; no additional failed install run.
+
+
+### 2026-11-08 — RoomTrek device name correction
+
+- User confirms the iPhone 11 Pro is Sputnik. Correct README and device notes;
+  installation attempts already used the correct hardware ID.
+
+### 2026-11-08 — RoomTrek installation retry after Developer Mode enabled
+
+- User enabled Developer Mode; retry device-targeted Xcode build with automatic
+  provisioning/device registration. Developer Mode warning is resolved, but
+  Xcode14.2 cannot prepare iOS18.7.7: missing device support files (exit70).
+- Direct ios-deploy retry completes transfer but fails verification again with
+  0xe8008015, invalid provisioning profile. RoomTrek is not installed.
+- Need supported Xcode/device support plus development profile containing
+  Sputnik's UDID00008030-001D581226E2802E. No app source or robot changes.
+
+
+### 2026-11-08 — Standalone RoomTrek surveying/localization implementation
+
+- Reviewed existing RoomTrek outline, StarLock and NavLink conventions. Keep
+  Swift5/iOS15/Xcode14.2 and automatic team signing; no edits to existing apps,
+  robot behavior, legacy frontend or remotes. Preserve pre-existing worktree edits.
+- Correct ARKit frame delegate callback, mapped-world quaternion, camera/body
+  mount transform direction, Stop/Start logging and main-thread map-save UI.
+  Navigator requires observed relocalization plus1s normal tracking; stale,
+  limited, failed/interrupted and Surveyor poses cannot be valid navigation data.
+- Secure local ARWorldMap archive in versioned metadata container, validated
+  Files import/export, atomic replacement, metadata-version and128MiB import
+  bounds; map library, side-by-side camera/features/status UI, retry/stop.
+- Add tracking/mapping/attempt/outcome diagnostics and1/2/5Hz pose logging.
+  User approved RoomTrek NavLink v1/type6 extension: full UUID/quaternion,
+  mapped camera pose, timestamps, tracking/relocalization/validity. Off by
+  default; existing Pi receiver rejects type6 and needs a separate upgrade.
+- Signed Release build passed without compiler warnings. Host checks passed
+  packet layout/UUID, pose validity/freshness, mount inversion, JSON round-trip
+  and malformed/version rejection. Plists and SCCS checks pass.
+- USB11Pro detected as Sputnik, iOS18.7.7. Install
+  rejected0xe8008015: profile omits UDID00008030-001D581226E2802E. Xcode
+  registration attempt reports Developer Mode disabled; enable on phone then
+  register/refresh provisioning. No camera runtime or cross-phone accuracy
+  result claimed. README includes build, limitations and kitchen trial procedure.
+
+
+### November 6 lens recalibration, stale tolerance, crossing skips (3.1.tiles.10)
+
+- Camera lens_left set to 15 mm (was 26 config): run residuals showed a
+  constant -10.6 mm tracking error, i.e. physical ≈ 15 mm; grout now
+  centres the robot body. UserDefaults key versioned so the old stored
+  26 doesn't override. GridRunner 3.1 build 7 on Peters 10.
+- Stale phone frames (flags=2 reason=2) brake-hold for up to 1 s instead
+  of aborting (the 12:18 terminal fault); abort after.
+- Transverse ambiguity gate relaxed 0.8 → 0.95 score ratio to reduce
+  silently skipped crossings at cruise.
+- 73 gridrunner tests pass. Pi sync pending (roomberry_gridrunner.py).
+
+### November 6 lost-line return + PID (3.1.tiles.9)
+
+- Return/approach with the stripe lost dead-reckons toward surveyed tag
+  15 on the fused wheel pose (reacquisition expected as it re-enters
+  view) instead of aborting at the 3 s grace; only the 30 s / 750 mm
+  outer bound aborts.
+- Line steering is now PID (Ki 0.15, Kd 0.08, integral clamped at ±150)
+  instead of proportional-only, to damp the weave.
+- 72 gridrunner tests pass. Pi sync + restart pending; no iOS change.
+
+### November 6 double-count fix, scanlines, map clear (3.1.tiles.8 / grout.21)
+
+- Crossing tracker: minimum interval 1.5 → 2.5 s, re-arm horizon 30 → 50 mm
+  so a stopped/braced robot sitting on a grout line no longer counts it
+  twice. GridRunner 3.1 build 6 installed on Peters 10.
+- GridLine scanlines moved 35 %/65 % → 25 %/75 % of frame to clear the LED
+  reflection corona, a likely contributor to lost-line flicker.
+- `RoomberryMapper.clear_coverage()` resets visited cookies + trail
+  (blocked cells kept); `set_mode(gridrunner)` clears coverage on arm so
+  each run starts from a fresh map. Tag positions live in autonomy.json
+  landmarks and are untouched.
+- 222 gridrunner/mapper/mission tests pass. Pi sync pending
+  (roomberry_gridrunner/mapper/mission.py).
+
+### November 6 heading fusion + anchor line (3.1.tiles.7)
+
+- Map trace showed a +3 deg heading bend: pose heading was wheel-yaw
+  integration only (wheel imbalance flipped between stages in pit tests),
+  unchecked without tag fixes after scan-free returns.
+- `_fuse_line_heading` pulls pose heading toward tag heading minus the
+  phone's line angle (weak 0.02/tick) to bound integration drift.
+- Initial pose records anchor y on the tag-15 heading line; return
+  steering adds a bounded anchor term past 120 mm lateral drift.
+- 72 gridrunner tests pass. Pi sync + restart pending; no iOS change.
 
 ### November 6 short-outbound guard + confirm fixes (3.1.tiles.6)
 

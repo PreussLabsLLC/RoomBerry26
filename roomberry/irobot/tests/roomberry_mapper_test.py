@@ -1,4 +1,4 @@
-# @(#)roomberry_mapper_test.py 3.1.grout.3 2026/11/04 11:45:00
+# @(#)roomberry_mapper_test.py 3.1.grout.21 2026/11/06 10:00:00
 import json
 import os
 import unittest
@@ -42,6 +42,23 @@ class RoomberryMapperPersistenceTest(unittest.TestCase):
 
     def tearDown(self):
         self._temp.cleanup()
+
+    def test_clear_coverage_resets_visit_and_trail_but_keeps_obstacles(self):
+        mapper = self.mapper
+        mapper.update_pose(600, 600, 0)
+        mapper.record_cleaned_sweep(600, 600, persist=False)
+        mapper.mark_obstacle(1400, 1400)
+        before = mapper.status()
+        self.assertGreater(before['mowed_cookies'], 0)
+        mapper.clear_coverage()
+        after = mapper.snapshot()
+        self.assertTrue(all(cell == 'pending' for row in after['cookies'] for cell in row))
+        self.assertEqual(after['trail'], [])
+        self.assertEqual(after['trail_session_start'], 0)
+        # Room geometry (blocked cells) survives the coverage clear.
+        self.assertEqual(sum(cell == BLOCKED for row in after['occupancy'] for cell in row),
+                         sum(cell == BLOCKED for row in mapper.snapshot()['occupancy'] for cell in row))
+        self.assertGreater(sum(cell == BLOCKED for row in after['occupancy'] for cell in row), 0)
 
     def _saved(self):
         with open(self.state_path) as state_file:

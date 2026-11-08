@@ -8,7 +8,7 @@ Coordinates are millimeters in a fixed room frame. The map origin is the lower
 left corner; heading is radians counter-clockwise from +X.
 """
 
-# @(#)roomberry_mapper.py 3.1.grout.3 2026/11/04 11:45:00
+# @(#)roomberry_mapper.py 3.1.grout.21 2026/11/06 10:00:00
 from collections import deque
 from math import ceil, cos, hypot, floor, isfinite, sin
 from threading import Lock, RLock
@@ -136,6 +136,18 @@ class RoomberryMapper:
             self._last_persist=None
         self.state_path=filename
         return True
+
+    def clear_coverage(self):
+        """Fresh run: reset visited cookies and the recorded trail.
+
+        Room geometry (blocked cells) is kept; AprilTag positions live in
+        the autonomy config, not this map, so they are unaffected.
+        """
+        with self._lock:
+            self._cookies = [[COOKIE_PENDING for _ in range(self.cols)] for _ in range(self.rows)]
+            self._trail = []
+            self._trail_session_start = 0
+            self._dirty = True
 
     def snapshot(self):
         with self._lock:

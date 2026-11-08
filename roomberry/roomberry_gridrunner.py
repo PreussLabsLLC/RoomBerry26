@@ -1,5 +1,5 @@
 """GridRunner packets and a grout-line-end out-and-back with tag checkpoints."""
-# @(#)roomberry_gridrunner.py 3.1.tiles.6 2026/11/06
+# @(#)roomberry_gridrunner.py 3.1.tiles.10 2026/11/06
 import json
 import math
 import struct
@@ -39,6 +39,11 @@ GRID_THRESHOLD_CLEARANCE_MM = 150.
 # slow travel on the last-good line heading before a scan handoff.
 GRID_RETURN_LOSS_GRACE_S = 3.0
 GRID_LAST_GOOD_STEER_S = 1.5
+# PID on the line tracking error; previously proportional-only, which
+# overshot into a weave. Integral is clamped; derivative is kept small.
+GRID_PID_KI = 0.15
+GRID_PID_KD = 0.08
+GRID_PID_I_LIMIT = 150.
 TILE_MM = 304.8  # nominal kitchen tile pitch; one crossing = one tile span
 
 
@@ -212,6 +217,10 @@ class GridDrive:
         self.crossing_count = 0
         self.crossings = []
         self.last_good_line = None
+        self._pid_i = 0.0
+        self._pid_e = None
+        self._pid_at = None
+        self.stale_since = None
 
     def _tile_report(self):
         """Durable per-tile calibration table; observation only."""
@@ -312,6 +321,9 @@ class GridDrive:
         self.pose = dict(x_mm=self.tag['x']-radius*math.cos(heading)+self.target_offset_mm*math.sin(heading),
                          y_mm=self.tag['y']-radius*math.sin(heading)-self.target_offset_mm*math.cos(heading),
                          heading_rad=heading)
+        # Anchor: the run traverses along the tag-15 heading line; lateral
+        # drift away from this y is heading drift, corrected in steering.
+        self.anchor_y_mm = self.pose['y_mm']
 
     def _integrate(self, state):
         distance, angle = float(state['distance']), float(state['angle'])
@@ -374,6 +386,28 @@ class GridDrive:
             tag_distance_mm=self._range(state))
         self.crossings.append(record)
         self.mission.logger.info('GridRunner crossing: %s', json.dumps(record, sort_keys=True))
+
+    def _fuse_line_heading(self, row):
+        """Pull pose heading toward the grout-stripe direction.
+
+        Previously pose heading was wheel-yaw integration only, so a
+        persistent left/right imbalance integrated into a +y drift
+        (several degrees over one run) that the map trace showed as a
+        bend away from the tag-15 anchor line. The stripe's world
+        direction is the tag heading; GridRunner reports the line angle
+        relative to the body (modelled as -body heading error), so the
+        observation is tag_heading - line_angle. Weak per-tick fusion
+        keeps wheel integration for dynamics but bounds the drift.
+        """
+        if self.pose is None or self.tag is None:
+            return
+        if row.get('flags') != 3 or row.get('confidence', 0) < .65:
+            return
+        observed = self._wrap(float(self.tag['heading']) - float(row['line_angle_rad']))
+        innovation = self._wrap(observed - self.pose['heading_rad'])
+        self.pose['heading_rad'] = self._wrap(
+            self.pose['heading_rad'] + 0.02 * innovation)
+        return innovation
 
     def _expected_contact(self):
         if self.stage not in ('return', 'approach') or self.pose is None:
@@ -544,6 +578,8 @@ class GridDrive:
                      and (health['session'],health['calibration']) == (row['session'],row['calibration'])
                      and 0 <= now-health['received_monotonic'] <= .5)
         usable = fresh and row['flags'] == 3 and row['confidence'] >= GRID_MIN_CONFIDENCE
+        if fresh:
+            self.stale_since = None
         if self.stage == 'waiting' and not (usable and health_ok):
             self.last = dict(tracking='waiting for fresh line/health (line confidence ≥65%)',
                              confidence=0 if row is None else row['confidence'],
@@ -551,6 +587,18 @@ class GridDrive:
             self.mission._send_stop('GridRunner waiting for fresh line and phone health')
             return
         if not fresh or not health_ok or row['flags'] not in (2,3) or (row['flags'] == 2 and row['reason'] != 1):
+            # A single stale frame (reason 2, e.g. a 400 ms hiccup mid-run)
+            # no longer aborts: brake and hold for up to 1 s, abort after.
+            stale_frame = row is not None and row['flags'] == 2 and row['reason'] == 2
+            if stale_frame and health_ok and self.identity is not None:
+                if getattr(self, 'stale_since', None) is None:
+                    self.stale_since = now
+                    self._pause('GridRunner stale frame brake')
+                if now - self.stale_since < 1.0:
+                    self.last = dict(stage=self.stage, tracking='holding for fresh frame',
+                                     tiles=self.crossing_count, velocity_mm_s=0,
+                                     confidence=row['confidence'], offset_mm=None)
+                    return
             self.abort('line lost, stopped, or line/phone telemetry stale')
             return
         identity = (row['session'],row['calibration'])
@@ -578,6 +626,7 @@ class GridDrive:
             self.abort('phone session/configuration/direction changed; restart explicitly')
             return
         self._record_crossing(row, state)
+        self._fuse_line_heading(row)
         event = self.bump_policy.observe(health, self._ignore_speed_bump)
         self.bump_count = health['bump_count']
         if event is not None:
@@ -776,11 +825,11 @@ class GridDrive:
             if self.good_frames >= 3:
                 self.lost_at = self.lost_distance = None
         degraded = self.lost_at is not None
-        if degraded and self.stage in ('driving','return') and (now-self.lost_at > 30 or abs(distance-self.lost_distance) > 750):
+        # Return/approach with no line: dead-reckon on the fused wheel pose
+        # toward the surveyed tag 15. It should come back into view; only
+        # the outer 30 s / 750 mm slow-travel bound aborts (clamped below).
+        if degraded and self.stage in ('driving','return','approach') and (now-self.lost_at > 30 or abs(distance-self.lost_distance) > 750):
             self.abort('line absent beyond 30 seconds or 750 mm slow-travel allowance')
-            return
-        if degraded and self.stage in ('return','approach') and now-self.lost_at >= GRID_RETURN_LOSS_GRACE_S:
-            self.abort('no reliable return grout line for three seconds (scan-free)')
             return
         speed = direction*(GRID_APPROACH_SPEED if self.stage == 'approach' else
                            GRID_SLOW_SPEED if degraded else GRID_SPEED)
@@ -789,9 +838,17 @@ class GridDrive:
         if usable and not (self.stage == 'driving' and degraded):
             line_heading_error = (row['line_angle_rad']+direction*math.atan2(
                 row['offset_mm']-self.target_offset_mm, GRID_LOOKAHEAD_MM))
-            line_correction = grid_correction(row['offset_mm'],row['line_angle_rad'],direction,
-                row['gain']*GRID_STEERING_MULTIPLIER,min(row['correction_limit'],GRID_MAX_STEERING),
-                self.target_offset_mm)
+            err = (row['offset_mm']-self.target_offset_mm)/GRID_LOOKAHEAD_MM \
+                + direction*row['line_angle_rad']
+            prev_at = self._pid_at if self._pid_at is not None else now - 0.1
+            dt = max(0.02, min(0.5, now - prev_at))
+            self._pid_i = max(-GRID_PID_I_LIMIT, min(GRID_PID_I_LIMIT,
+                getattr(self, '_pid_i', 0.0) + err * dt))
+            d = (err - (self._pid_e if self._pid_e is not None else err)) / dt
+            self._pid_e, self._pid_at = err, now
+            raw = row['gain']*GRID_STEERING_MULTIPLIER*(err + GRID_PID_KI*self._pid_i + GRID_PID_KD*d)
+            line_correction = max(-min(row['correction_limit'],GRID_MAX_STEERING),
+                                  min(min(row['correction_limit'],GRID_MAX_STEERING), raw))
             if self.stage == 'driving' and row['confidence'] >= GRID_REACQUIRE_CONFIDENCE:
                 self.hold_heading = float(state['angle'])
             self.last_good_line = dict(correction=line_correction,
@@ -822,6 +879,10 @@ class GridDrive:
             if line_correction is not None:
                 # A visible grout line owns steering even after a tag fix.
                 correction = line_correction
+                if direction == 1 and self.pose is not None and getattr(self, 'anchor_y_mm', None) is not None:
+                    dy = max(-150., min(150., self.anchor_y_mm - self.pose['y_mm']))
+                    if abs(self.anchor_y_mm - self.pose['y_mm']) > 120:
+                        correction += max(-.1, min(.1, 2. * math.atan2(dy, 600.)))
         steering_mode = 'differential'
         physical_error = (line_heading_error if line_correction is not None else error)
         if abs(speed) < GRID_SPEED:

@@ -106,7 +106,7 @@ final class GridRunnerViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        if let data = UserDefaults.standard.data(forKey:"GridRunner.configuration"),
+        if let data = UserDefaults.standard.data(forKey:"GridRunner.configuration.2"),
            let c = try? JSONDecoder().decode(GridConfiguration.self,from:data),c.valid { config = c }
         let title = UILabel(); title.text = "GridRunner"; title.font = .boldSystemFont(ofSize:24)
         status.numberOfLines = 0; status.font = .monospacedSystemFont(ofSize:13,weight:.regular)
@@ -182,7 +182,7 @@ final class GridRunnerViewController: UIViewController {
         config.direction = direction.selectedSegmentIndex == 0 ? -1:1
         config.identity = UInt64.random(in:1...UInt64.max)
         guard config.valid else { status.text = "Invalid settings. Height 50–1500 mm, gain 0.1–8, correction 0.01–0.35."; return }
-        UserDefaults.standard.set(try? JSONEncoder().encode(config),forKey:"GridRunner.configuration")
+        UserDefaults.standard.set(try? JSONEncoder().encode(config),forKey:"GridRunner.configuration.2")
         view.endEditing(true)
         let token = UUID(); request = token
         func begin() {

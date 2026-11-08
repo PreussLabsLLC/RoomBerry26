@@ -1,5 +1,5 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 3.1.grout.12 2026/11/04
+# @(#)roomberry_mission.py 3.1.grout.21 2026/11/06
 
 from math import atan2, cos, hypot, isfinite, pi, sin
 from random import uniform, choice
@@ -258,6 +258,11 @@ class RoomberryMission:
             self._last_pose = None
             if mode == MODE_GRIDRUNNER:
                 self.gridrunner = GridDrive(self)
+                try:
+                    self.mapper.clear_coverage()
+                    self.logger.info('Map coverage cleared for GridRunner run; tags retained.')
+                except Exception:
+                    self.logger.exception('Unable to clear map coverage for GridRunner run.')
                 self._manual_motion_until = 0.0
                 self.localizer.invalidate_pose()
             if mode == MODE_CALIBRATION:

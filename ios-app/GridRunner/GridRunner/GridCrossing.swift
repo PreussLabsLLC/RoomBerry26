@@ -1,4 +1,4 @@
-// @(#)GridCrossing.swift 3.1.tiles.1 2026/11/05 16:00:00
+// @(#)GridCrossing.swift 3.1.tiles.10 2026/11/06 16:00:00
 import Foundation
 
 /// Transverse grout-line parameters. All positions are normalised portrait
@@ -16,9 +16,14 @@ struct GridCrossingConfiguration {
     var stripAgreement = 0.040 // allow robot yaw; strips are ~38 mm apart
     var minimumConfidence = 0.45
     var confirmFrames = 2
-    var clearDistance = 0.030
+    // Re-arm only once the band has moved 50 mm past the row: jitter
+    // around the reference row was re-arming and recounting one line.
+    var clearDistance = 0.050
     var clearFrames = 2
-    var minimumInterval = 1.5
+    // 2.5 s minimum between counts: real tiles at cruise are ~3 s apart,
+    // and a braced/stopped robot letting the band re-cross the row in
+    // <2.5 s was double-counting one grout line as two.
+    var minimumInterval = 2.5
     var valid: Bool {
         leftStrip.isFinite && rightStrip.isFinite && stripWidth >= 6
             && (0.02...0.48).contains(leftStrip) && (0.52...0.98).contains(rightStrip)
@@ -131,9 +136,12 @@ struct GridCrossing {
             let sorted = list.sorted { $0.score > $1.score }
             let top = sorted[0]
             // Two similarly strong bands far apart in the same strip are
-            // ambiguous; do not guess which one is the tile edge.
+            // ambiguous; do not guess which one is the tile edge. A close
+            // second is now tolerated (only a near-tie is rejected):
+            // at cruise the grout edge and its shadow both score and the
+            // old 0.8 gate silently skipped real crossings.
             if sorted.dropFirst().contains(where: {
-                $0.score >= top.score * 0.8 && abs($0.centre - top.centre) > Double(height) * 0.04
+                $0.score >= top.score * 0.95 && abs($0.centre - top.centre) > Double(height) * 0.04
             }) { return nil }
             return top
         }

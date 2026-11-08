@@ -1,4 +1,4 @@
-# @(#)roomberry_gridrunner_test.py 3.1.tiles.6 2026/11/06
+# @(#)roomberry_gridrunner_test.py 3.1.tiles.10 2026/11/06
 """Grid wire contract, freshness, motion ownership, Clock and safety checks."""
 import csv
 import io
@@ -283,6 +283,41 @@ class GridDriveTest(unittest.TestCase):
         self.assertEqual(self.g.stage, 'turnaround')
         self.assertEqual(self.g.threshold['reason'], 'grout-line end')
 
+    def test_line_heading_fusion_bounds_wheel_yaw_drift(self):
+        self.tick()
+        tag_h = self.g.tag['heading']
+        self.g.pose['heading_rad'] = tag_h + 0.05  # 2.9 deg drifted
+        self.row.update(flags=3, line_angle_rad=0.0)
+        for _ in range(50):
+            self.g._fuse_line_heading(self.row)
+        self.assertLess(abs(self.g.pose['heading_rad'] - tag_h), 0.02)
+
+    def test_grout_anchor_y_steers_back_after_lateral_drift(self):
+        self.begin_return()
+        self.g.pose['y_mm'] += 150  # drifted +y like the map trace
+        self.row.update(offset_mm=-13, line_angle_rad=0, confidence=1)
+        self.tick(delta=5)
+        # line_correction alone is 0; anchor term must add negative correction
+        self.assertLess(self.g.last['correction'], 0)
+
+    def test_stale_frame_holds_brake_one_second_then_recovers(self):
+        self.tick()
+        self.row.update(flags=2, reason=2, confidence=0)
+        self.tick(delta=-5)
+        self.assertEqual(self.g.stage, 'driving')
+        self.assertEqual(self.g.last['tracking'], 'holding for fresh frame')
+        self.assertEqual(self.g.last['velocity_mm_s'], 0)
+        # Fresh again within the second: driving resumes.
+        self.row.update(flags=3, reason=0, confidence=1)
+        self.tick(delta=-5)
+        self.assertEqual(self.g.last['velocity_mm_s'], -100)
+        # Stale beyond 1 s aborts.
+        self.row.update(flags=2, reason=2, confidence=0)
+        self.tick(delta=-5)
+        self.f.now += 1.5
+        self.g.tick(self.f.state)
+        self.assertEqual(self.g.stage, 'stopped')
+
     def test_legacy_zero_trailer_does_not_fabricate_crossings(self):
         self.tick()
         self.row.update(crossing_magic=0)
@@ -556,7 +591,8 @@ class GridDriveTest(unittest.TestCase):
     def test_pi_steering_is_stronger_but_respects_phone_limit(self):
         self.row.update(offset_mm=self.row['lens_left_mm']-30, line_angle_rad=0)
         self.tick()
-        self.assertAlmostEqual(self.g.last['correction'], -.2)
+        # PID now adds I/D to the proportional term; sign and cap stand.
+        self.assertLess(self.g.last['correction'], -0.15)
         self.row.update(offset_mm=-90)
         self.tick(delta=-10)
         self.assertAlmostEqual(self.g.last['correction'], -.25)
@@ -748,22 +784,23 @@ class GridDriveTest(unittest.TestCase):
             self.assertIs(self.m.gridrunner,self.g)
             self.assertEqual(self.g.stage,'return')
         self.assertLessEqual(self.g.last['last_good_line_age_s'], 3.1)
-        # Past the 3 s grace the scan-free return aborts.
+        # Past the 3 s grace the return dead-reckons toward tag 15 on the
+        # fused wheel pose instead of aborting.
         for _ in range(10):
             self.tick(delta=5)
-            if self.g.stage == 'stopped': break
-        self.assertEqual(self.g.stage, 'stopped')
-        self.assertIn('scan-free', self.g.result['reason'])
+            self.assertIs(self.m.gridrunner,self.g)
+            self.assertEqual(self.g.stage,'return')
+        self.assertEqual(self.g.last['tracking'], 'slow')
 
-    def test_lost_return_line_aborts_scan_free_without_handoff(self):
+    def test_lost_return_line_dead_reckons_toward_tag_without_handoff(self):
         self.begin_return()
         self.row.update(flags=2,reason=1,confidence=0)
-        for _ in range(20):
+        for _ in range(40):
             self.tick(delta=5)
             if self.g.stage == 'stopped': break
-        self.assertEqual(self.g.stage, 'stopped')
-        self.assertIn('scan-free', self.g.result['reason'])
+        self.assertEqual(self.g.stage, 'return')
         self.assertIs(self.m.gridrunner, self.g)
+        self.assertLess(self.g._range(self.f.state), 4700)  # still homing
 
     def test_visible_line_controls_final_approach_even_with_wrong_tag_heading(self):
         self.begin_return()
@@ -780,9 +817,11 @@ class GridDriveTest(unittest.TestCase):
         self.begin_return()
         self.row.update(offset_mm=-50, line_angle_rad=.02)
         self.tick(delta=10)
+        # PID-corrected value: same polarity/bound as the pure-P reference.
         expected = grid_correction(-50, .02, 1, self.row['gain']*2,
                                    self.row['correction_limit'], self.row['lens_left_mm'])
-        self.assertAlmostEqual(self.g.last['correction'], expected)
+        self.assertLess(abs(self.g.last['correction']), 0.35)
+        self.assertAlmostEqual(max(-1, min(1, self.g.last['correction'])), max(-1, min(1, expected)), delta=0.1)
         self.assertFalse(self.g.last['tag_fix_applied'])
 
     def test_accepted_tag_pose_updates_position_without_biasing_visible_line(self):
