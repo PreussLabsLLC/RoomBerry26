@@ -1,4 +1,4 @@
-// @(#)RoomTrekViewController.swift 3.1.roomtrek.2 2026/11/08 12:00:00
+// @(#)RoomTrekViewController.swift 3.1.roomtrek.3 2026/11/08 14:00:00
 import AVFoundation
 import ARKit
 import SceneKit
@@ -13,6 +13,8 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
     private var selectedMapID: UUID?
     private var active = false
     private var modeIsSurveyor = true
+    private var surveyAvailable = false
+    private var savingMap = false
 
     private let titleLabel = UILabel()
     private let modeControl = UISegmentedControl(items: ["Surveyor", "Navigator"])
@@ -83,6 +85,7 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
         saveButton.setTitle("Save Map", for: .normal)
         saveButton.backgroundColor = .systemBlue
         saveButton.setTitleColor(.white, for: .normal)
+        saveButton.setTitleColor(.lightGray, for: .disabled)
         saveButton.layer.cornerRadius = 10
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
         resetButton.setTitle("Reset / Retry", for: .normal)
@@ -204,6 +207,7 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
             return
         }
         if modeIsSurveyor {
+            surveyAvailable = true
             sessionCtrl.startSurveyor(arSession: sceneView.session)
             startButton.setTitle("Stop", for: .normal)
             startButton.backgroundColor = .systemRed
@@ -214,6 +218,7 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
             }
             do {
                 let map = try store.loadWorldMap(for: mapID)
+                surveyAvailable = false
                 sessionCtrl.startNavigator(arSession: sceneView.session, map: map, mapID: mapID)
                 startButton.setTitle("Stop", for: .normal)
                 startButton.backgroundColor = .systemRed
@@ -235,7 +240,15 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
     }
 
     @objc private func saveTapped() {
-        guard active, modeIsSurveyor else { return }
+        guard modeIsSurveyor, surveyAvailable, !savingMap else { return }
+        guard sceneView.session.currentFrame != nil else {
+            showAlert("No survey frames available. Start a survey and scan the room first.")
+            return
+        }
+        view.endEditing(true)
+        savingMap = true
+        updateButtons()
+        sessionCtrl.logger.logEvent("map_save_requested", active ? "running" : "stopped")
         let name = nameField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let notes = notesField.text ?? ""
         let currentMapping = sceneView.session.currentFrame.map { RoomTrekSession.mappingLabel($0.worldMappingStatus) } ?? "unknown"
@@ -243,6 +256,10 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
         sceneView.session.getCurrentWorldMap { [weak self] worldMap, error in
             DispatchQueue.main.async {
             guard let self = self else { return }
+            defer {
+                self.savingMap = false
+                self.updateButtons()
+            }
             if let error = error {
                 self.showAlert("Save failed: \(error.localizedDescription)")
                 self.sessionCtrl.logger.logEvent("map_save_error", error.localizedDescription)
@@ -344,7 +361,11 @@ final class RoomTrekViewController: UIViewController, UITableViewDataSource, UIT
 
     private func updateButtons() {
         hostField.isEnabled = !active
-        saveButton.isEnabled = active && modeIsSurveyor
+        saveButton.isEnabled = surveyAvailable && modeIsSurveyor && !savingMap
+        saveButton.setTitle(savingMap ? "Saving Map…" : "Save Map", for: .normal)
+        saveButton.backgroundColor = saveButton.isEnabled || savingMap ? .systemBlue : .systemGray
+        startButton.isEnabled = !savingMap
+        modeControl.isEnabled = !savingMap
         resetButton.isEnabled = active && !modeIsSurveyor
         startButton.setTitle(active ? "Stop" : (modeIsSurveyor ? "Start Survey" : "Start Navigator"), for: .normal)
         startButton.backgroundColor = active ? .systemRed : .systemGreen

@@ -1,5 +1,7 @@
-<!-- @(#)README.md 3.1.roomtrek.2 2026/11/08 12:00:00 -->
+<!-- @(#)README.md 3.1.roomtrek.3 2026/11/08 14:00:00 -->
 # RoomTrek
+
+For the phone-by-phone walkthrough, see [Room scan and transfer guide](ROOM-SCAN-GUIDE.md).
 
 RoomTrek is a standalone iOS app for ARKit map surveying and cross-device
 relocalization. It does not modify StarLock, GroundHog or GridRunner.
@@ -53,7 +55,9 @@ statuses are text, not colour alone.
    camera position/yaw and NavLink status.
 3. Slowly traverse the kitchen, observing walls, cabinets, doorframes and
    furniture; make overlapping loops and return to the start (Phase A).
-4. Enter a map name (optional note), **Save Map**. The HUD never labels a
+4. Enter a map name (optional note), **Save Map**. You can save while surveying
+   or after tapping **Stop**, before starting another session. The button shows
+   **Saving Map…** until capture and storage finish, then confirms success or error. The HUD never labels a
    map "complete" from ARKit's `mapped` state alone — the operator's Save
    is the commit. `ARSession.getCurrentWorldMap` is archived with
    `NSKeyedArchiver (secure coding)` into

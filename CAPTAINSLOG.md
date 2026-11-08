@@ -1,5 +1,62 @@
-<!-- @(#)CAPTAINSLOG.md 3.1.tiles.10 2026/11/06 10:00:00 -->
+<!-- @(#)CAPTAINSLOG.md 3.1.roomtrek.3 2026/11/08 13:56:01 -->
 # Captains Log
+
+### 2026-11-08 — RoomTrek local and GitHub check-in
+
+- Commit pending Save Map fix, device deployment notes and room scan/transfer
+  guide in local master and the existing independent GitHub publication main.
+- Fetched origin/main and verified publication checkout clean and synchronized
+  before copying the four changed files. SCCS and whitespace checks pass.
+- Prior signed Release build and Sputnik installation are recorded below;
+  stopped-session capture and cross-phone map accuracy still need device tests.
+
+### 2026-11-08 — Room scan and transfer operator guide
+
+- Added RoomTrek/ROOM-SCAN-GUIDE.md and README link: Sputnik surveying, save
+  confirmation/selection, Files export/AirDrop, Peters10 import, candidate
+  localization, measured checkpoint/return tests, repeats and log export.
+- Checked control names, coordinate axes and validity gates against source.
+  Distinguish installed Sputnik update from unverified iPhoneX installation,
+  paused-save capture and cross-version map portability. Documentation only.
+
+### 2026-11-08 — Save Map after stopping a survey
+
+- User reports Save Map unresponsive after Stop; code disabled the button and
+  rejected stopped saves. Retrieved logs confirm Surveyor start/stop with no save.
+- Keep stopped survey eligible for saving until a new session replaces it. Add
+  disabled styling, Saving Map status, duplicate-save guard and request logging;
+  prevent starting/replacing sessions during capture. Missing frames show an alert.
+- Signed Xcode27.2 Release build passed; updated app installed on Sputnik.
+  Stop-then-save ARKit capture still needs an on-device retest. Prior unsaved
+  in-memory survey does not survive app replacement. No robot changes.
+
+### 2026-11-08 — Sputnik launch verified
+
+- After user trusted the developer on Sputnik, CoreDevice successfully launched
+  com.preusslabs.RoomTrek. Deployment and launch verified; camera/ARKit and
+  surveying behavior still require on-device testing. No source/robot changes.
+
+### 2026-11-08 — RoomTrek installed on Sputnik after Xcode sign-in
+
+- User signed into Xcode; device-targeted Release build with automatic
+  provisioning succeeds. CoreDevice successfully installs com.preusslabs.RoomTrek
+  on Sputnik (00008030-001D581226E2802E).
+- Launch denied by iOS security: invalid signature/entitlements or profile not
+  explicitly trusted. Local codesign verification reports CSSMERR_TP_NOT_TRUSTED.
+  Next step: trust Personal Team developer on phone in Settings > General >
+  VPN & Device Management, then open RoomTrek and retry if still blocked.
+- No runtime/camera validation claimed; no app source or robot changes.
+
+### 2026-11-08 — Sputnik deployment retry with Xcode 27.2
+
+- New environment selects Xcode27.2 (27B52). CoreDevice detects Sputnik,
+  UDID00008030-001D581226E2802E, available and paired.
+- Retried device-targeted RoomTrek Release build with automatic provisioning
+  updates/device registration. Build stops at signing (exit65): No Accounts
+  and no iOS App Development profile for com.preusslabs.RoomTrek.
+- Sign in to the Personal Team account in Xcode Settings > Accounts, then
+  retry. No app installed or launched; no source or robot changes.
+  Build log: /tmp/roomtrek-sputnik-build.log.
 
 ### 2026-11-08 — Local and GitHub check-in: RoomTrek and tile refinements
 
