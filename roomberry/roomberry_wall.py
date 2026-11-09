@@ -1,0 +1,580 @@
+"""Bounded right-wall survey drive; regulate right light-bumper intensity in a 20-30 band."""
+# @(#)roomberry_wall.py 3.1.wall.16 2026/11/09 10:40:00
+import json
+from math import isfinite, hypot
+from time import monotonic, time
+from roomberry_control import WallContactStop
+
+MODE_WALL = 'wall'
+WALL_TARGET_SIGNAL = 30.
+WALL_TARGET_MIN = 20.
+WALL_TARGET_MAX = 30.
+WALL_TARGET_CENTER = 25.
+WALL_FLUCTUATION_MAX = 20.
+WALL_FLUCTUATION_HOLD_S = 1.0
+WALL_MAX_REAPPROACHES = 4
+WALL_MAX_CONTACT_RECOVERIES = 42
+WALL_SIGNAL_AVG_N = 4
+WALL_REAPPROACH_MM = 50.
+WALL_REJOIN_MAX_RIGHT_DEG = 30.
+WALL_WALL_LOSS_MAX_RIGHT_DEG = 60.
+WALL_WALL_LOSS_TURN_STEP_DEG = 10.
+WALL_MIN_WHEEL_SPEED = 30
+WALL_DETOUR_MAX_MM = 1500.
+WALL_DETOUR_MAX_S = 90.
+WALL_BYPASS_FIRST_LEFT_DEG = 20.
+WALL_BYPASS_LEFT_DEG = 90.
+WALL_GO_AROUND_WINDOW_MM = 500.
+WALL_SENSOR_LOSS_SEARCHES = 8
+WALL_TAG_SCAN_MM = 5000.
+WALL_CONTACT_BACKOFF_MM = 30.
+WALL_CONTACT_MAX_BACKOFF_MM = 50.
+WALL_SENSOR = 'light_bump_right_signal'
+
+
+class WallDrive:
+    def __init__(self, mission):
+        self.mission = mission
+        self.stage = 'anchor'
+        self.started = monotonic()
+        self._wall_time = time()
+        self.deadline = self.started + 60
+        self.result = None
+        self.last = None
+        self.epoch = None
+        self.previous = None
+        self.origin = None
+        self.anchor = None
+        self.anchor_capture = None
+        self.last_scan_request = 0
+        self.stage_distance = self.stage_angle = 0
+        self.total_mm = 0
+        self.progress = None
+        self.progress_at = self.started
+        self.signal_count = 0
+        self.follow_signal = None
+        self.sensor_sample = None
+        self.signal_history = []
+        self.signal_history_sample = None
+        self.lease = False
+        self.last_drive = None
+        self.records = []
+        self.acquire_origin = None
+        self.acquire_deadline = None
+        self.acquire_heading = None
+        self.reapproaches = 0
+        self.contact_retries = 0
+        self.follow_heading = None
+        self.loss_searches = 0
+        self.rejoin_source = None
+        self.rejoin_ready = False
+        self.rejoin_settle_frames = 0
+        self.rejoin_phase = None
+        self.rejoin_step_angle = None
+        self.rejoin_advance_distance = None
+        self.contact_left_deg = 15.
+        self.detour_active = False
+        self.detour_started = None
+        self.detour_start_mm = None
+        self.detour_heading = None
+        self.acquire_min_distance = None
+        self.alignment_origin = None
+        self.alignment_values = []
+        self.fluctuation_hold_until = None
+        self.last_loss_mm = None
+        self.tag_scan_anchor = None
+        self.tag_scan_capture = None
+
+    def record(self, event, **values):
+        row = dict(event=event, stage=self.stage, wall_time=time(), **values)
+        self.records.append(row)
+        self.records = self.records[-100:]
+        self.mission.logger.info('WALL event: %s', json.dumps(row, sort_keys=True))
+
+    def finish(self, reason, status='aborted'):
+        self.stage = status
+        self.result = dict(status=status, reason=reason, travelled_mm=self.total_mm)
+        self.record('finish', **self.result)
+        self.mission.set_mode('idle', wake_robot=False)
+
+    def abort(self, reason):
+        self.finish(reason)
+
+    def stop_motion(self, reason):
+        """Disarm a moving lease only after an acknowledged physical stop."""
+        control = self.mission.robot_control
+        if self.lease or not self.mission._stop_sent:
+            control.execute('stop', timeout=2)
+            if self.lease and control.snapshot().get('motion_lease_expired'):
+                raise RuntimeError('WALL motion lease expired before acknowledged stop')
+        control.end_motion_lease()
+        self.lease = False
+        self.last_drive = None
+        self.mission._active_command = None
+        self.mission._active_until = 0.
+        self.mission._stop_sent = True
+        self.mission.logger.debug('WALL stopped with motion lease ended: %s', reason)
+
+    def transition(self, stage, state, timeout):
+        self.stop_motion('stage transition to '+stage)
+        self.stage = stage
+        self.deadline = monotonic() + timeout
+        self.stage_distance, self.stage_angle = state['distance'], state['angle']
+        self.progress = None
+        self.progress_at = monotonic()
+        self.signal_count = 0
+        self.sensor_sample = state.get('sensor_monotonic_s')
+        self.signal_history = []
+        self.signal_history_sample = state.get('sensor_monotonic_s')
+        self.alignment_values = []
+        self.fluctuation_hold_until = None
+        if stage == 'tag15_scan':
+            self.tag_scan_anchor = None
+            self.tag_scan_capture = None
+        if stage == 'acquire' and self.acquire_origin is None:
+            self.acquire_origin = float(state['distance'])
+            self.acquire_deadline = monotonic()+90
+            self.acquire_min_distance = float(state['distance'])
+        if stage == 'rejoin':
+            self.rejoin_ready = False
+            self.rejoin_settle_frames = 0
+            self.rejoin_phase = 'turn'
+            self.rejoin_step_angle = None
+            self.rejoin_advance_distance = None
+        if stage == 'follow':
+            self.follow_signal = None
+            self.follow_heading = float(state['angle'])
+        if stage == 'align_left45':
+            self.alignment_origin = float(state['angle'])
+            self.acquire_heading = float(state['angle'])
+        self.record('stage', distance_mm=state['distance'], angle_deg=state['angle'])
+
+    def retry_acquisition(self, state, signal):
+        if self.reapproaches >= WALL_MAX_REAPPROACHES:
+            self.abort('wall alignment failed after four bounded re-approaches')
+            return
+        self.reapproaches += 1
+        self.record('alignment_signal_lost', signal=signal, retry=self.reapproaches,
+                    return_heading_deg=self.acquire_heading,
+                    advance_before_signal_mm=WALL_REAPPROACH_MM)
+        self.acquire_min_distance = float(state['distance'])+WALL_REAPPROACH_MM
+        self.transition('reorient', state, 12)
+
+    def start_rejoin(self, state, source):
+        if source == 'wall_loss':
+            if self.loss_searches >= WALL_SENSOR_LOSS_SEARCHES:
+                self.abort('wall-loss search limit reached')
+                return
+            self.loss_searches += 1
+            self.last_loss_mm = self.total_mm
+        self.rejoin_source = source
+        timeout = 25 if self.detour_active else 20 if source == 'wall_loss' else 10
+        self.transition('rejoin', state, timeout)
+        # A new local search has its own limits, independent of the old anchor seek.
+        self.acquire_origin = float(state['distance'])
+        self.acquire_deadline = monotonic()+timeout+1
+        max_right_deg = (90 if self.detour_active
+                         else WALL_WALL_LOSS_MAX_RIGHT_DEG if source == 'wall_loss'
+                         else WALL_REJOIN_MAX_RIGHT_DEG)
+        self.record('wall_search_started', source=source, detour=self.detour_active,
+                    max_mm=None, min_wheel_speed=WALL_MIN_WHEEL_SPEED,
+                    max_right_deg=max_right_deg)
+
+    def contact_recovery(self, state):
+        """Stop first, then back clear and change the next approach heading."""
+        self.stop_motion('bumper/contact recovery')
+        if self.contact_retries >= WALL_MAX_CONTACT_RECOVERIES:
+            self.abort('contact recovery limit reached')
+            return
+        self.contact_retries += 1
+        corner_after_loss = (self.stage == 'follow'
+                             and self.loss_searches > 0
+                             and self.last_loss_mm is not None
+                             and self.total_mm - self.last_loss_mm <= WALL_GO_AROUND_WINDOW_MM)
+        obstacle = (self.detour_active
+                    or (self.stage == 'rejoin' and self.rejoin_source == 'wall_loss')
+                    or corner_after_loss)
+        if obstacle:
+            # In front of the dishwasher close to the fridge a single 90deg
+            # left turn overshoots the recessed front. Try a smaller left
+            # turn first; escalate to the full bypass only on repeat contact.
+            # Corner contacts in follow soon after a wall-loss search mean
+            # the robot hit the cabinet corner head-on and should go
+            # around (left-first) instead of retrying the same face.
+            self.contact_left_deg = (WALL_BYPASS_LEFT_DEG if self.detour_active
+                                     else WALL_BYPASS_FIRST_LEFT_DEG)
+        else:
+            self.contact_left_deg = 15.
+        if obstacle and not self.detour_active:
+            self.detour_active = True
+            self.detour_started = monotonic()
+            self.detour_start_mm = self.total_mm
+            self.detour_heading = float(state['angle'])
+            self.record('left_obstacle_bypass_started', heading_deg=self.detour_heading,
+                        next_left_deg=self.contact_left_deg,
+                        corner_after_loss=corner_after_loss,
+                        max_path_mm=WALL_DETOUR_MAX_MM, max_seconds=WALL_DETOUR_MAX_S)
+        event = state.get('wall_contact_event') or {}
+        self.record('contact_stop', source=event.get('reason', 'bumper'),
+                    contact_event=event, retry=self.contact_retries, next_left_deg=self.contact_left_deg)
+        if self.acquire_origin is None or self.stage in ('follow', 'rejoin'):
+            self.acquire_origin = float(state['distance'])
+            self.acquire_deadline = monotonic()+(60 if obstacle else 30)
+        self.transition('release', state, 5)
+
+    def drive(self, right, left, state):
+        # Keep every moving wheel out of the poorly responding low-speed range.
+        right, left = (0 if int(v) == 0 else (1 if v > 0 else -1)*max(WALL_MIN_WHEEL_SPEED, abs(int(v)))
+                       for v in (right, left))
+        axis = 'angle' if right * left < 0 else 'distance'
+        value = state[axis]
+        if self.progress is None or abs(value-self.progress) >= (.3 if axis == 'angle' else 2):
+            self.progress, self.progress_at = value, monotonic()
+        elif monotonic()-self.progress_at > 2:
+            self.abort('no wheel progress for two seconds')
+            return
+        control = self.mission.robot_control
+        if not self.lease:
+            control.begin_motion_lease(.6)
+            self.lease = True
+        else:
+            control.renew_motion_lease(.6)
+        self.mission._stop_sent = False
+        try:
+            control.execute('drive_direct', right_velocity=int(right), left_velocity=int(left), ramp=False)
+        except WallContactStop as error:
+            # Contact can arrive after tick's snapshot but before the owner runs
+            # this command. Re-check every guard before any retreat is permitted.
+            fresh = control.snapshot()
+            if not fresh.get('wall_contact_blocked'):
+                raise
+            self.record('contact_preempted_drive', error=str(error))
+            if self.guard(fresh):
+                self.contact_recovery(fresh)
+            return
+        self.last_drive = (right, left)
+        if self.last is not None:
+            self.last.update(right_velocity_mm_s=int(right), left_velocity_mm_s=int(left))
+            self.mission.logger.info('WALL drive: %s', json.dumps(dict(self.last, wall_time=time())))
+
+    def guard(self, state):
+        age = state.get('age')
+        if state.get('motion_lease_expired'):
+            self.abort('WALL motion lease expired during movement')
+            return False
+        if (not state.get('ready') or age is None or not 0 <= age <= .5
+                or state.get('oi_stopped') or state.get('sensor_fault')
+                or self.mission._hard_hazard_reasons(state)
+                or state.get('battery_status') in ('low', 'critical', 'charging')):
+            self.abort('unsafe, stale or unavailable Roomba sensors')
+            return False
+        if monotonic() > self.deadline or monotonic()-self.started > 360:
+            self.abort('time limit during '+self.stage)
+            return False
+        if not all(isinstance(state.get(k), (int, float)) and isfinite(state[k])
+                   for k in ('distance', 'angle')) or not isinstance(state.get('odometry_epoch'), int):
+            self.abort('invalid wheel odometry')
+            return False
+        if self.epoch is None:
+            self.epoch = state['odometry_epoch']
+        elif self.epoch != state['odometry_epoch']:
+            self.abort('wheel odometry epoch changed')
+            return False
+        if self.previous is not None:
+            dd, da = state['distance']-self.previous[0], state['angle']-self.previous[1]
+            if abs(dd) > 100 or abs(da) > 25:
+                self.abort('wheel odometry discontinuity')
+                return False
+            if self.last_drive is not None:
+                right, left = self.last_drive
+                if ((right+left)*dd < -150 or (right-left)*da < -100):
+                    self.abort('wheel motion opposite commanded direction')
+                    return False
+            self.total_mm += abs(dd)
+        self.previous = state['distance'], state['angle']
+        if self.detour_active and (monotonic()-self.detour_started > WALL_DETOUR_MAX_S
+                                   or self.total_mm-self.detour_start_mm > WALL_DETOUR_MAX_MM):
+            self.abort('left obstacle bypass exceeded 1500 mm/90 second bound')
+            return False
+        if self.stage in ('acquire', 'align_left45', 'align_check', 'reorient', 'release', 'contact_left'):
+            if self.acquire_deadline is not None and monotonic() > self.acquire_deadline:
+                self.abort('wall acquisition/re-alignment exceeded 90 seconds')
+                return False
+            if self.acquire_origin is not None and state['distance']-self.acquire_origin > 600:
+                self.abort('wall not aligned within 600 mm acquisition bound')
+                return False
+        if self.total_mm >= 6000:
+            self.finish('six metre trial distance limit', 'complete')
+            return False
+        bumps = state['sensors'].bumps_and_wheel_drops
+        contact = bool(bumps.bump_left or bumps.bump_right)
+        recoverable = self.stage in ('acquire', 'release', 'align_left45', 'align_check',
+                                     'reorient', 'follow', 'contact_left', 'rejoin')
+        if (contact or state.get('wall_contact_blocked')) and not recoverable:
+            self.abort('unexpected bumper contact during '+self.stage)
+            return False
+        if state.get('safety_latched') and not (recoverable and (contact or state.get('wall_contact_blocked'))):
+            self.abort('Roomba safety stop latched')
+            return False
+        return True
+
+    def tick(self, state, pose=None, new_detections=False, captured_at=None):
+        if not self.guard(state):
+            return
+        now = monotonic()
+        sensors = state['sensors']
+        bumps = sensors.bumps_and_wheel_drops
+        if self.stage != 'release' and (bumps.bump_left or bumps.bump_right or state.get('wall_contact_blocked')):
+            self.contact_recovery(state)
+            return
+        raw_signal = getattr(sensors, WALL_SENSOR, None)
+        if not isinstance(raw_signal, (float, int)) or not isfinite(raw_signal) or not 0 <= raw_signal <= 4095:
+            self.abort('invalid right light-bumper IR signal')
+            return
+        sample_id = state.get('sensor_monotonic_s')
+        if sample_id != self.signal_history_sample:
+            self.signal_history.append(float(raw_signal))
+            del self.signal_history[:-WALL_SIGNAL_AVG_N]
+            self.signal_history_sample = sample_id
+        signal = (sum(self.signal_history)/len(self.signal_history)
+                  if self.signal_history else float(raw_signal))
+        target = WALL_TARGET_SIGNAL
+        target_min = WALL_TARGET_MIN
+        self.last = dict(stage=self.stage, signal=signal, raw_signal=float(raw_signal),
+                         signal_avg_n=len(self.signal_history), target_signal=target,
+                         target_min=target_min, target_max=WALL_TARGET_MAX,
+                         target_center=WALL_TARGET_CENTER,
+                         sensor=WALL_SENSOR, sensor_packet=51,
+                         desired_clearance_mm=None, measured_clearance_mm=None,
+                         reapproaches=self.reapproaches, contact_retries=self.contact_retries,
+                         last_follow_heading_deg=self.follow_heading,
+                         wall_loss_searches=self.loss_searches, rejoin_source=self.rejoin_source,
+                         detour_active=self.detour_active,
+                         travelled_mm=self.total_mm, distance_mm=state['distance'], angle_deg=state['angle'])
+        self.mission.logger.info('WALL sample: %s', json.dumps(dict(self.last, wall_time=time())))
+        if self.stage == 'anchor':
+            self.stop_motion('waiting for tag 16')
+            accepted = pose.get('accepted_tag_ids', ()) if isinstance(pose, dict) else ()
+            if (new_detections and isinstance(captured_at, (float, int))
+                    and captured_at >= self._wall_time
+                    and pose and pose.get('localized') and any(int(key[1]) == 16 for key in accepted)):
+                current = {k: pose[k] for k in ('x_mm', 'y_mm', 'heading_rad')}
+                if self.anchor is not None and captured_at != self.anchor_capture:
+                    delta = self.mission._wrap(current['heading_rad']-self.anchor['heading_rad'])
+                    if hypot(current['x_mm']-self.anchor['x_mm'], current['y_mm']-self.anchor['y_mm']) <= 75 and abs(delta) <= .1:
+                        self.origin = current
+                        self.record('tag16_anchor', pose=current)
+                        self.transition('left90', state, 15)
+                        return
+                self.anchor, self.anchor_capture = current, captured_at
+            if now-self.last_scan_request >= 2:
+                self.mission.camera.request_scan()
+                self.last_scan_request = now
+            return
+        if self.stage == 'tag15_scan':
+            self.stop_motion('waiting for tag 15')
+            accepted = pose.get('accepted_tag_ids', ()) if isinstance(pose, dict) else ()
+            if (new_detections and isinstance(captured_at, (float, int))
+                    and captured_at >= self._wall_time
+                    and pose and pose.get('localized') and any(int(key[1]) == 15 for key in accepted)):
+                current = {k: pose[k] for k in ('x_mm', 'y_mm', 'heading_rad')}
+                if self.tag_scan_anchor is not None and captured_at != self.tag_scan_capture:
+                    delta = self.mission._wrap(current['heading_rad']-self.tag_scan_anchor['heading_rad'])
+                    if hypot(current['x_mm']-self.tag_scan_anchor['x_mm'], current['y_mm']-self.tag_scan_anchor['y_mm']) <= 75 and abs(delta) <= .1:
+                        self.record('tag15_scan', pose=current)
+                        self.finish('tag15 scan complete after 5000mm', status='complete')
+                        return
+                self.tag_scan_anchor, self.tag_scan_capture = current, captured_at
+            if now-self.last_scan_request >= 2:
+                self.mission.camera.request_scan()
+                self.last_scan_request = now
+            return
+        contact = sensors.bumps_and_wheel_drops
+        if self.stage in ('left90', 'right45', 'align_left45', 'reorient', 'contact_left'):
+            desired = (90 if self.stage == 'left90' else -45 if self.stage == 'right45'
+                       else self.contact_left_deg if self.stage == 'contact_left'
+                       else self.acquire_heading-self.stage_angle if self.stage == 'reorient'
+                       else min(15., 45.-(self.stage_angle-self.alignment_origin)))
+            moved = state['angle']-self.stage_angle
+            sign = 1 if desired > 0 else -1
+            if moved*sign < -2:
+                self.abort('turn moved in opposite direction')
+            elif moved*sign >= abs(desired)-2:
+                next_stage = {'left90': ('forward200', 12), 'right45': ('acquire', 25),
+                              'align_left45': ('align_check', 2), 'reorient': ('acquire', 25),
+                              'contact_left': ('rejoin', 10)}[self.stage]
+                if next_stage[0] == 'rejoin':
+                    self.start_rejoin(state, 'obstacle_contact' if self.detour_active else 'contact')
+                else:
+                    self.transition(next_stage[0], state, next_stage[1])
+            else:
+                speed = WALL_MIN_WHEEL_SPEED
+                self.drive(sign*speed, -sign*speed, state)
+        elif self.stage == 'forward200':
+            moved = state['distance']-self.stage_distance
+            if moved < -3:
+                self.abort('forward offset moved backwards')
+            elif moved >= 195:
+                self.transition('right45', state, 12)
+            else:
+                self.drive(35, 35, state)
+        elif self.stage == 'acquire':
+            sample = state.get('sensor_monotonic_s')
+            if sample != self.sensor_sample:
+                self.signal_count = (self.signal_count+1
+                    if signal >= target_min and state['distance'] >= self.acquire_min_distance else 0)
+                self.sensor_sample = sample
+            if self.signal_count >= 3:
+                self.record('wall_ir_candidate', sensor=WALL_SENSOR, signal=signal, target_signal=target,
+                            target_min=target_min, target_max=WALL_TARGET_MAX)
+                self.transition('align_left45', state, 12)
+            elif state['distance']-self.stage_distance > 600:
+                self.abort('wall not acquired within 600 mm')
+            else:
+                self.drive(30, 30, state)
+        elif self.stage == 'align_check':
+            self.stop_motion('qualifying alignment signal while stopped')
+            sample = state.get('sensor_monotonic_s')
+            if sample != self.sensor_sample:
+                self.alignment_values.append(signal)
+                self.sensor_sample = sample
+            if len(self.alignment_values) >= 3:
+                values = self.alignment_values[-3:]
+                if min(values) < target*.5:
+                    self.retry_acquisition(state, signal)
+                elif state['angle']-self.alignment_origin >= 43:
+                    self.record('alignment_qualified', samples=values,
+                                turned_deg=state['angle']-self.alignment_origin)
+                    self.transition('follow', state, 180)
+                else:
+                    # Continue the left alignment in another bounded 15deg step.
+                    origin = self.alignment_origin
+                    approach_heading = self.acquire_heading
+                    self.transition('align_left45', state, 12)
+                    self.alignment_origin = origin
+                    self.acquire_heading = approach_heading
+        elif self.stage == 'release':
+            reversed_mm = self.stage_distance-state['distance']
+            if reversed_mm >= WALL_CONTACT_BACKOFF_MM and not (contact.bump_left or contact.bump_right) and not state.get('safety_latched'):
+                self.stop_motion('backed clear of contact')
+                self.mission.robot_control.release_wall_contact_guard()
+                self.record('contact_released', reversed_mm=reversed_mm, next_left_deg=self.contact_left_deg)
+                self.acquire_min_distance = float(state['distance'])
+                self.transition('contact_left', state, 15 if self.contact_left_deg == 90 else 8)
+            elif reversed_mm >= WALL_CONTACT_MAX_BACKOFF_MM:
+                self.abort('bumper/safety did not release within 50 mm')
+            else:
+                self.drive(-30, -30, state)
+        elif self.stage == 'rejoin':
+            moved = state['distance']-self.stage_distance
+            turned_right = self.stage_angle-state['angle']
+            max_right_deg = (90. if self.detour_active
+                             else WALL_WALL_LOSS_MAX_RIGHT_DEG if self.rejoin_source == 'wall_loss'
+                             else WALL_REJOIN_MAX_RIGHT_DEG)
+            if signal >= target_min:
+                self.stop_motion('confirming wall signal after recovery')
+                sample = state.get('sensor_monotonic_s')
+                if sample != self.sensor_sample:
+                    self.signal_count += 1
+                    self.sensor_sample = sample
+                if self.signal_count >= 3:
+                    self.record('wall_rejoined', signal=signal, moved_mm=moved,
+                                right_turn_deg=turned_right)
+                    self.transition('follow', state, 180)
+                return
+            self.signal_count = 0
+            sample = state.get('sensor_monotonic_s')
+            if not self.rejoin_ready:
+                self.stop_motion('settling before measured right search')
+                if sample != self.sensor_sample:
+                    self.rejoin_settle_frames += 1
+                    self.sensor_sample = sample
+                if self.rejoin_settle_frames >= 3:
+                    self.rejoin_ready = True
+                    self.stage_angle = self.rejoin_step_angle = float(state['angle'])
+                    self.stage_distance = float(state['distance'])
+                    self.record('right_search_settled', heading_deg=state['angle'])
+                return
+            backing_during_advance = (self.rejoin_phase == 'advance'
+                and state['distance']-self.rejoin_advance_distance < -3)
+            if backing_during_advance or turned_right < -3:
+                self.abort('wall rejoin moved opposite the measured right search')
+                return
+            if turned_right >= max_right_deg:
+                self.abort('wall rejoin reached {} degree bound without target signal'.format(int(max_right_deg)))
+                return
+            if self.rejoin_phase == 'turn':
+                step = (15. if self.detour_active
+                        else WALL_WALL_LOSS_TURN_STEP_DEG if self.rejoin_source == 'wall_loss'
+                        else 5.)
+                goal = min(step, max_right_deg-(self.stage_angle-self.rejoin_step_angle))
+                if self.rejoin_step_angle-state['angle'] >= goal-1:
+                    self.stop_motion('measured right step complete')
+                    self.rejoin_phase = 'advance'
+                    self.rejoin_advance_distance = float(state['distance'])
+                    self.record('right_search_advance', step_mm=50 if self.detour_active else 30)
+                else:
+                    self.drive(-30, 30, state)
+            else:
+                step_mm = 50. if self.detour_active else 30.
+                if state['distance']-self.rejoin_advance_distance >= step_mm:
+                    self.stop_motion('right search advance complete')
+                    self.rejoin_phase = 'turn'
+                    self.rejoin_step_angle = float(state['angle'])
+                else:
+                    self.drive(30, 30, state)
+        elif self.stage == 'follow':
+            if self.total_mm >= WALL_TAG_SCAN_MM:
+                self.record('tag_scan_triggered', travelled_mm=self.total_mm,
+                            target_mm=WALL_TAG_SCAN_MM)
+                self.transition('tag15_scan', state, 60)
+                return
+            if signal < max(5, target*.25):
+                self.stop_motion('IR wall lost; start bounded right search')
+                self.record('wall_ir_lost', signal=signal, last_heading_deg=self.follow_heading)
+                self.start_rejoin(state, 'wall_loss')
+                return
+            # If the recent IR window fluctuates too much, stop for a second
+            # and resample instead of chasing noisy steering corrections.
+            if self.fluctuation_hold_until is not None:
+                if now < self.fluctuation_hold_until:
+                    self.stop_motion('fluctuation hold settling')
+                    return
+                self.fluctuation_hold_until = None
+            if len(self.signal_history) >= WALL_SIGNAL_AVG_N:
+                spread = max(self.signal_history)-min(self.signal_history)
+                if spread > WALL_FLUCTUATION_MAX:
+                    self.stop_motion('IR fluctuating; stable resample')
+                    self.record('wall_signal_fluctuating', signal=signal,
+                                spread=spread, hold_s=WALL_FLUCTUATION_HOLD_S)
+                    self.fluctuation_hold_until = now + WALL_FLUCTUATION_HOLD_S
+                    self.signal_history = []
+                    self.signal_history_sample = state.get('sensor_monotonic_s')
+                    self.follow_signal = None
+                    return
+            if self.detour_active:
+                near_heading = (self.total_mm-self.detour_start_mm >= 200 and signal >= target_min
+                    and abs((state['angle']-self.detour_heading+180)%360-180) <= 20)
+                sample = state.get('sensor_monotonic_s')
+                if near_heading and sample != self.sensor_sample:
+                    self.signal_count += 1
+                elif not near_heading:
+                    self.signal_count = 0
+                self.sensor_sample = sample
+                if self.signal_count >= 3:
+                    self.record('obstacle_bypass_heading_resumed', heading_deg=state['angle'],
+                                travelled_mm=self.total_mm-self.detour_start_mm)
+                    self.detour_active = False
+            slope = 0.
+            if self.follow_signal is not None:
+                old_time, old_signal = self.follow_signal
+                dt = now-old_time
+                if .02 <= dt <= .5:
+                    slope = (signal-old_signal)/dt
+            self.follow_signal = now, signal
+            if WALL_TARGET_MIN <= signal <= WALL_TARGET_MAX:
+                steering = 0.
+            else:
+                center = WALL_TARGET_CENTER
+                steering = max(-.35, min(.35, (signal-center)/center*.3 + slope/center*.35))
+            self.drive(35*(1+steering), 35*(1-steering), state)

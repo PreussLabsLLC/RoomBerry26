@@ -1,5 +1,5 @@
 """Single-owner Roomba command and sensor-polling service."""
-# @(#)roomberry_control.py 3.1.grout.20 2026/11/06
+# @(#)roomberry_control.py 3.1.wall.16 2026/11/09 10:40:00
 
 from math import isfinite
 from collections import deque
@@ -24,7 +24,7 @@ ROBOT_CONNECT_RETRY_INITIAL_SECONDS = 5
 ROBOT_CONNECT_RETRY_MAX_SECONDS = 30
 # Provisional Nov 3 reference: (4799 - body radius 174) / 4583.020565923183.
 WHEEL_SIZE_ADJUSTMENT = 4625.0 / 4583.020565923183
-CONTROL_VERSION = '3.1.grout.19'
+CONTROL_VERSION = '3.1.wall.16'
 SPEED_STEP_SECONDS = .2
 PHONE_BUMP_QUIET_SECONDS = .15
 # Keep operation LEDs lit long enough to see after a brief sensor trigger.
@@ -47,6 +47,10 @@ MOTION_OPERATIONS = frozenset((
 ))
 
 
+class WallContactStop(RuntimeError):
+    """A WALL move was preempted by the owner's latched contact brake."""
+
+
 class RobotCommandArbiter:
     """Serialize all robot I/O and expose a periodically refreshed snapshot."""
 
@@ -63,6 +67,10 @@ class RobotCommandArbiter:
         self._bump_indicator_until = None
         self._last_bump_led = None
         self._last_bumper_contact = False
+        self._wall_contact_enabled = False
+        self._wall_contact_blocked = False
+        self._wall_contact_event = None
+        self._wall_stall_since = None
         self._button_state = dict(schedule=False, clock=False)
         self._button_diagnostics = dict(source='unread', group_mask=0, dedicated_mask=None, held_s=0.0)
         self._button_changed_at = monotonic()
@@ -115,6 +123,9 @@ class RobotCommandArbiter:
         self._hard_hazard_reasons = []
         self._battery_status = 'unknown'
         self._drive_display = 'IdLE'
+        self._wall_display_started = None
+        self._wall_display_slot = None
+        self._wall_display_value = '----'
         self._last_drive_display = None
         self._display_written_at = -float('inf')
         self._speed_steps = False
@@ -207,8 +218,60 @@ class RobotCommandArbiter:
                             'Unable to close Roomba sensor recording.'
                         )
 
+    def set_wall_contact_guard(self, enabled):
+        """Enable a sticky WALL contact stop; ordinary safety guards still apply."""
+        with self._state_lock:
+            self._wall_contact_enabled = bool(enabled)
+            self._wall_contact_blocked = False
+            self._wall_contact_event = None
+            self._wall_stall_since = None
+
+    def release_wall_contact_guard(self):
+        """Coordinator rearm only after backing clear and stopping."""
+        state = self.snapshot()
+        sensors = state['sensors']
+        if (not state.get('ready') or state.get('age') is None or not 0 <= state['age'] <= .5
+                or state.get('hard_hazard') or state.get('safety_latched')
+                or state.get('oi_stopped') or sensors is None
+                or sensors.bumps_and_wheel_drops.bump_left or sensors.bumps_and_wheel_drops.bump_right
+                or self._applied_wheels != (0, 0)):
+            raise RuntimeError('WALL contact release requires stopped, clear, fresh safe sensors')
+        with self._state_lock:
+            self._wall_contact_blocked = False
+            self._wall_contact_event = None
+            self._wall_stall_since = None
+
+    def _wall_contact_tick(self, sensors, distance_delta, hard_hazard, now):
+        if not self._wall_contact_enabled or hard_hazard or self._wall_contact_blocked:
+            self._wall_stall_since = None
+            return
+        bumps = sensors.bumps_and_wheel_drops
+        reason = 'bumper' if bumps.bump_left or bumps.bump_right else None
+        wheels = self._applied_wheels
+        currents = [getattr(sensors, key, None) for key in ('left_motor_current', 'right_motor_current')]
+        stalled = (wheels is not None and min(wheels) > 0
+                   and abs(distance_delta) < .5
+                   and all(isinstance(value, (int, float)) and isfinite(value) and value >= 350
+                           for value in currents))
+        if stalled:
+            if self._wall_stall_since is None:
+                self._wall_stall_since = now
+            elif now-self._wall_stall_since >= .2:
+                reason = 'high-current stalled forward drive'
+        else:
+            self._wall_stall_since = None
+        if reason is not None:
+            # This runs in the serial owner, before another queued forward drive.
+            self._brake()
+            with self._state_lock:
+                self._wall_contact_blocked = True
+                self._wall_contact_event = dict(reason=reason, monotonic_s=now,
+                    bump_left=bool(bumps.bump_left), bump_right=bool(bumps.bump_right),
+                    left_current_ma=currents[0], right_current_ma=currents[1])
+            self.logger.warning('WALL contact stop latched: %s', self._wall_contact_event)
+
     def begin_motion_lease(self, duration=.6):
-        """Opt-in GridRunner deadman; explicit mode entry starts a new lease."""
+        """Opt-in motion deadman; explicit mode entry starts a new lease."""
         if not isfinite(duration) or not .05 <= duration <= 1:
             raise ValueError('Motion lease must be 0.05–1 second')
         with self._state_lock:
@@ -221,7 +284,7 @@ class RobotCommandArbiter:
         with self._state_lock:
             if (self._motion_lease_expired or self._motion_lease_deadline is None
                     or monotonic() >= self._motion_lease_deadline):
-                raise RuntimeError('GridRunner motion lease expired')
+                raise RuntimeError('Motion lease expired')
             self._motion_lease_deadline = monotonic()+duration
 
     def end_motion_lease(self):
@@ -236,7 +299,7 @@ class RobotCommandArbiter:
                 self._motion_lease_deadline = None
                 self._motion_lease_expired = True
         if expired:
-            self.logger.warning('GridRunner I/O motion lease expired; braking independently of mission loop.')
+            self.logger.warning('I/O motion lease expired; braking independently of mission loop.')
             self._brake()
         return self._motion_lease_expired
 
@@ -274,6 +337,8 @@ class RobotCommandArbiter:
                 'distance': self._distance,
                 'travelled_distance': self._travelled_distance,
                 'motion_lease_expired': self._motion_lease_expired,
+                'wall_contact_blocked': self._wall_contact_blocked,
+                'wall_contact_event': None if self._wall_contact_event is None else dict(self._wall_contact_event),
                 'angle': self._angle,
                 'odometry_epoch': self._odometry_epoch,
                 'age': age,
@@ -353,7 +418,7 @@ class RobotCommandArbiter:
     def set_drive_display(self, mode, stage=None, scanning=False):
         """Publish a display label; only the I/O owner writes the serial port."""
         label = {'idle': 'IdLE', 'discovery': 'dISC', 'clean': 'CLn ',
-                 'return_to_base': 'HOME', 'remote_control': 'rEM ', 'calibration': 'CAL ', 'gridrunner': 'GRID'}.get(mode, 'IdLE')
+                 'return_to_base': 'HOME', 'remote_control': 'rEM ', 'calibration': 'CAL ', 'gridrunner': 'GRID', 'wall': 'WALL'}.get(mode, 'IdLE')
         if mode == 'discovery':
             if stage == 'bump':
                 label = 'bUMP'
@@ -365,11 +430,33 @@ class RobotCommandArbiter:
                 label = 'bACK'
             elif stage == 'avoid_turn':
                 label = 'turn'
+        if mode == 'wall':
+            if getattr(self, '_wall_display_started', None) is None:
+                self._wall_display_started = monotonic()
+                self._wall_display_slot = None
+        else:
+            self._wall_display_started = None
         self._drive_display = label
         self._display_scan_requested = bool(scanning)
 
     def _update_drive_display(self, sensors):
-        label = 'SCAN' if self._scan_active or getattr(self, '_display_scan_requested', False) else self._drive_display
+        now = monotonic()
+        scanning = self._scan_active or getattr(self, '_display_scan_requested', False)
+        label = 'SCAN' if scanning else self._drive_display
+        started = getattr(self, '_wall_display_started', None)
+        if not scanning and started is not None:
+            slot = int(max(0., now-started))
+            if slot % 2:
+                if slot != self._wall_display_slot:
+                    # Hold one fresh intensity sample for the numeric second;
+                    # do not turn noise into a stream of serial LED writes.
+                    source = self._sensors if sensors is self.robot else sensors
+                    signal = getattr(source, 'light_bump_right_signal', None)
+                    self._wall_display_value = (format(signal, '4d')
+                        if isinstance(signal, int) and not isinstance(signal, bool)
+                        and 0 <= signal <= 4095 else '----')
+                label = self._wall_display_value
+            self._wall_display_slot = slot
         key = (sensors.oi_mode, label)
         if self._wheel_drop_stopped or (key == self._last_drive_display and
                                        monotonic()-self._display_written_at < 1.):
@@ -655,7 +742,7 @@ class RobotCommandArbiter:
             self._recovery_active = False
             return
         if self._check_motion_lease():
-            raise RuntimeError('Motion rejected because GridRunner motion lease expired')
+            raise RuntimeError('Motion rejected because Motion lease expired')
         if self._sensor_fault:
             raise RuntimeError('Motion rejected because the latest sensor poll failed')
         if self._wheel_drop_stopped:
@@ -668,6 +755,12 @@ class RobotCommandArbiter:
         oi_mode = getattr(state['sensors'], 'oi_mode', None)
         if oi_mode is not None and oi_mode != MODES.SAFE:
             raise RuntimeError('Motion rejected because the Open Interface is not in Safe mode')
+        if self._wall_contact_blocked:
+            reversing = (operation == 'drive_direct' and
+                all(-50 <= int(kwargs.get(key, 0)) < 0
+                    for key in ('left_velocity', 'right_velocity')))
+            if not reversing:
+                raise WallContactStop('WALL contact stop latched; back clear before rearming')
         recovery = False
         if self._safety_latched:
             if not self._is_recovery_motion(
@@ -922,6 +1015,8 @@ class RobotCommandArbiter:
                     self._brake()
                 self._safety_latched = False
                 self._recovery_active = False
+
+            self._wall_contact_tick(sensors, distance_delta, bool(self._hard_hazard_reasons), monotonic())
 
             if battery_status == 'critical':
                 if not self._critical_braked:

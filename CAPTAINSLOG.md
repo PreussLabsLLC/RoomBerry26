@@ -1,5 +1,511 @@
-<!-- @(#)CAPTAINSLOG.md 3.1.roomtrek.3 2026/11/08 13:56:01 -->
+<!-- @(#)CAPTAINSLOG.md 3.1.wall.16 2026/11/09 10:40:00 -->
 # Captains Log
+
+### 2026-11-09 — Local and GitHub check-in, 3.2 tag
+
+- Pending WALL work checked in locally and on GitHub (publication
+  `output/github-publication/Roomberry`): wall.14 20-30 IR band +
+  fluctuation hold, wall.15 corner go-around (20deg-first, follow
+  contact after wall loss), wall.16 5000mm tag15_scan + 8 searches +
+  360s, tag15 y 1.237 to 0.79m (autonomy 3.1.posgate.2), plus wall-run
+  reports 221411/223448/092328/094542/100017/101115 and map archives.
+  Publication keeps runtime-log/local-agent exclusions.
+- Start new version: tag 3.2 marks this check-in as the base for
+  upcoming work. Next builds will use 3.2.* numbering.
+- Local commit on master; publication main fetched origin/main,
+  verified clean, copied source files, committed and pushed to
+  PreussLabsLLC/RoomBerry26. No robot deployment or motion.
+
+### 2026-11-09 — Extend 1.5m past fridge and tag-15 scan at 5m, wall.16
+
+- Tag 15 moved to the same y as tag 16 in roomberry/autonomy.json:
+  y 1.237 to 0.79m (x 7.73, z 0.16 kept), so it is in view when
+  following the wall. Approach waypoint is now (7230, 790)mm;
+  mission tests updated. Autonomy SCCS bumped to 3.1.posgate.2.
+- 101115 run (wall.15) travelled 3575mm in 170s with three bypass
+  contacts, then stopped at 10:14:16.069 with `wall-loss search limit
+  reached`. Follow 340 samples, rejoin 147, encoder to 2357mm, last
+  heading 121.09deg. Go-around fired as designed (left 20 at 41.24deg,
+  then 90deg twice) and swept around the fridge front, reaching almost
+  past the fridge. Fluctuation holds fired 8 times. Report and
+  telemetry at output/wall-run-20261109-101115/.
+- Trial extended to total 5000mm travelled (about1.5m past the ~3.5m
+  fridge point). Wall-loss budget raised 4 to 8 and whole-run time
+  240s to 360s; 6m distance bound unchanged. At >=5000mm in follow,
+  mission transitions to `tag15_scan` (stopped, request scans every
+  2s) and finishes complete after two consistent tag-15 fixes
+  (75mm/0.1rad). `scan_pause` now allows WALL scans in anchor and
+  tag15_scan, targeting tag16 or tag15. Operator moved tag 15 to the
+  same y as tag 16 so it should be in view while following.
+- Focused WALL tests 48/48 passed (including new 5000mm/tag15 scan
+  tests); mission 133/133, control 47/47 passed. Whitespace and
+  exactly-one SCCS checks passed; legacy web-app untouched. Local
+  only; sync wall/control/mission modules over wall.15, restart and
+  verify 3.1.wall.16. No deployment or robot commands.
+
+### 2026-11-09 — Go-around on corner bump after wall loss, wall.15
+
+- 100017 run (wall.14) travelled 2317mm with two right-bumper contacts
+  and four wall-loss searches, then stopped at 10:02:19.996 with
+  `wall-loss search limit reached`. It followed to 80.94deg, did four
+  right sweeps (66.5, 73.25, 24.75, 31.5) facing the dishwasher front,
+  and hit the cabinet corner twice in follow (10:02:03, 10:02:12,
+  `next_left_deg=15`). Go-around never triggered because it requires
+  detour or contact in a `wall_loss` rejoin; both contacts were in
+  follow, so they were treated as ordinary 15deg side bumps and
+  re-hit the same corner ~22mm later. Final heading 41.6deg facing the
+  dishwasher. Report and telemetry at
+  output/wall-run-20261109-100017/.
+- Follow contact within 500mm travelled after a wall-loss search now
+  starts the bounded go-around (20deg first, 90deg on repeat) like a
+  wall-loss contact, so a head-on corner bump goes around instead of
+  burning wall-loss searches face-on. `last_loss_mm` tracks the search
+  start; isolated side-wall contacts keep 15deg. Doc updated.
+- Focused WALL tests 46/46 passed (including new corner go-around
+  tests); mission 133/133, control 47/47 passed. Whitespace and
+  exactly-one SCCS checks passed; legacy web-app untouched. Local
+  only; sync wall/control/mission modules over wall.14, restart and
+  verify 3.1.wall.15. No deployment or robot commands.
+
+### 2026-11-09 — Twenty-to-thirty IR band and fluctuation hold, wall.14
+
+- 094542 run (wall.13) travelled 3893mm in 300s with 27 contact
+  recoveries but only one wall rejoin, then stopped at 09:49:51.824 with
+  `time limit during rejoin`. It never reached the fridge, spending 497
+  samples in rejoin, 185 in release, 164 in contact_left and only 92 in
+  follow, looping at encoder ~1350-1505mm (back 32-36mm, left 15deg,
+  right 5deg/30mm advance, contact again). Follow IR was 13.5-53.2
+  (mean 33.5) with 15.5 max jump; rejoin IR averaged 19.1 over 497
+  samples with only 5 samples >=30 but 163 >=20. Report and telemetry at
+  output/wall-run-20261109-094542/.
+- Single 30-unit chase replaced by a 20-30 deadband (centre 25):
+  acquisition/rejoin/bypass-handoff now qualify at >=20, steering drives
+  straight inside 20-30 and otherwise tracks the centre. Logs/comments in
+  wall.13 claimed 30-only behaviour; status now exposes target_min/max.
+- If the latest four raw IR samples spread >20, follow now stops,
+  records `wall_signal_fluctuating`, and holds stopped for 1s to collect
+  fresh stationary samples before resuming, rather than steering on the
+  fluctuation. The 180s follow deadline still bounds holds.
+- Focused WALL tests 44/44 passed (including new band/hold tests);
+  mission 133/133, control 47/47 passed. Whitespace and exactly-one
+  SCCS checks passed; legacy web-app untouched. Local only; sync
+  wall/control/mission modules over wall.13, restart and verify
+  3.1.wall.14. No deployment or robot commands.
+
+### 2026-11-09 — Smaller left bypass first in front of dishwasher, wall.13
+
+- 092328 run (wall.12) travelled 2518mm with two contact recoveries and
+  three wall-loss rejoins, then stopped at 09:25:39.117 with `wall rejoin
+  reached 90 degree bound without target signal`. First two wall-loss
+  searches rejoined at signals 90 and 72.75, then contact during the third
+  search started a 90deg left bypass (37.74 to 126.12deg) and swept right
+  130.28 to 39.27deg over ~243mm with averaged IR 0.5-7.0, never
+  reacquiring 30. Operator reports the robot was in front of the
+  dishwasher close to the fridge and the left bypass was too much. Report
+  and telemetry at output/wall-run-20261109-092328/.
+- First obstacle-bypass left step is now 20deg; it escalates to 90deg only
+  if contact repeats while the bypass is active. The 20deg attempt keeps
+  the robot nearer the recessed dishwasher front for the following right
+  sweep. Bypass rejoin (15deg/50mm/90deg/25s), 1500mm/90s detour bound,
+  four wall-loss searches and 42 recoveries unchanged.
+- Focused WALL tests 42/42 passed including new repeat-contact escalation
+  test; mission 133/133, control 47/47 passed. Whitespace and exactly-one
+  SCCS checks passed; legacy web-app untouched. Local only; sync
+  wall/control/mission modules over wall.12, restart and verify
+  3.1.wall.13. No deployment or robot commands.
+
+### 2026-11-08 — Recessed-front right sweep and WALL map trail, wall.12
+
+- 223448 run (wall.11) travelled 3081mm with seven contact recoveries and
+  three wall-loss rejoins, then stopped at 22:37:29.972 with `wall rejoin
+  reached 90 degree bound without target signal`. Left bypass turned
+  44.85 to135.74deg, then searched right 137.38 to47.03deg over ~246mm
+  with averaged IR 0.0-2.5, never reacquiring 30. Operator reports the
+  dishwasher in front of the fridge is recessed from the cabinets, so
+  IR loss there should seek a recessed front with a right turn. Report
+  and telemetry at output/wall-run-20261108-223448/.
+- Wall-loss search now sweeps right in 10deg steps bounded by 60deg or
+  20s, seeking the recessed front line/wall/obstacle. Contact rejoin
+  remains 5deg/30deg/10s, bypass 15deg/90deg/25s unchanged. Wall-loss
+  accounting and contact budgets unchanged (4 searches, 42 recoveries).
+- WALL clears map coverage on start and records the localizer pose
+  (tag16 anchor dead-reckoned by wheel odometry) as the run trail even
+  when no tags are visible (localized=True, persist=False). Prior run
+  left only 11 trail points in 3.08m after leaving tag16; trail now
+  continues through wall-loss and bypass segments until flush on exit.
+- Focused WALL tests 41/41 passed including recessed-sweep beyond-30deg
+  and mission WALL start/trail tests; mission 133/133, control 47/47
+  passed. Whitespace and exactly-one SCCS checks passed; legacy web-app
+  untouched. Local only; sync wall/control/mission modules over wall.11,
+  restart and verify 3.1.wall.12. No deployment or robot commands.
+
+### 2026-11-08 — Four-frame IR average and forty-two contact recoveries, wall.11
+
+- 221411 run (wall.10) followed the wall for 883mm with five right-bumper
+  contacts; four recoveries succeeded (reverse ~30–36mm, left 15deg,
+  measured rejoin) and the fifth stopped with `contact recovery limit
+  reached`. Operator reports the map looked okay, bumps are useful wall
+  fixes once position is known, and the IR signal seems unsteady. Report
+  and telemetry at output/wall-run-20261108-221411/.
+- WALL now averages the right light-bumper signal over the latest four
+  distinct sensor frames for acquire/align/rejoin/follow decisions. The
+  average resets on each stage transition; raw_signal, signal and
+  signal_avg_n are logged. LED still shows the live raw reading.
+  Single spikes no longer steer or qualify the wall; sustained loss still
+  triggers wall-loss rejoin after the window clears.
+- Separate contact-recovery budget as WALL_MAX_CONTACT_RECOVERIES=42 for
+  longer runs toward the fridge bypass; acquisition reapproaches remain
+  four, wall-loss searches four, bypass/trial limits unchanged. Bump
+  recovery still reverses 30mm and turns left 15deg (90deg only for
+  wall-loss/bypass contact). Added averaging and 42-limit regressions.
+- Focused WALL tests 40/40 passed, including new spike-suppression and
+  fifth-recovery tests. Full discovery ran 623 tests with one pre-existing
+  RPi import error; wall/control/mission subsets (40/47/132) passed.
+  Whitespace and exactly-one SCCS checks passed; legacy web-app untouched.
+  Local only; sync wall/control modules over wall.10, restart and verify
+  3.1.wall.11. No deployment or robot commands.
+
+### 2026-11-08 — Local check-in of pending WALL and RoomTrek changes
+
+- User requests all pending changes committed to the local repository. Include
+  WALL3.1.wall.10 controller/Clock/LED/Python-console integration and regressions,
+  imported RoomTrek stopped-survey Save Map fix and operating guide, accumulated
+  WALL sensor/run reports and generated map archives/runtime map-state update.
+- Pending set90 files/~1.95MB before this log addition. Credential-pattern and
+  whitespace review clear;27 applicable source/doc files each have one SCCS ID.
+  Preserve generated CSV/PNG archives as emitted (CSV uses CRLF); staged checks
+  allow CR at line endings. Trim final extra WALL source blank line; legacy
+  web-app untouched.
+- Prior validation:612-test full suite passed, followed by38 focused WALL tests
+  after the final pivot-drift refinement. No implementation changes during
+  check-in. Local master only; no GitHub operations or robot deployment/motion.
+
+### 2026-11-08 — Minimum30 wheel commands and measured rejoin, wall.10
+
+- User requests30 speed floor because lower commands seem to produce poor or
+  opposite turning, and questions rejoin limit. Clamp every nonzero WALL wheel
+  command to abs>=30; approach/reverse30, pivots30, follow corrections floored30.
+  Target remains30 raw packet51 units and LED alternation unchanged.
+- Replace fixed weak differential arc with measured right steps and straight
+  advances: normal5deg/30mm, bypass15deg/50mm. Pivot right=-30,left=30; advance
+  both30. Before moving, collect3 fresh stationary frames to avoid residual
+  left settling being counted as a wrong-way turn. Confirm3 target frames stopped.
+- Remove100/350mm per-rejoin cutoffs. Retain ordinary30deg/10s and bypass90deg/25s,
+  four searches/contacts,1500mm/90s bypass and6m/240s whole-run limits. Never seek
+  indefinitely without IR. Pivot-center odometry drift is allowed; actual reverse
+  movement during forward advance and wrong-way yaw still abort.
+- Full regression612/612 passed;38 focused WALL tests passed after final pivot-
+  drift guard refinement, including minimum-speed, >100mm continuation, measured
+  turn/advance, fresh-frame and stop/contact precedence. Local only; sync wall/
+  control modules overwall.9, restart and verify3.1.wall.10. No robot commands.
+
+### 2026-11-08 — wall.9 rejoin stops at100mm with weak realized right turn
+
+-195639 run: both side-contact corrections stayed~14–15deg; second contact
+  during drive logged contact_preempted_drive and recovered, no generic abort.
+  No90deg escalation. Last recovery retreated30.06mm then turned left14.11deg.
+- Terminal19:58:00.586 reason wall rejoin reached100mm/15degree bound without
+  target. Entry744.738mm/yaw107.633, final845.006mm/yaw107.086:100.27mm advance
+  but only0.55deg net right. Post-stop left settling peaked110.15; arc corrected
+  3.06deg from peak. IR17–24 never reached30. Last successful heading92.21deg.
+- Fixed right15/left25 commands did not yield enough measured yaw. Requested
+  firmware speeds14/28 are command reports, not measured wheel speed. Recommend
+  bounded heading-controlled right steps before inward re-approach, rather than
+  merely increasing forward-distance bound. No terminal hazard/contact/race.
+- Report/telemetry at output/wall-run-20261108-195639/. Analysis only; no runtime
+  changes, deployment or robot commands.
+
+### 2026-11-08 — Small side-contact corrections and contact/drive race, wall.9
+
+- User authorizes fixes from194434 review. Remove nearby-repeat (<200mm)
+  escalation: ordinary repeated side-wall contacts retain15deg left correction.
+  Left90 remains for contact during wall-loss search or an already active bypass;
+  existing fridge-like search/bypass behavior and budgets are preserved.
+- Add typed WallContactStop from owner for rejected moves against WALL latch.
+  Drive catches only that condition, rereads controller snapshot, requires a
+  still-confirmed latch and rechecks all mission safety/freshness/odometry guards
+  before normal retreat recovery. Never resend the rejected forward command.
+  Unrelated exceptions and unconfirmed latches propagate; hard hazards abort.
+- Regression coverage injects contact between snapshot and drive; verifies normal
+  recovery, preserved search→left90 bypass, and no retreat on stale/cliff/drop/
+  expired lease or unrelated failure. Owner queue preserves the typed exception.
+- Full regression610/610 passed, including35 WALL tests. Whitespace and
+  exactly-one SCCS checks passed; legacy frontend untouched. Local only; sync
+  wall/control Python modules together overwall.8, restart and verify3.1.wall.9.
+  No deployment or robot commands performed.
+
+### 2026-11-08 — Excessive correction and terminal bumper race, 19:44 run
+
+- First right contact recovered with37mm reverse/~17deg left. Another right
+  contact after62mm forward triggered nearby_repeat (<200mm path) and selected
+  left90deg; actual88.49deg. This rule is too eager for ordinary side-wall bumps;
+  no sensor evidence here identifies a fridge. Recommend removing proximity-only
+  escalation while keeping bypass for contact during wall-loss searching.
+- Right rejoin recovered after150mm/~71deg and resumed following another364mm.
+  Third right bumper19:45:53.695 braked/latch53.698; first contact CSV53.699
+  already applied0/0. A drive using pre-contact snapshot53.660 was rejected by
+  contact latch at execution; unhandled exception aborted mission53.875.
+  Need fresh-state contact recovery on that rejection, preserving hard hazards
+  and other failures as aborts. Hardware safety stop worked.
+- output/wall-run-20261108-194434/report.md and events-and-samples.csv preserve
+  evidence for regression. Analysis only; no runtime change/deployment/motion.
+
+### 2026-11-08 — Wall-loss right search and left obstacle bypass, wall.8
+
+- User authorizes heading right on lost IR and go-around-left if next contact
+  is fridge, continuing boundary following. Follow signal<7.5 now stops/ends
+  lease and enters normal100mm/15deg/10s right rejoin; max4 loss searches.
+- Bump/stall while wall-loss searching, or repeated contact within200 encoder mm,
+  starts bounded obstacle bypass: immediate owner latch, reverse30mm/clear,
+  turn left90deg and resume right-boundary tracking. Other isolated contacts
+  retain proven15deg correction. No fridge recognition or global route claim.
+- During bypass, right corner search uses5/25mm/s wheels (mean15), up to350mm,
+  90deg/25s. Complete bypass bounded1500mm/90s; original trial/hazard/contact
+  budgets remain. Hand back to ordinary tracking only after>=200mm and3 fresh
+  >=30 readings within20deg of entry heading. Record search source, counts,
+  bypass status and heading handoff; this does not identify the original wall.
+-30 WALL tests passed, including lost-IR right recovery, contact→left90→boundary
+  tracking→right corner→heading handoff, repeated contacts and explicit bounds.
+  Real deadman stopped qualification coverage retained. No deployment/motion;
+  sync wall/control Python files overwall.7 and verify3.1.wall.8 before trial.
+- Full regression605/605 passed. Whitespace and exactly-one SCCS checks passed;
+  legacy frontend untouched. Physical fridge bypass remains untested.
+
+### 2026-11-08 — WALL tracks~20mm by observation; terminal IR loss
+
+- User observes successful following at~20mm.192245 run qualified initial
+  alignment, followed618mm, right-bumper stop/reverse32.97mm/left14.33deg;
+  rejoin qualified existing73-unit signal stationary, then followed another742mm.
+- Final IR27–30→16→12→8→7 at19:24:11.796 triggered stopped wall-loss wait.
+  Applied wheels0/0 by11.851; signal remained2–5. Mission ended13.407 with
+  wall IR lost; stopped without blind cabinet seeking. No terminal contact,
+  hard hazard or watchdog fault. Total forward follow encoders~1.36m.
+- Right correction was active before loss; log cannot distinguish plank edge,
+  reflectivity or physical stand-off change. Current rejoin handles contact
+  recovery only. Recommend bounded right rejoin for ordinary wall loss as next
+  increment, retaining existing motion/safety limits. Report at
+  output/wall-run-20261108-192245/report.md. Analysis only; no runtime changes.
+
+### 2026-11-08 — Gentle right-arc rejoin after contact, wall.7
+
+- User requests turning right to catch up with the wall after retreat/left
+  correction. Replace contact_left→acquire with bounded rejoin; no repeated
+  initial approach/45deg left alignment when an established wall can be resumed.
+- Below target30 packet51 units, arc right at15/25mm/s right/left wheels
+  (mean20), max100mm/15deg/10s. At>=30 stop and qualify3 distinct fresh samples,
+  then follow directly; uploaded post-contact32 resumes without extra movement.
+  Reset PID derivative on resume; log last successful follow yaw.
+- Separate four-event contact-recovery budget from initial acquisition retries;
+  retain global trial/time/distance limits, bumper latch, stalled-drive detection
+  and hard-hazard priority. New tests replay32-unit resume, right-arc direction,
+  bounds, fresh-frame qualification, recurring contact and distinct retry budgets.
+-74 focused WALL/control tests passed before full regression. No deployment or
+  robot commands; sync wall/control Python modules over wall.6 and verifywall.7.
+- Full regression602/602 passed, including27 WALL tests. Whitespace and
+  exactly-one SCCS checks passed; legacy frontend untouched.
+
+### 2026-11-08 — WALL plank trial: follow, bumper recovery, retry-limit stop
+
+- User reports~30mm gap and lost-position stop.191116 run actually ends
+  19:12:33.837 with wall alignment failed after four bounded re-approaches;
+  not global localization loss. Two initial alignment failures consumed retries.
+- Follow entered19:12:16.903, drove~155 encoder mm with IR40–70. Right bumper
+  latched20.632; first contact CSV row20.634 already applied0/0. Reverse34.1mm,
+  left14.33deg worked. At23.577 recovery ended with rightIR32, near target30.
+- Found next transition repeats initial acquisition: advances~91mm, then another
+  left alignment loses signal5; budget exhausted on next failed check. Recommend
+  stopped3-frame usable-signal check after contact-left and direct follow resume,
+  with reacquisition only if needed; retain hardware guards/bounds and clearer
+  acquisition-vs-recovery status. Do not infer mm calibration from observed gap.
+- output/wall-run-20261108-191116/report.md records evidence and next trial plan.
+  Analysis only; no runtime edits/deployment/motion.
+
+### 2026-11-08 — DIN snag review and WALL contact recovery, wall.6
+
+- User reports contact and continued wheel effort, then identifies DIN plug
+  catching cabinet doors above bumper; wood planks added to prevent underrun.
+  185925 CSV463 rows: both physical bumper bits always0; acquisitionIR0–24
+  never reached30. Flat encoders and~0.8A currents18.18–20.16 preceded old2s
+  stall abort. Zero applied speeds first recorded20.355. No bumper failure inferred.
+- Add serial-owner WALL stop latch on physical contact and scoped both-wheel
+  forward stall (>=350mA each, <0.5mm delta/poll for200ms). Replay triggers
+  19:00:18.505,0.322s after first flat/load frame; not a hardware timing claim.
+  Latch blocks forward/spin even after switch release; permit bounded reverse.
+- Mission stops first, reverses~30mm, requires cleared bumper/safety and stop,
+  releases latch, turns left15deg for new approach. Max retreat50mm/5s; recovery
+  shares4-retry budget. Hard hazards/startup-contact aborts remain. Target30 and
+  WALL/raw LED retained; motor-current fallback does not fabricate bumper events.
+- Added owner latch, replay, guard scope, mission retreat/left retry, held bumper
+  and cliff precedence tests. Report output/wall-run-20261108-185925/report.md.
+  Local only; sync wall/control/mission Python modules and verify3.1.wall.6.
+  No deployment or robot commands; planks have not yet been tested in these logs.
+- Full regression598/598 passed, including replay and contact-recovery tests.
+  Whitespace and exactly-one SCCS checks passed; legacy frontend untouched.
+
+### 2026-11-08 — Bounded WALL re-approach and stopped-lease fix, wall.5
+
+- User reports robot still>200mm from board after first run; correct previous
+  wording:30-unit threshold qualified an IR candidate, not intended-wall arrival.
+  Annotate prior run report. Target30 packet51 and alternating LED retained.
+- Replace unconditional left45 with <=15deg steps, each stopped/checked using
+  3 distinct fresh readings>=15. Loss returns to candidate approach heading,
+  then requires50mm additional advance before threshold can qualify again.
+  Limit4 retries,600mm net-forward envelope,90s acquisition/alignment;
+  hard hazards, bump policy and overall trial bounds remain.
+- Stop helper requires acknowledged stop before ending lease; failed stop leaves
+  watchdog armed. Deliberate checks/wall-loss waits no longer expire moving lease.
+  Unexpected expiry has distinct abort reason; shared I/O messages no longer
+  mislabel all lease users GridRunner. Added logged-sequence regression, failed
+  stop and real-arbiter deadman tests, retry bounds and stepped drive simulation.
+- Local update only; sync roomberry_wall.py and roomberry_control.py, restart
+  and verify3.1.wall.5 before trial. No deployment or robot commands performed.
+- Full regression591/591 passed, including19 WALL tests and real-deadman
+  stopped-wait coverage. Whitespace/SCCS checks passed; legacy frontend untouched.
+
+### 2026-11-08 — First WALL motion log review, 18:44 run
+
+- Tag16 qualified18:44:48; left88.05deg, forward199.64mm, right47.69deg;
+  acquisition31mm and packet51 readings32/33/39 reached target30 at18:45:04.
+- Fixed left44.08deg alignment lost signal40→0. Follow saw1 (<7.5) and never
+  issued a drive command; wheels already stopped18:45:07.891. No bump/cliff,
+  ready sensors and continuing polls. Absolute encoder path289mm, net242mm.
+- Found deliberate-stop lease bookkeeping defect: last moving renewal07.64,
+  lease expired08.238 while stopped, generic guard abort08.245 preempted intended
+  wall-loss wait. Recommend bounded sensor-qualified alignment and explicit
+  stopped-lease lifecycle/reason reporting, with replay regression.
+- output/wall-run-20261108-184421/report.md and events-and-samples.csv record
+  findings. Analysis only; no code change, deployment or robot commands.
+
+### 2026-11-08 — WALL controls from right light-bumper at30 units, wall.4
+
+- User replaces physical clearance target with fixed30 raw units on higher
+  resolution right light-bumper packet51. WALL starts at stopped tag16 anchor
+  qualification without clearance capture. Preserve WALL/live packet51 LED.
+- Controller acquisition and P/D following now read light_bump_right_signal,
+  validate0–4095 and use30. Status/logs identify sensor/packet and leave desired
+  and measured mm unset. Dashboard/catalog remove100mm capture; old HTTP capture
+  explicitly rejects without target mutation. Update operating instructions.
+- IR acquisition goes directly to left45deg alignment rather than backing away
+  160mm and losing the short-range wall signal. Physical bumper fallback retains
+  conservative160mm release; loss after alignment stops/aborts rather than blind
+  seeking. Departure left90/forward200/right45 and safety/trial bounds retained.
+- Added old-versus-new sensor acquisition regression, fixed-target/retired-capture
+  checks and updated Clock tests; ideal differential-drive simulation exercises
+  acquisition and60seconds of tracking (not a real sensor distance calibration).
+  JavaScript syntax passed. No deployment or robot commands performed.
+- Full regression suite586/586 passed with local socket/framework permissions.
+  Whitespace and exactly-one SCCS checks passed; legacy frontend untouched.
+
+### 2026-11-08 — Three-position right light-bumper trial review
+
+- User reports0/10/50mm only in new183024 session.345 sensor samples and3
+  stationary encoder plateaus; assume reported order for gap labels. Right
+  min/median/max56/61/66 at wall,1/5/10 at10mm,0/0/2 at50mm; old wall13/15/16,
+  0/1/2,0/0/1. At10mm right median falls~92%; no useful50mm range demonstrated.
+- Requested/applied wheel speeds zero, no physical bumpers or binary wall bits;
+  mission remained clearance with null target. Black surface is plausible,
+  not isolated from geometry without a comparison. No counts-to-mm fit justified.
+- Report and held-window CSV at output/wall-sensor-20261108/183024-report.md
+  and183024-held-positions.csv. Analysis only; no runtime change/deployment/motion.
+
+### 2026-11-08 — Right light-bumper LED and gap-test review, wall.3
+
+- User held0/10/20/100mm gaps5–10seconds and requests right light-bumper LED.
+  WALL now alternates every second with raw packet51 intensity0–4095, instead
+  of packet27. Keep one-second sample hold, SCAN priority, zero and---- handling.
+  Display only; wall controller and clearance capture still use old wall signal.
+- Uploaded182455 CSV has419 samples18:24:55.659–18:25:56.126. Five-second
+  right-signal medians~54–56,19–20,4,then0; old signal~13–14,4–5,then0.
+  No distance markers permit reliable gap-to-interval assignment. Save summary
+  at output/wall-sensor-20261108/182455-five-second-summary.csv.
+-53 targeted control/startup tests pass, including separate old/right values,
+  full4095 display and invalid4096 rejection. Whitespace/SCCS checks pass.
+  Control version3.1.wall.3; local only, no deployment or robot motion.
+
+### 2026-11-08 — WALL alternating LED feedback, wall.2
+
+- User requests wall feedback for black-baseboard trials at contact,10,20,50,
+  100mm. Alternate WALL/raw old packet27 intensity every second; no unverified
+  counts-to-mm conversion. Hold numeric sample for its full second, preserve
+  SCAN priority and wheel-drop suppression; unavailable/out-of-range shows----.
+- Phase starts on WALL entry and survives mission display refreshes; mode exit
+  restores normal display. Control version3.1.wall.2. Operator notes added to
+  wall-mission.md: do not capture100mm reference at other measured gaps; stopped
+  clearance observation window still times out after90s.
+-66 targeted control/startup/WALL tests passed, including LED timing, sample
+  hold, scan precedence, restart and invalid signal. Whitespace and SCCS checks
+  passed. Local change only; no Pi deployment or robot motion.
+
+### 2026-11-08 — Uploaded WALL sensor log review
+
+- output/wall-sensor-20261108/report.md reviews18:08 and18:10 sensor sessions
+  plus application log through18:13:20. Old wall signal plateaus0–1,2–4,29–32;
+  operator identifies last position as at wall. Final10s right light-bumper
+  signal117–128, median123. Binary wall/physical bumpers never asserted.
+- WALL stayed clearance with null target; captures18:11:12/18:11:38 failed,
+  first90s wait timed out. All requested/applied wheel velocities zero; no
+  autonomous departure/following. Encoder movement is not measured wall gap.
+- iRobot2018 OI spec deprecates wall packet27 (0–1023) in favour of right
+  light-bumper packet51 (0–4095), already logged. Both report raw intensity,
+  not mm; WALL currently uses the older input. Recommend evaluating packet51.
+- Found capture sampling flaw:100ms reads require distinct frames despite
+  median140ms polls; generic failure also conflates weak input with duplicates.
+  Close-wall capture would not establish100mm clearance. Report only; no
+  runtime changes, deployment or robot commands.
+
+### 2026-11-08 — WALL mission and Python console, wall.1
+
+- Clock now starts/cancels new WALL mission; GRID remains web-startable and
+  Clock still cancels active GRID/CAL. WALL LED, Python HTTP start/reference
+  capture operations, dashboard stage/signal/result and command catalog added.
+  Legacy web-app untouched; pending RoomTrek import changes retained.
+- Require operator-measured100mm body-to-wall parallel IR reference:5 fresh
+  stationary, stable readings; weak/saturated signal inhibits motion. Reference
+  resets with server. Live clearance remains unknown, surface dependent.
+- Qualify2 consistent fresh tag16 fixes; left90deg, forward200mm, right45deg,
+  slow IR/bumper acquisition, back160mm before left45deg alignment, then right
+  wall P/D tracking at35mm/s. Conservative oblique-acquisition backoff is not
+  a measured overhead clearance. Bound acquisition600mm/25s and trial6m/240s;
+  wall loss stops without blind seeking; unexpected contact aborts.
+- Preserve sensor/cliff/wheel-drop/battery/OI guards; add wheel epoch/jump,
+  wrong-direction/stall checks and independent0.6s I/O motion lease. Stage,
+  sensor/odometry and commanded wheel records go to existing robot log/status.
+- Added independent differential-drive/IR-geometry simulation and WALL safety,
+  anchor, bumper release, stale-frame, Clock, scan and HTTP routing checks.
+  Phone remote commands, type6 reception/IMU fusion and full survey-validation
+  orchestration remain subsequent work. No Pi deployment or physical motion.
+- Validation:584/584 roomberry tests passed with local socket/framework
+  permissions, including the differential-drive simulation. Dashboard JavaScript
+  syntax, whitespace and exactly-one SCCS checks passed for pending text files.
+
+### 2026-11-08 — Automated RoomTrek survey/validation planning
+
+- User reports 11 Pro map import failed on Peters 10; same-phone survey and
+  navigation appeared to recognize prior features. Import cause unconfirmed.
+- Reviewed map import, type6 sender, NavLink receiver and discovery wall follower.
+  Plan standalone bounded right-wall acquisition/following from tag16, remote
+  acknowledged phone commands, type6 reception plus explicit IMU transport,
+  synchronized run logs and independent tag checkpoint validation before fusion.
+- Planning only; no implementation, deployment or robot motion performed.
+
+### 2026-11-08 — Latest RoomTrek deployed to Peters 10
+
+- Built current local RoomTrek, including GitHub9039ebe stopped-survey Save Map
+  fix, as signed Release using Xcode14.2 and automatic provisioning.
+- Detected Peters 10 on iOS16.7.16, device
+  ab151810c534a3ffe07756d271a25095fe25e5d2. ios-deploy finished InstallComplete
+  with exit0. No launch, camera/ARKit or map workflow validation performed.
+- Build: /tmp/RoomTrek-Peters10-build.log; install:
+  /tmp/RoomTrek-Peters10-install.log. No robot commands or source changes.
+
+### 2026-11-08 — Pull recent GitHub changes locally
+
+- Fast-forwarded existing publication checkout from f6064e5 to9039ebe from
+  PreussLabsLLC/RoomBerry26 main. Copied all four changed files into the main
+  local workspace after verifying each existing file matched the prior snapshot.
+- Includes RoomTrek stopped-survey Save Map fix and room scan/transfer guide.
+  Verified copied file contents and one SCCS identification per changed file;
+  no app build, deployment, robot commands or GitHub writes performed.
 
 ### 2026-11-08 — RoomTrek local and GitHub check-in
 

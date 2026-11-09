@@ -1,6 +1,6 @@
 {
-  "_sccsid": "@(#)autonomy.json 3.1.posgate.1 2026/11/02 17:40:00",
-  "_note": "Room dimensions and tag positions are surveyed. Intrinsics and camera mount are illustrative placeholders. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
+  "_sccsid": "@(#)autonomy.json 3.1.posgate.2 2026/11/09 10:29:42",
+  "_note": "Room dimensions and tag positions are surveyed. Intrinsics and camera mount are illustrative placeholders. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. Tag 15 moved 2026/11/09 to the same y as tag 16 (0.79 m) so it is in view when following the wall. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
   "start_mode": "idle",
   "motion_ramp": {
     "enabled": true,
@@ -113,7 +113,7 @@
       "max_tag_distance_m": 1.2,
       "world_from_tag": [
         [0, 0, 1, 7.73],
-        [-1, 0, 0, 1.237],
+        [-1, 0, 0, 0.79],
         [0, -1, 0, 0.16],
         [0, 0, 0, 1]
       ]

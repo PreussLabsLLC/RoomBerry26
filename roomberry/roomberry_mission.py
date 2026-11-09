@@ -1,5 +1,5 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 3.1.grout.21 2026/11/06
+# @(#)roomberry_mission.py 3.1.wall.16 2026/11/09 10:40:00
 
 from math import atan2, cos, hypot, isfinite, pi, sin
 from random import uniform, choice
@@ -11,6 +11,8 @@ from irobot.openinterface.constants import MODES, ROBOT
 from roomberry_calibration import CalibrationDrive, MODE_CALIBRATION
 from roomberry_gridrunner import GridDrive, MODE_GRIDRUNNER
 from roomberry_tag_return import Tag15Return
+from roomberry_wall import (WallDrive, MODE_WALL, WALL_TARGET_SIGNAL,
+                            WALL_TARGET_MIN, WALL_TARGET_MAX, WALL_SENSOR)
 from roomberry_control import LIGHT_BUMPER_PROXIMITY_THRESHOLD
 from roomberry_navigation import (
     BACK_UP, DOCK, DRIVE, FOLLOW_WALL, GO_TO_WAYPOINT, MODE_CLEAN,
@@ -145,6 +147,7 @@ class RoomberryMission:
         self._phone_bump_baseline = None
         self.calibration = None
         self.gridrunner = None
+        self.wall = None
         self._manual_step = None
         self._manual_step_status = None
         self._announced_mode = None
@@ -222,22 +225,29 @@ class RoomberryMission:
 
     def set_mode(self, mode, wake_robot=True):
         if mode not in (MODE_IDLE, MODE_CLEAN, MODE_RETURN_TO_BASE,
-                        MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION, MODE_GRIDRUNNER):
+                        MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION, MODE_GRIDRUNNER, MODE_WALL):
             raise ValueError('Unsupported mission mode: ' + str(mode))
         with self._coord_lock:
             self._send_stop('mission mode transition')
             if self._manual_step is not None:
                 self._manual_step = None
                 self.robot_control.end_motion_lease()
+            self.robot_control.set_wall_contact_guard(mode == MODE_WALL)
             self.robot_control.set_bump_indicator(False)
             self._baseline_phone_bumps()
+            leaving_wall = self._mode == MODE_WALL
+            if leaving_wall:
+                self.robot_control.end_motion_lease()
+                if self.wall is not None and self.wall.result is None:
+                    self.wall.stage = 'cancelled'
+                    self.wall.result = dict(status='cancelled', reason='mode changed to '+mode)
             leaving_gridrunner = self._mode == MODE_GRIDRUNNER
             if leaving_gridrunner:
                 self.robot_control.end_motion_lease()
                 self.localizer.invalidate_pose()
                 self._last_detection_time = getattr(self.camera, 'last_detection_time', None)
                 self._detections_after_restart = time()
-            leaving_calibration = self._mode in (MODE_CALIBRATION, MODE_GRIDRUNNER) and mode == MODE_IDLE
+            leaving_calibration = self._mode in (MODE_CALIBRATION, MODE_GRIDRUNNER, MODE_WALL) and mode == MODE_IDLE
             leaving_active = (
                 mode in (MODE_IDLE, MODE_REMOTE) and
                 self._mode not in (MODE_IDLE, MODE_REMOTE)
@@ -256,6 +266,14 @@ class RoomberryMission:
             self._mode = mode
             self._run_map = None
             self._last_pose = None
+            if mode == MODE_WALL:
+                self.wall = WallDrive(self)
+                self._manual_motion_until = 0.0
+                try:
+                    self.mapper.clear_coverage()
+                    self.logger.info('Map coverage cleared for WALL run; tags retained.')
+                except Exception:
+                    self.logger.exception('Unable to clear map coverage for WALL run.')
             if mode == MODE_GRIDRUNNER:
                 self.gridrunner = GridDrive(self)
                 try:
@@ -312,7 +330,7 @@ class RoomberryMission:
                 self._discovery_avoid_grace_start = None
                 self._discovery_proximity_ticks = 0
             self.navigation.set_mode(
-                MODE_IDLE if mode in (MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION, MODE_GRIDRUNNER) else mode
+                MODE_IDLE if mode in (MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION, MODE_GRIDRUNNER, MODE_WALL) else mode
             )
             if mode != MODE_CLEAN:
                 self._circumvent_pending = False
@@ -334,11 +352,11 @@ class RoomberryMission:
                     try:
                         self.robot_control.execute('_change_mode', mode=MODES.PASSIVE)
                         self.logger.info('%s idle: restored Passive mode for Clock input.',
-                                         'GridRunner' if leaving_gridrunner else 'Calibration')
+                                         'WALL' if leaving_wall else 'GridRunner' if leaving_gridrunner else 'Calibration')
                     except Exception:
                         self.logger.exception('Unable to restore Passive mode after calibration; '
                                               'physical Clock input may be unavailable.')
-            if mode in (MODE_DISCOVERY, MODE_CALIBRATION, MODE_GRIDRUNNER):
+            if mode in (MODE_DISCOVERY, MODE_CALIBRATION, MODE_GRIDRUNNER, MODE_WALL):
                 self.robot_control.execute('set_motors', main_brush_on=False,
                                            side_brush=False, vacuum=False)
                 self._cleaning_motors_on = False
@@ -379,6 +397,24 @@ class RoomberryMission:
             if self._mode != MODE_GRIDRUNNER:
                 self.set_mode(MODE_GRIDRUNNER,wake_robot=False)
 
+    def start_wall(self):
+        """Clock/web entry: arm WALL at fixed raw IR target 30 after tag-16 qualification."""
+        with self._coord_lock:
+            state = self.robot_control.snapshot()
+            age = state.get('age')
+            if (state.get('oi_stopped') or self._hard_hazard_reasons(state)
+                    or not state.get('ready') or age is None or not 0 <= age <= .5
+                    or state.get('safety_latched') or state.get('motion_lease_expired')
+                    or state.get('sensor_fault')
+                    or state.get('battery_status') in ('low', 'critical', 'charging')):
+                raise RuntimeError('WALL requires fresh, ready sensors and no safety stop')
+            if self._mode != MODE_WALL:
+                self.set_mode(MODE_WALL, wake_robot=False)
+
+    def capture_wall_clearance(self):
+        """Reject stale clients without changing the fixed raw-intensity target."""
+        raise RuntimeError('WALL now uses right light-bumper target 30 raw units; 100 mm capture is retired')
+
     def return_to_tag15(self):
         """Stop any mission and establish an independent tag-15 homing run."""
         with self._coord_lock:
@@ -418,6 +454,13 @@ class RoomberryMission:
         with self._coord_lock:
             run = self.calibration
             return dict(mission_mode=self._mode,
+                wall=dict(stage=None if self.wall is None else self.wall.stage,
+                    result=None if self.wall is None else self.wall.result,
+                    last=None if self.wall is None else self.wall.last,
+                    events=[] if self.wall is None else list(self.wall.records),
+                    target_signal=WALL_TARGET_SIGNAL, target_min=WALL_TARGET_MIN,
+                    target_max=WALL_TARGET_MAX, sensor=WALL_SENSOR, sensor_packet=51,
+                    desired_clearance_mm=None, clearance_calibrated=False),
                 manual_step=None if self._manual_step_status is None else dict(self._manual_step_status),
                 run_map=getattr(self, '_run_map', None),
                 run_map_reference='Manual tag 15 seed; wheel trace corrected by accepted return tag scans',
@@ -536,6 +579,8 @@ class RoomberryMission:
                     self._discovery_stage,
                 )
                 return False
+            if self._mode == MODE_WALL and self.wall.stage not in ('anchor', 'tag15_scan'):
+                return False
             if (self._mode == MODE_CALIBRATION or
                     (self._mode == MODE_GRIDRUNNER and self.gridrunner.stage != 'scanning')):
                 return False  # Grout scans occur only at stopped checkpoints.
@@ -579,7 +624,9 @@ class RoomberryMission:
                     target_id = DISCOVERY_INITIAL_TAG_ID
                 elif self._discovery_stage and self._discovery_stage.startswith('tag2'):
                     target_id = DISCOVERY_TAG_ID
-            if self._mode in (MODE_CALIBRATION, MODE_GRIDRUNNER):
+            if self._mode == MODE_WALL:
+                target_id = 15 if self.wall.stage == 'tag15_scan' else 16
+            elif self._mode in (MODE_CALIBRATION, MODE_GRIDRUNNER):
                 target_id = 15
             target_heading = None
             if recovery is not None and recovery.get('target') is not None and pose is not None:
@@ -631,6 +678,8 @@ class RoomberryMission:
                         self._observe_phone_bumps()
                         state = self.robot_control.snapshot()
                         self._handle_clock(state)
+                        if self._mode == MODE_WALL:
+                            self.wall.guard(state)
                         if self._mode == MODE_GRIDRUNNER:
                             if self.gridrunner.stage == 'scanning':
                                 self.gridrunner.tick(state, scan_active=True)
@@ -650,6 +699,8 @@ class RoomberryMission:
                         self.calibration.abort('mission update error')
                     elif self._mode == MODE_GRIDRUNNER:
                         self.gridrunner.abort('mission update error')
+                    elif self._mode == MODE_WALL:
+                        self.wall.abort('mission update error')
             try:
                 self._announce_mode()
             except Exception:
@@ -659,7 +710,7 @@ class RoomberryMission:
             self._shutdown.wait(max(0.0, self.period - elapsed))
 
     def _handle_clock(self, state):
-        """Clock starts/cancels GridRunner; it can also cancel calibration."""
+        """Clock starts WALL or cancels the currently active measured mission."""
         if state.get('oi_stopped') is True:
             return False
         pressed = bool(state.get('clock_button', False))
@@ -669,16 +720,18 @@ class RoomberryMission:
         latched = bool(consume()) if callable(consume) else False
         if not (edge or latched):
             return False
-        if self._mode == MODE_GRIDRUNNER:
+        if self._mode == MODE_WALL:
+            self.wall.abort('Clock button cancelled WALL')
+        elif self._mode == MODE_GRIDRUNNER:
             self.gridrunner.abort('Clock button cancelled GridRunner')
         elif self._mode == MODE_CALIBRATION:
             self.calibration.abort('Clock button cancelled calibration')
         else:
             try:
-                self.start_gridrunner()
-                self.logger.info('Clock button pressed; starting GridRunner: waiting for fresh line and health.')
+                self.start_wall()
+                self.logger.info('Clock button pressed; starting WALL: target 30 right light-bumper units; waiting for tag 16.')
             except RuntimeError as error:
-                self.logger.warning('Clock GridRunner start rejected: %s',error)
+                self.logger.warning('Clock WALL start rejected: %s',error)
         return True
 
     def _baseline_phone_bumps(self):
@@ -733,6 +786,9 @@ class RoomberryMission:
             return
         sensors = state['sensors']
         if not state.get('ready') or sensors is None:
+            if self._mode == MODE_WALL:
+                self.wall.abort('Roomba sensors not ready')
+                return
             if self._mode == MODE_GRIDRUNNER:
                 self.gridrunner.abort('Roomba sensors not ready')
                 return
@@ -812,10 +868,19 @@ class RoomberryMission:
                 None if pose is None else pose.get('rejected_tags'),
             )
         if pose is not None and self._mode not in (MODE_CALIBRATION, MODE_GRIDRUNNER):
-            self.mapper.update_pose(
-                pose['x_mm'], pose['y_mm'], pose['heading_rad'],
-                localized=pose['localized'],
-            )
+            # WALL leaves a dead-reckoning trail from the tag16 anchor even
+            # when no tags are visible; localizer pose already integrates
+            # wheel odometry, so recording it yields the run polyline.
+            if self._mode == MODE_WALL:
+                self.mapper.update_pose(
+                    pose['x_mm'], pose['y_mm'], pose['heading_rad'],
+                    localized=True, persist=False,
+                )
+            else:
+                self.mapper.update_pose(
+                    pose['x_mm'], pose['y_mm'], pose['heading_rad'],
+                    localized=pose['localized'],
+                )
             if self._mode == MODE_CLEAN and pose.get('localized'):
                 if self._cleaning_motors_on:
                     self._record_coverage(self._last_pose, pose)
@@ -842,6 +907,10 @@ class RoomberryMission:
                 )
                 self.camera.request_scan()
             self._remote_was_moving = moving
+            return
+
+        if self._mode == MODE_WALL:
+            self.wall.tick(state, pose, new_detections, detection_timestamp)
             return
 
         if self._mode == MODE_CALIBRATION:
