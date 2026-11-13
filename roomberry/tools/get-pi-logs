@@ -2,10 +2,10 @@
 
 set -x
 
-rsync -Lave ssh pi@pi:/var/log/roomberry.log ../logs
-rsync -Lave ssh pi@pi:/var/log/roomberry-sensors/ ../logs/sensors/
-rsync -Lave ssh pi@pi:/var/log/roomberry-navlink/ ../logs/navlink/
-rsync -Lave ssh pi@pi:/home/pi/Projects/Roomberry/roomberry/rb.log ../logs
-rsync -Lave ssh "pi@pi:/home/pi/Projects/Roomberry/roomberry/roomberry/map-state*.json" ../logs
+rsync -Lave ssh pi@pi3:/var/log/roomberry.log ../logs
+rsync -Lave ssh pi@pi3:/var/log/roomberry-sensors/ ../logs/sensors/
+rsync -Lave ssh pi@pi3:/var/log/roomberry-navlink/ ../logs/navlink/
+rsync -Lave ssh pi@pi3:/home/pi/Projects/Roomberry/roomberry/rb.log ../logs
+rsync -Lave ssh "pi@pi3:/home/pi/Projects/Roomberry/roomberry/roomberry/map-state*.json" ../logs
 
-rsync -Lave ssh pi@pi:/var/log/roomberry-maps/ ../logs/maps/
+rsync -Lave ssh pi@pi3:/var/log/roomberry-maps/ ../logs/maps/

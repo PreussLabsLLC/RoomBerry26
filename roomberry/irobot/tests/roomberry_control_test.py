@@ -1,4 +1,4 @@
-# @(#)roomberry_control_test.py 3.1.grout.19 2026/11/05
+# @(#)roomberry_control_test.py 3.2.pulse.1 2026/11/12 16:09:50
 import csv
 import logging
 import unittest
@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch, call
 
 from irobot.openinterface.constants import DRIVE, MODES
 from roomberry_control import (
-    BUTTON_BEEP_SONG, RobotCommandArbiter, STARTUP_SENSOR_SAMPLES,
+    BUTTON_BEEP_SONG, RobotCommandArbiter, STARTUP_SENSOR_SAMPLES, WallContactStop,
 )
 from roomberry_sensor_log import SensorCsvRecorder
 
@@ -215,6 +215,60 @@ class RobotCommandArbiterTest(unittest.TestCase):
         self.assertEqual(control.snapshot()['sensors'].oi_mode, MODES.SAFE)
         command('drive_direct', left_velocity=50, right_velocity=50)
         self.assertIn(('drive_direct',50,50), robot.drive_commands)
+
+    def test_wall_bumper_latches_and_blocks_forward_after_switch_releases(self):
+        control = self.controller
+        control.set_wall_contact_guard(True)
+        self.robot.packet.bumps_and_wheel_drops.bump_right = True
+        self.assertTrue(self._wait_for(lambda: control.snapshot()['wall_contact_blocked']))
+        self.assertEqual(control.snapshot()['wall_contact_event']['reason'], 'bumper')
+        self.assertEqual(control.snapshot()['applied_left_velocity_mm_s'], 0)
+        self.robot.packet.bumps_and_wheel_drops.bump_right = False
+        self.assertTrue(self._wait_for(lambda: not control.snapshot()['safety_latched']))
+        with self.assertRaisesRegex(WallContactStop, 'contact stop latched'):
+            control.execute('drive_direct', left_velocity=25, right_velocity=25)
+        control.execute('drive_direct', left_velocity=-25, right_velocity=-25)
+        with self.assertRaisesRegex(RuntimeError, 'stopped'):
+            control.release_wall_contact_guard()
+        control.execute('stop')
+        control.release_wall_contact_guard()
+        control.execute('drive_direct', left_velocity=25, right_velocity=25)
+
+    def test_wall_current_stall_guard_is_bounded_and_scoped(self):
+        # Exercise the owner-side detector independently of the mission scheduler.
+        control = RobotCommandArbiter(None, 0, logging.getLogger('wall-stall'), robot=FakeRobot())
+        control.set_wall_contact_guard(True)
+        control._applied_wheels = (25, 25)
+        packet = control.robot.packet
+        packet.left_motor_current = packet.right_motor_current = 800
+        control._wall_contact_tick(packet, 0, False, 100.)
+        control._wall_contact_tick(packet, 0, False, 100.1)
+        self.assertFalse(control.snapshot()['wall_contact_blocked'])
+        control._wall_contact_tick(packet, 0, False, 100.21)
+        self.assertTrue(control.snapshot()['wall_contact_blocked'])
+        self.assertEqual(control._applied_wheels, (0, 0))
+        self.assertEqual(control.snapshot()['wall_contact_event']['reason'], 'high-current stalled forward drive')
+        for wheels, movement, hazard, enabled in (((-25,-25),0,False,True), ((25,25),2,False,True),
+                                                 ((25,25),0,True,True), ((25,25),0,False,False)):
+            control.set_wall_contact_guard(enabled)
+            control._applied_wheels = wheels
+            for now in (101.,101.4): control._wall_contact_tick(packet,movement,hazard,now)
+            self.assertFalse(control.snapshot()['wall_contact_blocked'])
+
+    def test_uploaded_wall_stall_trace_brakes_before_original_two_second_timeout(self):
+        control = RobotCommandArbiter(None, 0, logging.getLogger('wall-trace'), robot=FakeRobot())
+        control.set_wall_contact_guard(True)
+        control._applied_wheels = (25, 25)
+        # 19:00:17.824 onwards, distance delta mm and motor current mA.
+        trace = [(17.824,3.4,476,384), (18.011,3.4,795,673),
+                 (18.183,.2,786,776), (18.344,0,776,807), (18.505,0,763,802)]
+        for now, delta, left, right in trace:
+            control.robot.packet.left_motor_current = left
+            control.robot.packet.right_motor_current = right
+            control._wall_contact_tick(control.robot.packet, delta, False, now)
+            self.assertEqual(control.snapshot()['wall_contact_blocked'], now == 18.505)
+        self.assertEqual(control._applied_wheels, (0,0))
+        self.assertLess(18.505-18.183,.35)
 
     def test_gridrunner_io_deadman_brakes_without_mission_ticks(self):
         self.controller.execute('_change_mode',mode=2)
@@ -530,18 +584,53 @@ class WheelRampTest(unittest.TestCase):
             self.now += dt
             self.controller._advance_ramp(self.now)
 
+    def test_all_serial_ramp_writes_are_zero_or_at_least_42(self):
+        self.command('drive_direct', left_velocity=20, right_velocity=40)
+        self.tick(12)
+        self.command('soft_stop')
+        self.tick(12)
+        writes = [r for r in self.robot.drive_commands if r[0] == 'drive_direct']
+        self.assertTrue(writes)
+        for _,left,right in writes:
+            self.assertTrue(all(v == 0 or abs(v) >= 42 for v in (left,right)))
+
+    def test_io_pulse_brakes_without_mission_ticks_and_cancels_deadline(self):
+        now = monotonic()
+        command = dict(operation='drive_direct', kwargs=dict(left_velocity=20,right_velocity=20),
+            pulse_s=.1, ramp=True,result=[],done=Event(),expires_at=now+5)
+        with patch('roomberry_control.monotonic', return_value=now):
+            self.controller._run_command(command)
+        self.assertEqual(len(command['result']),1)
+        self.assertEqual(self.robot.drive_commands[-1],('drive_direct',42,42))
+        self.assertFalse(self.controller._check_pulse(now+.099))
+        self.assertTrue(self.controller._check_pulse(now+.101))
+        self.assertEqual(self.controller._applied_wheels,(0,0))
+        self.assertIsNone(self.controller._pulse_deadline)
+        self.assertFalse(self.controller._check_pulse(now+1))
+
+    def test_stop_preempts_pulse_and_invalid_durations_do_not_queue(self):
+        now=monotonic()
+        command=dict(operation='drive_direct',kwargs=dict(left_velocity=-42,right_velocity=42),
+            pulse_s=.1,ramp=False,result=[],done=Event(),expires_at=now+5)
+        self.controller._run_command(command)
+        self.command('stop')
+        self.assertIsNone(self.controller._pulse_deadline)
+        for duration in (0,-.1,1,float('nan')):
+            with self.assertRaises(ValueError):
+                self.controller.execute('drive_direct',left_velocity=42,right_velocity=42,pulse_s=duration)
+
     def test_grout_discrete_start_and_normal_stop(self):
         with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
             self.command('drive_direct', left_velocity=150, right_velocity=150, steps=True)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',40,40))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',42,42))
             self.tick(3)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',40,40))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',42,42))
             self.tick(2)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',70,70))
             self.tick(5)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',150,150))
             stop = self.command('soft_stop')
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',40,40))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',42,42))
             self.assertFalse(stop['done'].is_set())
             self.tick(3)
             self.assertFalse(stop['done'].is_set())
@@ -552,7 +641,7 @@ class WheelRampTest(unittest.TestCase):
     def test_grout_pending_step_retunes_without_extending_dwell(self):
         with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
             self.command('drive_direct', left_velocity=-150, right_velocity=-150, steps=True)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-40,-40))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-42,-42))
             deadline = self.controller._step_until
             self.tick(2)
             self.command('drive_direct', left_velocity=-160, right_velocity=-140, steps=True)
@@ -587,6 +676,53 @@ class WheelRampTest(unittest.TestCase):
             self.controller._record_wheel_change((30,30))
         self.assertEqual(len(self.controller._wheel_changes),1)
         self.assertIsNone(self.controller.phone_bump_speed_change(dict(received_monotonic=100.21)))
+
+    def test_wall_display_alternates_right_light_bumper_once_per_second(self):
+        self.robot.set_ascii_leds = Mock()
+        def shown():
+            return ''.join(chr(v) for v in self.robot.set_ascii_leds.call_args.kwargs.values())
+        self.robot.packet.wall_signal = 999  # Distinct legacy value must not appear.
+        self.robot.packet.light_bump_right_signal = 30
+        with patch('roomberry_control.monotonic', return_value=100.):
+            self.controller.set_drive_display('wall')
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), 'WALL')
+        with patch('roomberry_control.monotonic', return_value=101.01):
+            self.controller.set_drive_display('wall')  # Mission refresh cannot reset phase.
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), '  30')
+        count = self.robot.set_ascii_leds.call_count
+        self.robot.packet.light_bump_right_signal = 31
+        with patch('roomberry_control.monotonic', return_value=101.4):
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(self.robot.set_ascii_leds.call_count, count)
+        with patch('roomberry_control.monotonic', return_value=102.01):
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), 'WALL')
+        self.robot.packet.light_bump_right_signal = 0
+        with patch('roomberry_control.monotonic', return_value=103.01):
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), '   0')
+        with patch('roomberry_control.monotonic', return_value=103.2):
+            self.controller.set_scan_active(True)
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), 'SCAN')
+        self.controller.set_scan_active(False)
+        self.controller.set_drive_display('idle')
+        self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), 'IdLE')
+        with patch('roomberry_control.monotonic', return_value=200.):
+            self.controller.set_drive_display('wall')
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), 'WALL')
+        self.robot.packet.light_bump_right_signal = 4095
+        with patch('roomberry_control.monotonic', return_value=201.01):
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), '4095')
+        self.robot.packet.light_bump_right_signal = 4096
+        with patch('roomberry_control.monotonic', return_value=203.01):
+            self.controller._update_drive_display(self.robot.packet)
+        self.assertEqual(shown(), '----')
 
     def test_mode_display_refreshes_after_firmware_clears_it(self):
         self.robot.set_ascii_leds=Mock()
@@ -629,8 +765,9 @@ class WheelRampTest(unittest.TestCase):
                            ramp=False, result=[], done=Event(), expires_at=monotonic()+5)
             self.controller._run_command(command)
             self.assertEqual(len(command['result']), 1)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct', speed, speed))
-            self.assertEqual(self.controller._ramp_current, (speed, speed))
+            actual = max(42, speed)
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct', actual, actual))
+            self.assertEqual(self.controller._ramp_current, (actual, actual))
             count = len(self.robot.drive_commands)
             self.tick(2)
             self.assertEqual(len(self.robot.drive_commands), count)
@@ -653,12 +790,12 @@ class WheelRampTest(unittest.TestCase):
         self.assertEqual(self.robot.drive_commands[-1], ('drive_direct', 0, 0))
 
     def test_reversal_reaches_zero_before_opposite_motion(self):
-        self.command('drive_direct', left_velocity=40, right_velocity=20)
-        self.tick(9)
-        self.assertEqual(self.controller._ramp_current, (40, 20))
-        self.command('drive_direct', left_velocity=-40, right_velocity=-20)
+        self.command('drive_direct', left_velocity=84, right_velocity=42)
+        self.tick(20)
+        self.assertEqual(self.controller._ramp_current, (84, 42))
+        self.command('drive_direct', left_velocity=-84, right_velocity=-42)
         points=[]
-        for _ in range(15):
+        for _ in range(40):
             self.tick()
             points.append(self.controller._ramp_current)
         self.assertIn((0.0, 0.0), points)

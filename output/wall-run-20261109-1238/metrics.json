@@ -1,0 +1,26 @@
+{
+  "source": "roomberry/logs/navlink/roomberry-navlink-20261109-123843-0000.bin",
+  "packets": 1677,
+  "packet_types": {
+    "6": 1677
+  },
+  "first": "2026-11-09T12:38:56.231520-08:00",
+  "last": "2026-11-09T12:41:43.815577-08:00",
+  "duration_s": 167.584056825,
+  "rate_hz": 10.00095135392364,
+  "tracking_normal": 1669,
+  "tracking_initializing": 8,
+  "sequence_continuous": true,
+  "max_frame_age_ms": 163.278,
+  "features_median": 3,
+  "map_valid_flag_count": 0,
+  "end_position_m": {
+    "x_m": -1.951261281967163,
+    "y_m": 0.7545847296714783,
+    "z_m": -0.0058219158090651035
+  },
+  "mode": "survey",
+  "saved_map": "kitchen-261109",
+  "stop_time": "2026-11-09T12:41:42.192-08:00",
+  "stop_reason": "wheel motion opposite commanded direction"
+}

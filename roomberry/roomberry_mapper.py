@@ -8,7 +8,7 @@ Coordinates are millimeters in a fixed room frame. The map origin is the lower
 left corner; heading is radians counter-clockwise from +X.
 """
 
-# @(#)roomberry_mapper.py 3.1.grout.21 2026/11/06 10:00:00
+# @(#)roomberry_mapper.py 3.2.trails.1 2026/11/10 13:54:11
 from collections import deque
 from math import ceil, cos, hypot, floor, isfinite, sin
 from threading import Lock, RLock
@@ -93,6 +93,7 @@ class RoomberryMapper:
         self._clearance_cells = set()
         self._trail = []
         self._trail_session_start = 0
+        self._run_trails = None
         self.state_path = None
 
     def save_state(self, filename=None):
@@ -149,6 +150,14 @@ class RoomberryMapper:
             self._trail_session_start = 0
             self._dirty = True
 
+    def set_run_trails(self, wheel, iphone):
+        """Diagnostic traces belong to this service run, not saved coverage."""
+        with self._lock:
+            if self._run_trails is None:
+                self._run_trails = dict(wheel=[], iphone=[])
+            for name, points in (("wheel", wheel), ("iphone", iphone)):
+                self._run_trails[name].extend(points[len(self._run_trails[name]):])
+
     def snapshot(self):
         with self._lock:
             return {"cols":self.cols,"rows":self.rows,"cell_size_mm":self.cell_size_mm,
@@ -156,7 +165,9 @@ class RoomberryMapper:
                     "robot_radius_mm":self.robot_radius_mm,
                     "occupancy":[list(r) for r in self._occupancy],"cookies":[list(r) for r in self._cookies],
                     "pose":None if self._pose is None else dict(self._pose),"trail":list(self._trail),
-                    "trail_session_start":self._trail_session_start}
+                    "trail_session_start":self._trail_session_start,
+                    "run_trails":None if self._run_trails is None else {
+                        k:list(v) for k,v in self._run_trails.items()}}
 
     def _persist(self, force=False):
         """Write pending changes, at most once per ``persist_interval_s``.

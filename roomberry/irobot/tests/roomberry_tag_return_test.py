@@ -1,5 +1,5 @@
 """Standalone homing across mission states, localization search and safe routing."""
-# @(#)roomberry_tag_return_test.py 3.1.grout.17 2026/11/05
+# @(#)roomberry_tag_return_test.py 3.2.pulse.1 2026/11/12 16:09:50
 import math
 import unittest
 from types import SimpleNamespace
@@ -55,6 +55,40 @@ class TagReturnTest(unittest.TestCase):
         health['bump_count']=2
         self.tick()
         self.assertIn('phone impact',self.run.result['reason'])
+
+    def test_unsaved_phone_survey_survives_homing_and_idle(self):
+        from roomberry_trek_survey import TrekSurveyController
+        from roomberry_trek_maps import TrekMapManager
+        phone_command = Mock()
+        survey = TrekSurveyController(b'key', 5010, Mock(), command=phone_command)
+        survey.keep_operator_survey(dict(running=True, mode='survey', session='same-session', map_id=''))
+        manager = TrekMapManager(survey, self.m)
+        self.m.before_mode_change = manager.guard_mission
+        self.m.on_mode_change = survey.mode_changed
+        self.start()
+        self.assertEqual(self.run.stage, 'scanning')
+        self.assertEqual(survey.snapshot()['operator_survey']['session'], 'same-session')
+        # No forward travel until the existing stationary tag-fix gate qualifies.
+        self.assertIsNone(self.run.pose)
+        self.confirm(self.fixed_pose())
+        self.tick()
+        self.assertEqual(self.run.stage, 'return')
+        self.assertGreater(self.run.last['velocity_mm_s'], 0)
+        self.m.set_mode('idle', wake_robot=False)
+        self.assertIsNotNone(survey.snapshot()['operator_survey'])
+        self.assertTrue(survey._queue.empty())
+        phone_command.assert_not_called()
+        with self.assertRaisesRegex(RuntimeError, 'Save the current phone survey'):
+            self.m.set_mode('wall', wake_robot=False)
+
+    def test_homing_without_adoption_does_not_start_phone_lifecycle(self):
+        from roomberry_trek_survey import TrekSurveyController
+        survey = TrekSurveyController(b'key', 5010, Mock())
+        self.m.on_mode_change = survey.mode_changed
+        self.start()
+        self.m.set_mode('idle', wake_robot=False)
+        self.assertTrue(survey._queue.empty())
+        self.assertFalse(survey._active)
 
     def test_explicit_homing_prefers_stable_homeward_grout(self):
         from roomberry_gridrunner import GridDrive
@@ -276,6 +310,69 @@ class TagReturnTest(unittest.TestCase):
         self.assertEqual(self.m._mode, 'idle')
         self.assertFalse(self.run.final_fix)
         self.assertIn('no consistent', self.run.result['reason'])
+
+    def test_final_approach_uses_42mm_pulse_and_waits_for_fresh_quiet(self):
+        self.start();self.confirm(self.fixed_pose(gap=400))
+        self.run.stage='approach';self.run.final_fix=True
+        self.run.last_tag_distance=self.state['distance']
+        self.f.robot.execute.reset_mock()
+        self.tick()
+        calls=lambda:[c for c in self.f.robot.execute.call_args_list if c.args and c.args[0]=='drive_direct']
+        self.assertEqual(len(calls()),1)
+        self.assertEqual(calls()[0].kwargs,dict(ramp=False,pulse_s=.1,right_velocity=42,left_velocity=42))
+        self.tick()  # I/O pulse has ended; begin measured settle.
+        self.tick()  # First post-stop sensor sample.
+        self.assertEqual(len(calls()),1)
+        self.tick()  # Two fresh quiet samples permit the next short burst.
+        self.assertEqual(len(calls()),2)
+
+    def test_stalled_approach_pulses_abort_instead_of_waiting_forever(self):
+        self.start();self.confirm(self.fixed_pose(gap=400))
+        self.run.stage='approach';self.run.final_fix=True
+        self.run.last_tag_distance=self.state['distance']
+        for _ in range(20):
+            self.tick()
+            if self.run.result: break
+        self.assertIn('no wheel progress over three approach pulses',self.run.result['reason'])
+        self.assertEqual(self.m._mode,'idle')
+
+    def test_new_correction_inside_five_degree_band_does_not_reverse_pivot(self):
+        self.start();self.confirm(self.fixed_pose(gap=400,heading=math.radians(3)))
+        self.run.stage='approach';self.run.final_fix=True
+        self.run.last_tag_distance=self.state['distance']
+        self.run.turning=True;self.run.turn_control.phase='ready'
+        self.tick()
+        self.assertFalse(self.run.turning)
+        self.assertEqual(self.run.last['steering_mode'],'straight')
+
+    def test_near_target_requests_stopped_validation_and_two_fresh_fixes(self):
+        self.start();self.confirm(self.fixed_pose(gap=280))
+        self.run.stage='approach';self.run.final_fix=True;self.run.last_tag_distance=self.state['distance']
+        self.tick()
+        self.assertEqual(self.run.scan_purpose,'validate')
+        self.assertEqual(self.run.stage,'scanning')
+        self.run._fix=lambda detections:self.fixed_pose(gap=275)
+        self.tick(capture=True)
+        self.assertIsNone(self.run.result)
+        self.tick()  # same capture cannot complete
+        self.assertIsNone(self.run.result)
+        self.m.camera.last_detection_time = self.run.scan_wall+.01
+        self.tick()
+        self.assertEqual(self.run.result['status'],'complete')
+        self.assertEqual(self.run.result['range_mm'],275)
+        self.assertEqual(self.m._mode,'idle')
+
+    def test_validation_failure_stays_stopped_without_blind_fallback(self):
+        for gap in (None,350):
+            self.setUp();self.start();self.confirm(self.fixed_pose(gap=280))
+            self.run.stage='approach';self.run.final_fix=True;self.run.last_tag_distance=self.state['distance'];self.tick()
+            self.run._fix=lambda detections:None if gap is None else self.fixed_pose(gap=gap)
+            for i in range(3):
+                self.m.camera.last_detection_time=self.run.scan_wall+.01+i*.001
+                self.tick()
+                if self.run.result:break
+            self.assertEqual(self.m._mode,'idle')
+            self.assertNotEqual(self.run.result['status'],'complete')
 
     def test_blocked_map_aborts_before_drive(self):
         self.start()

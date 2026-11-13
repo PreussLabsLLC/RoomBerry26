@@ -1,0 +1,32 @@
+
+================ ROOMBA 80-BYTE SENSOR DUMP ================
+[Core System Variables]
+  OI Mode:                  0 (0=Off, 1=Passive, 2=Safe)
+  Battery Voltage:          17.51 V
+  Current Amperage:         55 mA
+  Internal Temperature:     34 °C
+  Charge Capacity Remaining:2696 mAh
+  Estimated Full Capacity:  2696 mAh
+  Charging State Identifier:3 (4 = Recovery/Reconditioning)
+
+[Environment & Bumpers]
+  Bumps & Wheel Drops Byte:  0b11 (Bit 0=R, 1=L, 2=RWheel, 3=LWheel)
+  Wall Sensor Detected:     False (Analog Signal Strength: 0)
+  Dirt Detect Level:        0
+  Virtual Wall Infrared RX: False
+  Physical Buttons Pressed: 0b0
+
+[Cliff Ground Infrared Sensors]
+  Cliff Left:               True (Signal: 3)
+  Cliff Front Left:         True (Signal: 2)
+  Cliff Front Right:        True (Signal: 0)
+  Cliff Right:              True (Signal: 3)
+
+[Navigation & Odometry]
+  Distance Traveled (mm):   0
+  Angle Rotated (degrees):  0
+  Left Wheel Encoder Count: 0
+  Right Wheel Encoder Count:3840
+  Stasis Forward Progress:  2
+============================================================
+

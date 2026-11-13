@@ -1,0 +1,39 @@
+{
+  "packets": 3095,
+  "sessions": [
+    {
+      "session": 15218298372157429137,
+      "packets": 317,
+      "start": "2026-11-10T11:17:14.512078",
+      "end": "2026-11-10T11:17:46.903258",
+      "map_uuid": "11cee584d76d4b69b3af2fe1c804bb7c",
+      "tracking": {
+        "1": 317
+      },
+      "reasons": {
+        "4": 317
+      },
+      "features_median": 9,
+      "frame_age_ms_median": 60.386,
+      "missing_sequences": 0
+    },
+    {
+      "session": 14180529187437353947,
+      "packets": 2778,
+      "start": "2026-11-10T11:17:48.026520",
+      "end": "2026-11-10T11:22:26.034778",
+      "map_uuid": "00000000000000000000000000000000",
+      "tracking": {
+        "1": 3,
+        "2": 2775
+      },
+      "reasons": {
+        "1": 3,
+        "0": 2775
+      },
+      "features_median": 7.0,
+      "frame_age_ms_median": 66.98599999999999,
+      "missing_sequences": 0
+    }
+  ]
+}

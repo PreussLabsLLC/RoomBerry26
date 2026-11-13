@@ -1,0 +1,41 @@
+{
+  "packets": 1669,
+  "alignment_deg": -82.84012898663602,
+  "alignment": "first 0.2m straight forward departure, rotation only, no scale fit",
+  "lens_offset_m": [
+    -0.145,
+    -0.022
+  ],
+  "clock": "minimum receipt epoch minus phone send uptime, applied to frame timestamp",
+  "uncorrected_camera_separation_end_m": 1.4168706797851682,
+  "position_separation_end_m": 1.3122673316636475,
+  "position_separation_max_m": 1.3125752851225105,
+  "heading_disagreement_end_deg": -9.155188267218374,
+  "heading_disagreement_abs_max_deg": 14.275310376113397,
+  "speed": {
+    "left_30": {
+      "n": 77,
+      "median_mm_s": 41.73370160964407,
+      "p10": 35.96954917928969,
+      "p90": 48.112132313473474
+    },
+    "left_35": {
+      "n": 187,
+      "median_mm_s": 39.87885732399334,
+      "p10": 34.760131713595115,
+      "p90": 47.99485184697541
+    },
+    "right_30": {
+      "n": 163,
+      "median_mm_s": 39.29672576337029,
+      "p10": 34.08573463053616,
+      "p90": 49.41873048457827
+    },
+    "right_35": {
+      "n": 189,
+      "median_mm_s": 39.87885732399334,
+      "p10": 34.688676683029705,
+      "p90": 46.23616176106555
+    }
+  }
+}

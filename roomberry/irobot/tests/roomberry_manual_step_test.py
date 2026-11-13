@@ -1,5 +1,5 @@
 """Measured local pad moves, retained trace, cancellation and safety guards."""
-# @(#)roomberry_manual_step_test.py 3.1.grout.19 2026/11/05
+# @(#)roomberry_manual_step_test.py 3.2.imu.1 2026/11/12 15:16:02
 import math
 import unittest
 from unittest.mock import patch
@@ -55,7 +55,9 @@ class ManualStepTest(unittest.TestCase):
 
     def test_four_directions_are_measured_and_braked(self):
         for direction, axis, target in [('forward','distance',50), ('backward','distance',-50),
-                                         ('left','angle',5), ('right','angle',-5)]:
+                                         ('left','angle',5), ('right','angle',-5),
+                                         ('left_15','angle',15), ('right_15','angle',-15),
+                                         ('left_30','angle',30), ('right_30','angle',-30)]:
             with self.subTest(direction=direction):
                 result = self.m.manual_step(direction)
                 self.assertEqual(result['status'], 'complete')

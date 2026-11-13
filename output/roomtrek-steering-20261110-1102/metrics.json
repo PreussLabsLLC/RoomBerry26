@@ -1,0 +1,428 @@
+{
+  "packets": 4559,
+  "sessions": [
+    {
+      "session": 13744358242786495527,
+      "packets": 630,
+      "start": "2026-11-10T11:02:35.527008",
+      "end": "2026-11-10T11:03:38.542569",
+      "map_uuid": "00000000000000000000000000000000",
+      "tracking": {
+        "2": 630
+      },
+      "reasons": {
+        "0": 630
+      },
+      "relocalization": {
+        "0": 630
+      },
+      "valid": 0,
+      "features_median": 3.0,
+      "frame_age_ms_median": 62.61,
+      "missing_sequences": 1
+    },
+    {
+      "session": 15165276774147113502,
+      "packets": 296,
+      "start": "2026-11-10T11:03:39.432136",
+      "end": "2026-11-10T11:04:08.928352",
+      "map_uuid": "0b2fa89df7ea40029ac792c32af1d0d5",
+      "tracking": {
+        "1": 296
+      },
+      "reasons": {
+        "1": 7,
+        "4": 289
+      },
+      "relocalization": {
+        "1": 296
+      },
+      "valid": 0,
+      "features_median": 4.0,
+      "frame_age_ms_median": 64.774,
+      "missing_sequences": 0
+    },
+    {
+      "session": 12905017395068451613,
+      "packets": 298,
+      "start": "2026-11-10T11:04:09.698598",
+      "end": "2026-11-10T11:04:39.388788",
+      "map_uuid": "0b2fa89df7ea40029ac792c32af1d0d5",
+      "tracking": {
+        "1": 298
+      },
+      "reasons": {
+        "1": 7,
+        "4": 291
+      },
+      "relocalization": {
+        "1": 297,
+        "3": 1
+      },
+      "valid": 0,
+      "features_median": 3.0,
+      "frame_age_ms_median": 63.5355,
+      "missing_sequences": 0
+    },
+    {
+      "session": 8245505388495324129,
+      "packets": 29,
+      "start": "2026-11-10T11:04:40.870649",
+      "end": "2026-11-10T11:04:43.660755",
+      "map_uuid": "0b2fa89df7ea40029ac792c32af1d0d5",
+      "tracking": {
+        "1": 14,
+        "2": 15
+      },
+      "reasons": {
+        "1": 7,
+        "4": 7,
+        "0": 15
+      },
+      "relocalization": {
+        "1": 24,
+        "2": 5
+      },
+      "valid": 5,
+      "features_median": 7,
+      "frame_age_ms_median": 57.994,
+      "missing_sequences": 0
+    },
+    {
+      "session": 1839665846118772473,
+      "packets": 27,
+      "start": "2026-11-10T11:04:45.248988",
+      "end": "2026-11-10T11:04:47.820193",
+      "map_uuid": "0b2fa89df7ea40029ac792c32af1d0d5",
+      "tracking": {
+        "1": 13,
+        "2": 14
+      },
+      "reasons": {
+        "1": 6,
+        "4": 7,
+        "0": 14
+      },
+      "relocalization": {
+        "1": 23,
+        "2": 4
+      },
+      "valid": 4,
+      "features_median": 0,
+      "frame_age_ms_median": 60.327,
+      "missing_sequences": 0
+    },
+    {
+      "session": 13233785361461042766,
+      "packets": 37,
+      "start": "2026-11-10T11:04:49.220845",
+      "end": "2026-11-10T11:04:52.924350",
+      "map_uuid": "0b2fa89df7ea40029ac792c32af1d0d5",
+      "tracking": {
+        "1": 20,
+        "2": 17
+      },
+      "reasons": {
+        "1": 7,
+        "4": 13,
+        "0": 17
+      },
+      "relocalization": {
+        "1": 30,
+        "2": 7
+      },
+      "valid": 6,
+      "features_median": 3,
+      "frame_age_ms_median": 60.629,
+      "missing_sequences": 0
+    },
+    {
+      "session": 4234472933243897911,
+      "packets": 43,
+      "start": "2026-11-10T11:04:54.442994",
+      "end": "2026-11-10T11:04:58.741513",
+      "map_uuid": "261b7c4be6444862a01212c213837e6c",
+      "tracking": {
+        "1": 26,
+        "2": 17
+      },
+      "reasons": {
+        "1": 7,
+        "4": 19,
+        "0": 17
+      },
+      "relocalization": {
+        "1": 36,
+        "2": 7
+      },
+      "valid": 7,
+      "features_median": 0,
+      "frame_age_ms_median": 60.378,
+      "missing_sequences": 0
+    },
+    {
+      "session": 2333422007269804935,
+      "packets": 123,
+      "start": "2026-11-10T11:05:00.310753",
+      "end": "2026-11-10T11:05:12.679173",
+      "map_uuid": "d395738673cd4f49a74451d1bbcb1776",
+      "tracking": {
+        "1": 107,
+        "2": 16
+      },
+      "reasons": {
+        "1": 6,
+        "4": 101,
+        "0": 16
+      },
+      "relocalization": {
+        "1": 117,
+        "2": 6
+      },
+      "valid": 5,
+      "features_median": 12,
+      "frame_age_ms_median": 92.59,
+      "missing_sequences": 0
+    },
+    {
+      "session": 17087220110355645979,
+      "packets": 296,
+      "start": "2026-11-10T11:05:14.214128",
+      "end": "2026-11-10T11:05:43.716929",
+      "map_uuid": "b2a8b6a1254f4e3ead207886fab51a54",
+      "tracking": {
+        "1": 296
+      },
+      "reasons": {
+        "1": 7,
+        "4": 289
+      },
+      "relocalization": {
+        "1": 296
+      },
+      "valid": 0,
+      "features_median": 3.0,
+      "frame_age_ms_median": 62.632999999999996,
+      "missing_sequences": 0
+    },
+    {
+      "session": 16170377127720372166,
+      "packets": 296,
+      "start": "2026-11-10T11:05:45.290630",
+      "end": "2026-11-10T11:06:14.805091",
+      "map_uuid": "b2a8b6a1254f4e3ead207886fab51a54",
+      "tracking": {
+        "1": 296
+      },
+      "reasons": {
+        "1": 6,
+        "4": 290
+      },
+      "relocalization": {
+        "1": 296
+      },
+      "valid": 0,
+      "features_median": 4.0,
+      "frame_age_ms_median": 63.549,
+      "missing_sequences": 0
+    },
+    {
+      "session": 2528370431484143690,
+      "packets": 297,
+      "start": "2026-11-10T11:06:16.258356",
+      "end": "2026-11-10T11:06:46.175013",
+      "map_uuid": "b2a8b6a1254f4e3ead207886fab51a54",
+      "tracking": {
+        "1": 297
+      },
+      "reasons": {
+        "1": 7,
+        "4": 290
+      },
+      "relocalization": {
+        "1": 294,
+        "3": 3
+      },
+      "valid": 0,
+      "features_median": 2,
+      "frame_age_ms_median": 66.58,
+      "missing_sequences": 0
+    },
+    {
+      "session": 10778283134803677840,
+      "packets": 297,
+      "start": "2026-11-10T11:06:47.728677",
+      "end": "2026-11-10T11:07:17.344797",
+      "map_uuid": "b2a8b6a1254f4e3ead207886fab51a54",
+      "tracking": {
+        "1": 297
+      },
+      "reasons": {
+        "1": 6,
+        "4": 291
+      },
+      "relocalization": {
+        "1": 296,
+        "3": 1
+      },
+      "valid": 0,
+      "features_median": 4,
+      "frame_age_ms_median": 60.605,
+      "missing_sequences": 0
+    },
+    {
+      "session": 3640672576382070667,
+      "packets": 296,
+      "start": "2026-11-10T11:08:42.494518",
+      "end": "2026-11-10T11:09:12.065942",
+      "map_uuid": "b2a8b6a1254f4e3ead207886fab51a54",
+      "tracking": {
+        "1": 296
+      },
+      "reasons": {
+        "1": 10,
+        "4": 286
+      },
+      "relocalization": {
+        "1": 295,
+        "3": 1
+      },
+      "valid": 0,
+      "features_median": 1.0,
+      "frame_age_ms_median": 49.414500000000004,
+      "missing_sequences": 0
+    },
+    {
+      "session": 3871405150633678816,
+      "packets": 254,
+      "start": "2026-11-10T11:09:13.669515",
+      "end": "2026-11-10T11:09:39.367942",
+      "map_uuid": "b2a8b6a1254f4e3ead207886fab51a54",
+      "tracking": {
+        "1": 239,
+        "2": 15
+      },
+      "reasons": {
+        "1": 13,
+        "4": 226,
+        "0": 15
+      },
+      "relocalization": {
+        "1": 249,
+        "2": 5
+      },
+      "valid": 4,
+      "features_median": 3.0,
+      "frame_age_ms_median": 63.906499999999994,
+      "missing_sequences": 0
+    },
+    {
+      "session": 9697838391818565478,
+      "packets": 299,
+      "start": "2026-11-10T11:09:40.878664",
+      "end": "2026-11-10T11:10:10.676973",
+      "map_uuid": "11cee584d76d4b69b3af2fe1c804bb7c",
+      "tracking": {
+        "1": 299
+      },
+      "reasons": {
+        "1": 7,
+        "4": 292
+      },
+      "relocalization": {
+        "1": 297,
+        "3": 2
+      },
+      "valid": 0,
+      "features_median": 1,
+      "frame_age_ms_median": 66.642,
+      "missing_sequences": 0
+    },
+    {
+      "session": 7136729157061068600,
+      "packets": 297,
+      "start": "2026-11-10T11:10:11.453846",
+      "end": "2026-11-10T11:10:41.348670",
+      "map_uuid": "11cee584d76d4b69b3af2fe1c804bb7c",
+      "tracking": {
+        "1": 297
+      },
+      "reasons": {
+        "1": 7,
+        "4": 290
+      },
+      "relocalization": {
+        "1": 294,
+        "3": 3
+      },
+      "valid": 0,
+      "features_median": 2,
+      "frame_age_ms_median": 67.723,
+      "missing_sequences": 2
+    },
+    {
+      "session": 8796972174537741204,
+      "packets": 297,
+      "start": "2026-11-10T11:10:43.042705",
+      "end": "2026-11-10T11:11:12.648245",
+      "map_uuid": "11cee584d76d4b69b3af2fe1c804bb7c",
+      "tracking": {
+        "1": 297
+      },
+      "reasons": {
+        "1": 7,
+        "4": 290
+      },
+      "relocalization": {
+        "1": 297
+      },
+      "valid": 0,
+      "features_median": 3,
+      "frame_age_ms_median": 65.944,
+      "missing_sequences": 0
+    },
+    {
+      "session": 15095307788174667665,
+      "packets": 299,
+      "start": "2026-11-10T11:11:13.557642",
+      "end": "2026-11-10T11:11:43.342660",
+      "map_uuid": "11cee584d76d4b69b3af2fe1c804bb7c",
+      "tracking": {
+        "1": 299
+      },
+      "reasons": {
+        "1": 7,
+        "4": 292
+      },
+      "relocalization": {
+        "1": 297,
+        "3": 2
+      },
+      "valid": 0,
+      "features_median": 0,
+      "frame_age_ms_median": 66.456,
+      "missing_sequences": 0
+    },
+    {
+      "session": 7046287570004469126,
+      "packets": 148,
+      "start": "2026-11-10T11:11:44.881411",
+      "end": "2026-11-10T11:11:59.679217",
+      "map_uuid": "11cee584d76d4b69b3af2fe1c804bb7c",
+      "tracking": {
+        "1": 148
+      },
+      "reasons": {
+        "1": 6,
+        "4": 142
+      },
+      "relocalization": {
+        "1": 148
+      },
+      "valid": 0,
+      "features_median": 0.0,
+      "frame_age_ms_median": 67.0185,
+      "missing_sequences": 0
+    }
+  ]
+}

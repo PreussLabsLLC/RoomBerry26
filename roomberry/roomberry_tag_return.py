@@ -1,8 +1,11 @@
 """Standalone tag-15 homing from a fresh fix or a still-valid wheel trace."""
-# @(#)roomberry_tag_return.py 3.1.grout.17 2026/11/05
+# @(#)roomberry_tag_return.py 3.2.pulse.1 2026/11/12 16:09:50
 import math
 from time import monotonic, time
-from roomberry_gridrunner import GridDrive, GRID_PIVOT_SPEED
+from roomberry_gridrunner import GridDrive
+from roomberry_wheel_speed import MIN_WHEEL_SPEED
+
+TAG_PULSE_SECONDS = .10
 
 
 class Tag15Return(GridDrive):
@@ -38,6 +41,12 @@ class Tag15Return(GridDrive):
         self.distance_at_fix = float(state['distance'])
         self.turning = False
         self.turn_control.reset()
+        self.turn_control.max_pulse_s = TAG_PULSE_SECONDS
+        self.approach_pulse_until = None
+        self.approach_stopped_at = None
+        self.approach_sample = self.approach_quiet_since = None
+        self.approach_empty_pulses = 0
+        self.approach_start_distance = None
         self.phone_identity = self.phone_bumps = None
         self.grout_source = None
         self.line_frames = 0
@@ -54,6 +63,54 @@ class Tag15Return(GridDrive):
             self.pose['y_mm'] += delta*math.sin(middle)
             self.pose['heading_rad'] = self._wrap(self.pose['heading_rad']+yaw)
             self.prior_valid = True
+
+    def _approach_pulse_wait(self, state, now):
+        if self.approach_pulse_until is None:
+            return False
+        self.mission.robot_control.renew_motion_lease(.6)
+        self.progress_at = now  # Waiting for commanded stillness is not a stall.
+        if now < self.approach_pulse_until:
+            return True
+        if self.last is not None:
+            self.last.update(steering_mode='settling',velocity_mm_s=0,
+                             left_velocity_mm_s=0,right_velocity_mm_s=0)
+        if self.approach_stopped_at is None:
+            self.mission._send_stop('tag approach pulse ended; wait for measured quiet', force=True)
+            self.approach_stopped_at = now
+        if now-self.approach_stopped_at > 1.5:
+            self.abort('approach pulse wheels did not settle within1.5seconds')
+            return True
+        stamp = state.get('sensor_monotonic_s', now-float(state.get('age') or 0))
+        if stamp <= self.approach_stopped_at:
+            return True
+        sample = (stamp,float(state['distance']),float(state['angle']))
+        previous = self.approach_sample
+        if previous is not None and stamp <= previous[0]:
+            return True
+        self.approach_sample = sample
+        if previous is None:
+            return True
+        dt = stamp-previous[0]
+        quiet = (0 < dt <= .5 and abs(sample[1]-previous[1])/dt <= 5
+                 and abs(sample[2]-previous[2])/dt <= 2)
+        if not quiet:
+            self.approach_quiet_since = None
+            return True
+        if self.approach_quiet_since is None:
+            self.approach_quiet_since = previous[0]
+        if stamp-self.approach_quiet_since < .15:
+            return True
+        if abs(state['distance']-self.approach_start_distance) < 1:
+            self.approach_empty_pulses += 1
+        else:
+            self.approach_empty_pulses = 0
+        if self.approach_empty_pulses >= 3:
+            self.abort('no wheel progress over three approach pulses')
+            return True
+        self.approach_pulse_until = self.approach_stopped_at = None
+        self.approach_sample = self.approach_quiet_since = None
+        self.turning = False
+        return False
 
     def _resume_visible_line(self, state, health, scan_active):
         row = self._row('latest_grid_observation')
@@ -110,7 +167,7 @@ class Tag15Return(GridDrive):
         self.mission.camera.request_scan()
 
     def _fix(self, detections):
-        if self.scan_purpose == 'final':
+        if self.scan_purpose in ('final', 'validate'):
             return self._tag_fix(detections)
         from roomberry_localization import AprilTagLocalizer
         source = self.mission.localizer
@@ -129,6 +186,10 @@ class Tag15Return(GridDrive):
             if monotonic()-self.scan_started > 30:
                 self.abort('return localization scan timed out; robot remains stopped')
             return
+        if self.scan_purpose == 'validate':
+            if captured == getattr(self, '_validation_capture', None):
+                return
+            self._validation_capture = captured
         pose = self._fix(self.mission.camera.latest_detections)
         valid = pose is not None and bool(pose.get('accepted_tag_ids'))
         innovation = None
@@ -159,6 +220,18 @@ class Tag15Return(GridDrive):
             self.distance_at_fix = float(state['distance'])
             self.fix_attempts = 0
             self.fix_candidate = None
+            if self.scan_purpose == 'validate':
+                distance = self._range(state)
+                if distance > 300:
+                    self.abort('tag15 validation outside 300mm; robot remains stopped')
+                    return
+                self.stage = 'complete'
+                self.result = dict(status='complete', reason='tag15 validated within 300mm',
+                                   final_pose=dict(self.pose), range_mm=distance, checkpoints=list(self.records))
+                self.mission.logger.info('Tag15 validation complete: range_mm=%.1f', distance,
+                    extra=dict(speech_code='TAG15_VALIDATED', speech_announce=True))
+                self.mission.set_mode('idle')
+                return
             if self.scan_purpose == 'final':
                 h = self.tag['heading']
                 dx, dy = self.tag['x']-self.pose['x_mm'], self.tag['y']-self.pose['y_mm']
@@ -177,7 +250,7 @@ class Tag15Return(GridDrive):
                     return
             self._begin_motion(state)
             return
-        if self.fix_attempts < 3 and (valid or getattr(self, '_relocation_pending', False) or self.scan_purpose == 'final'):
+        if self.fix_attempts < 3 and (valid or getattr(self, '_relocation_pending', False) or self.scan_purpose in ('final', 'validate')):
             self._request_fix(self.scan_purpose)
             return
         # A known, continuous trace can bridge a distant/out-of-view tag. A
@@ -185,7 +258,7 @@ class Tag15Return(GridDrive):
         if getattr(self, '_relocation_pending', False):
             self.abort('stationary relocation could not be confirmed; robot remains stopped')
             return
-        if self.scan_purpose != 'final' and self.prior_valid and not valid:
+        if self.scan_purpose not in ('final', 'validate') and self.prior_valid and not valid:
             if self.tag_fix_applied and abs(state['distance']-self.distance_at_fix) >= 1200:
                 self.abort('tag return lost localization after 1200 mm without a new fix')
                 return
@@ -196,7 +269,7 @@ class Tag15Return(GridDrive):
                 self.distance_at_scan = float(state['distance'])
                 self._begin_motion(state)
             return
-        if self.scan_purpose == 'final' or valid:
+        if self.scan_purpose in ('final', 'validate') or valid:
             self.abort('no consistent return localization; robot remains stopped')
             return
         if self.search_index >= 7:
@@ -298,7 +371,7 @@ class Tag15Return(GridDrive):
                 self.abort('phone impact detected during tag return')
                 return
             self.phone_identity, self.phone_bumps = identity, health['bump_count']
-            if self._resume_visible_line(state, health, scan_active):
+            if self.scan_purpose != 'validate' and self._resume_visible_line(state, health, scan_active):
                 return
         if self.stage == 'scanning':
             if not scan_active:
@@ -308,6 +381,8 @@ class Tag15Return(GridDrive):
             return
         if scan_active:
             self.abort('unexpected camera scan interrupted tag return')
+            return
+        if self._approach_pulse_wait(state, now):
             return
         if (abs(state['distance']-self.last_distance) >= 2 or
                 abs(state['angle']-self.progress_heading) >= .5):
@@ -348,15 +423,21 @@ class Tag15Return(GridDrive):
                 if self._range(state) < self.tag['radius']-50 or state['distance']-self.last_tag_distance > 750:
                     self.abort('tag return final approach exceeded its bounded travel')
                     return
+                if self._range(state) <= 300:
+                    self._request_fix('validate')
+                    return
             dx, dy = target[0]-self.pose['x_mm'], target[1]-self.pose['y_mm']
             desired = self.tag['heading'] if self.stage == 'approach' and math.hypot(dx,dy) <= 50 else math.atan2(dy,dx)
             error = self._wrap(desired-self.pose['heading_rad'])
-            speed = 20 if self.stage == 'approach' else 50
-        self.turning = abs(error) > math.radians(2 if self.turning else 5)
+            speed = MIN_WHEEL_SPEED if self.stage == 'approach' else 50
+        sign = 1 if error > 0 else -1
+        continuing = self.turn_control.phase == 'turning' and self.turn_control.sign == sign
+        threshold = 2 if continuing or self.stage in ('aiming','searching') else 5
+        self.turning = abs(error) > math.radians(threshold)
         if self.turning:
             sign = 1 if error > 0 else -1
-            left, right, speed = -sign*GRID_PIVOT_SPEED, sign*GRID_PIVOT_SPEED, 0
-            action = dict(kind='turn', velocity=GRID_PIVOT_SPEED, steering=sign)
+            left, right, speed = -sign*MIN_WHEEL_SPEED, sign*MIN_WHEEL_SPEED, 0
+            action = dict(kind='turn', velocity=MIN_WHEEL_SPEED, steering=sign)
         else:
             left = right = speed
             action = dict(kind='drive', velocity=speed, steering=0)
@@ -373,7 +454,8 @@ class Tag15Return(GridDrive):
             return
         if not ready:
             left = right = speed = 0
-        self.last = dict(stage=self.stage, tracking='tag return', steering_mode='settling' if not ready else 'pivot' if self.turning else 'straight',
+        self.last = dict(stage=self.stage, tracking='tag return',
+            pulse_seconds=TAG_PULSE_SECONDS if self.turning or self.stage == 'approach' else None, steering_mode='settling' if not ready else 'pivot' if self.turning else 'straight',
             heading_error_rad=error, velocity_mm_s=speed, left_velocity_mm_s=left,
             right_velocity_mm_s=right, wheel_distance_mm=state['distance']-self.origin,
             wheel_heading_deg=state['angle'], tag_distance_mm=None if self.pose is None else self._range(state),
@@ -385,7 +467,13 @@ class Tag15Return(GridDrive):
             self.abort('tag return motion lease expired')
             return
         if ready:
+            pulsed = self.turning or self.stage == 'approach'
             self.mission._dispatch(dict(action,reason='Return to tag 15 '+self.stage,
-                                        continuous=True,max_duration_s=.6), None)
+                continuous=not pulsed, ramp=not pulsed,
+                pulse_s=TAG_PULSE_SECONDS if pulsed else None,
+                max_duration_s=TAG_PULSE_SECONDS if pulsed else .6), None)
+            if self.mission._active_command is not None and self.stage == 'approach' and not self.turning:
+                self.approach_pulse_until = monotonic()+TAG_PULSE_SECONDS
+                self.approach_start_distance = float(state['distance'])
             if self.mission._active_command is not None:
                 self.turn_control.dispatched(turn_sign)

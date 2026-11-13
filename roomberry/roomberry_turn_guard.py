@@ -1,11 +1,12 @@
 """Shared encoder turn qualification, with measured settling between directions."""
-# @(#)roomberry_turn_guard.py 3.1.grout.13 2026/11/04
+# @(#)roomberry_turn_guard.py 3.2 2026/11/09 18:53:01
 import math
 
 
 class SettledTurn:
-    def __init__(self, mission, clock):
+    def __init__(self, mission, clock, max_pulse_s=None):
         self.mission, self.clock = mission, clock
+        self.max_pulse_s = max_pulse_s
         self.reset()
 
     def reset(self):
@@ -35,6 +36,10 @@ class SettledTurn:
         if not isinstance(stamp, (int, float)):
             stamp = now-float(state.get('age') or 0.)
         sample = (stamp, float(state['angle']), float(state['distance']))
+        if (self.phase == 'turning' and self.max_pulse_s is not None
+                and now-self.issued_at >= self.max_pulse_s):
+            self._brake()
+            return False
         if self.phase == 'turning' and requested_sign != self.sign:
             self._brake()
             return False

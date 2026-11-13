@@ -1,9 +1,11 @@
 """Single-owner Roomba command and sensor-polling service."""
-# @(#)roomberry_control.py 3.1.wall.16 2026/11/09 10:40:00
+# @(#)roomberry_control.py 3.2.pulse.1 2026/11/12 16:09:50
 
+from roomberry_wheel_speed import MIN_WHEEL_SPEED, wheel_speeds
 from math import isfinite
 from collections import deque
 from roomberry_reverse_monitor import ReverseCurrentMonitor
+from roomberry_speech import BATTERY_CODES
 from roomberry_startup import reset_and_identify
 from queue import Empty, Queue
 from threading import Event, Lock, Thread
@@ -24,7 +26,7 @@ ROBOT_CONNECT_RETRY_INITIAL_SECONDS = 5
 ROBOT_CONNECT_RETRY_MAX_SECONDS = 30
 # Provisional Nov 3 reference: (4799 - body radius 174) / 4583.020565923183.
 WHEEL_SIZE_ADJUSTMENT = 4625.0 / 4583.020565923183
-CONTROL_VERSION = '3.1.wall.16'
+CONTROL_VERSION = '3.2.pulse.1'
 SPEED_STEP_SECONDS = .2
 PHONE_BUMP_QUIET_SECONDS = .15
 # Keep operation LEDs lit long enough to see after a brief sensor trigger.
@@ -60,6 +62,7 @@ class RobotCommandArbiter:
         self.logger = logger
         self._reverse_monitor = ReverseCurrentMonitor(logger, reverse_current_monitor)
         self._sensor_fault = None
+        self._pulse_deadline = None
         self._applied_wheels = (0, 0)
         self._motion_lease_deadline = None
         self._motion_lease_expired = False
@@ -303,12 +306,15 @@ class RobotCommandArbiter:
             self._brake()
         return self._motion_lease_expired
 
-    def execute(self, operation, timeout=5, ramp=True, steps=False, **kwargs):
+    def execute(self, operation, timeout=5, ramp=True, steps=False, pulse_s=None, **kwargs):
         """Run a legacy operation on the I/O thread and return its result."""
         if not operation or (operation.startswith('_') and operation not in ('_change_mode', '_feedback_beep')):
             raise ValueError('Invalid Roomba operation')
 
+        if pulse_s is not None and (not isfinite(float(pulse_s)) or not .02 <= float(pulse_s) <= .25):
+            raise ValueError('Wheel pulse duration must be20–250ms')
         command = {
+            'pulse_s': pulse_s,
             'operation': operation,
             'ramp': bool(ramp),
             'steps': bool(steps),
@@ -332,6 +338,8 @@ class RobotCommandArbiter:
                 'firmware_version': getattr(self.robot, 'boot_firmware_version', None),
                 'firmware_release': getattr(self.robot, 'firmware_release', None),
                 'control_version': CONTROL_VERSION,
+                'minimum_wheel_speed_mm_s': MIN_WHEEL_SPEED,
+                'pulse_active': self._pulse_deadline is not None,
                 'wheel_size_adjustment': WHEEL_SIZE_ADJUSTMENT,
                 'sensors': self._sensors,
                 'distance': self._distance,
@@ -546,13 +554,16 @@ class RobotCommandArbiter:
     def _run(self):
         next_poll = monotonic()
         while not self._shutdown.is_set():
-            timeout = max(0, min(0.05, next_poll - monotonic()))
+            now = monotonic()
+            pulse_wait = .05 if self._pulse_deadline is None else max(0, self._pulse_deadline-now)
+            timeout = max(0, min(0.05, next_poll-now, pulse_wait))
             try:
                 command = self._commands.get(timeout=timeout)
             except Empty:
                 command = None
 
             self._check_motion_lease()
+            self._check_pulse()
             if command is not None:
                 self._run_command(command)
 
@@ -561,6 +572,7 @@ class RobotCommandArbiter:
                 self._poll_sensors()
                 next_poll = monotonic() + self.poll_interval
             try:
+                self._check_pulse()
                 self._advance_ramp()
             except Exception:
                 self.logger.exception('Wheel ramp failed; braking immediately.')
@@ -686,6 +698,16 @@ class RobotCommandArbiter:
                 if operation in ('set_song', 'play_song') and self.robot.oi_mode != MODES.SAFE:
                     raise RuntimeError('Feedback requires Safe mode; refusing to rearm for a beep')
                 wheels = self._wheel_target(operation, command['kwargs'])
+                if wheels is not None:
+                    limited = wheel_speeds(wheels)
+                    if limited != wheels:
+                        operation = 'drive_direct'
+                        command['kwargs'] = dict(left_velocity=limited[0], right_velocity=limited[1])
+                    wheels = limited
+                if command.get('pulse_s') is not None:
+                    if wheels is None or wheels == (0,0) or command.get('steps', False):
+                        raise ValueError('Pulses require a nonzero velocity command without speed steps')
+                    command['ramp'] = False
                 if operation in MOTION_OPERATIONS:
                     self._check_motion_allowed(operation, command['kwargs'])
                 if wheels is not None and self._ramp_stops and wheels != (0.0, 0.0):
@@ -714,6 +736,8 @@ class RobotCommandArbiter:
                 if method is None or not callable(method):
                     raise ValueError('Unknown Roomba operation: ' + operation)
                 result = method(**command['kwargs'])
+                if command.get('pulse_s') is not None:
+                    self._pulse_deadline = monotonic()+float(command['pulse_s'])
                 if wheels is not None:
                     self._applied_wheels = tuple(int(v) for v in wheels)
                     self._record_wheel_change(self._applied_wheels)
@@ -1007,6 +1031,7 @@ class RobotCommandArbiter:
                     self.logger.warning(
                         'Roomba safety sensor triggered; braking. Readings: %s',
                         self._format_safety_sensor_details(sensors),
+                        extra=dict(speech_code='SAFETY', speech_announce=True),
                     )
                     self._brake()
                 self._safety_latched = True
@@ -1024,6 +1049,12 @@ class RobotCommandArbiter:
                 self._critical_braked = True
             else:
                 self._critical_braked = False
+            if battery_status != getattr(self, '_speech_battery_status', None):
+                self._speech_battery_status = battery_status
+                if battery_status in BATTERY_CODES:
+                    self.logger.info('Battery status changed to %s.', battery_status,
+                                     extra=dict(speech_code=BATTERY_CODES[battery_status], speech_announce=True))
+
             if (self.auto_seek_dock and battery_status == 'low' and
                     not self._dock_requested and not hazard and
                     not self._wheel_drop_stopped):
@@ -1217,19 +1248,18 @@ class RobotCommandArbiter:
             self._cancel_ramp()
             self._applied_wheels = current
             self._speed_steps = True
-        self._step_target = tuple(int(v) for v in wheels)
+        self._step_target = wheel_speeds(wheels)
         if self._step_until is None:
             self._apply_speed_step(monotonic())
 
     def _apply_speed_step(self, now):
-        # Pit-stop bench: firmware upgrades anything below ~40 mm/s to ~40,
-        # so the low step is 40 and cruise steps go 40 -> 70 -> target.
+        # Lowest nonzero serial velocity is42; discrete steps go42 ->70 ->target.
         current, target = self._applied_wheels, self._step_target
         reverse = any(a*b < 0 for a,b in zip(current, target))
-        fast_current = max(abs(v) for v in current) > 40
-        fast_target = max(abs(v) for v in target) > 40
+        fast_current = max(abs(v) for v in current) > MIN_WHEEL_SPEED
+        fast_target = max(abs(v) for v in target) > MIN_WHEEL_SPEED
         def low(values):
-            return tuple(40 if v > 0 else -40 if v < 0 else 0 for v in values)
+            return tuple(MIN_WHEEL_SPEED if v > 0 else -MIN_WHEEL_SPEED if v < 0 else 0 for v in values)
         def mid(values):
             return tuple(max(-70, min(70, v)) for v in values)
         if reverse:
@@ -1255,7 +1285,16 @@ class RobotCommandArbiter:
         elif sent == (0, 0):
             self._complete_ramp_stops()
 
+    def _check_pulse(self, now=None):
+        now = monotonic() if now is None else now
+        if self._pulse_deadline is not None and now >= self._pulse_deadline:
+            self.logger.debug('Wheel pulse deadline reached; braking on I/O thread.')
+            self._brake()
+            return True
+        return False
+
     def _cancel_ramp(self):
+        self._pulse_deadline = None
         self._speed_steps = False
         self._step_until = None
         self._applied_wheels = (0, 0)
@@ -1310,7 +1349,7 @@ class RobotCommandArbiter:
                 rate = self._acceleration if abs(desired) > abs(actual) else self._deceleration
                 fraction = min(fraction, rate * dt / delta)
         updated = tuple(a + (b - a) * fraction for a, b in zip(self._ramp_current, target))
-        sent = tuple(int(round(v)) for v in updated)
+        sent = wheel_speeds(updated)
         if sent != self._ramp_sent:
             self.robot.drive_direct(right_velocity=sent[1], left_velocity=sent[0])
             self._ramp_sent = sent

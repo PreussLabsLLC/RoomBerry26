@@ -1,7 +1,13 @@
 """NavLink v1 UDP recorder for pose, relative motion and phone health observations."""
-# @(#)roomberry_navlink.py 3.1.grid.1 2026/11/03 20:30:00
+# @(#)roomberry_navlink.py 3.2.imu.1 2026/11/12 15:12:06
+
+from roomberry_motion import MOTION_FIELDS, decode_motion_packet
 
 from roomberry_gridrunner import GRID_FIELDS, decode_grid_packet
+
+from roomberry_trek_control import TrekRelay, load_key, MAX_DATAGRAM
+
+from collections import deque
 
 import argparse
 import csv
@@ -170,14 +176,42 @@ def decode_compass_packet(data):
     return v
 
 
+TREK_PACKET = struct.Struct('<4sBBHQIHBBQQ16s8fIHBB32s')
+TREK_FIELDS = ('magic', 'version', 'type', 'length', 'session', 'seq', 'flags',
+               'tracking', 'reason', 'frame_us', 'send_us', 'map_uuid',
+               'x_m', 'y_m', 'z_m', 'qx', 'qy', 'qz', 'qw', 'yaw_rad',
+               'frame_age_us', 'features', 'relocalization', 'reserved', 'padding')
+
+
+def decode_trek_packet(data):
+    values = TREK_PACKET.unpack(data)
+    row = dict(zip(TREK_FIELDS, values))
+    if values[:4] != (b'NVLK', 1, 6, 128):
+        raise ValueError('header')
+    if not row['session'] or row['flags'] & ~1 or row['tracking'] > 3 or row['reason'] > 7:
+        raise ValueError('identity/state')
+    if row['relocalization'] > 3 or row['reserved'] or row['padding'] != bytes(32):
+        raise ValueError('reserved/state')
+    if row['send_us'] < row['frame_us'] or not all(math.isfinite(n) for n in values[12:20]):
+        raise ValueError('time/nonfinite')
+    if row['flags'] and (row['tracking'] != 2 or row['relocalization'] != 2 or
+                         row['map_uuid'] == bytes(16) or row['frame_age_us'] > 250000):
+        raise ValueError('validity')
+    return values
+
+
 def packet_fields(values):
-    return {1: FIELDS, 2: GROUND_FIELDS, 3: HEALTH_FIELDS, 4: COMPASS_FIELDS, 5: GRID_FIELDS}[values[2]]
+    return {1: FIELDS, 2: GROUND_FIELDS, 3: HEALTH_FIELDS, 4: COMPASS_FIELDS, 5: GRID_FIELDS, 6: TREK_FIELDS, 7: MOTION_FIELDS}[values[2]]
 
 
 def decode_packet(data):
     """Validate framing and representation; this does not qualify navigation."""
     if len(data) != PACKET.size:
         raise ValueError('length')
+    if data[5] == 7:
+        return decode_motion_packet(data)
+    if data[5] == 6:
+        return decode_trek_packet(data)
     if data[5] == 5:
         return decode_grid_packet(data)
     if data[5] == 2:
@@ -214,7 +248,20 @@ class NavLinkReceiver:
     def __init__(self, directory='/var/log/roomberry-navlink', host='0.0.0.0',
                  port=5010, flush_interval_s=10, max_files=20,
                  max_file_bytes=16 * 1024 * 1024, allowed_source=None,
-                 logger=None):
+                 logger=None, command_key_file=None):
+        self.trek_control = TrekRelay(load_key(command_key_file), allowed_source) if command_key_file else None
+        self.trek_source = None
+        self._motion = None
+        self._motion_identity = None
+        self._motion_seq = None
+        self._motion_retired = []
+        self._motion_clock_offset = None
+        self._trek = None
+        self._trek_session = None
+        self._trek_seq = None
+        self._trek_retired = []
+        self._trek_clock_offset = None
+        self._trek_history = deque(maxlen=600)
         self.directory = Path(directory)
         self.host = host
         self.port = int(port)
@@ -257,6 +304,12 @@ class NavLinkReceiver:
 
     def _observe(self, values, received_at):
         """Keep ordered observations separately from the unfiltered recording."""
+        if values[2] == 7:
+            self._observe_motion(values, received_at)
+            return
+        if values[2] == 6:
+            self._observe_trek(values, received_at)
+            return  # Separate camera pose; never feed legacy navigation fusion.
         if values[2] == 5:
             self._observe_grid(values, received_at)
             return
@@ -285,6 +338,62 @@ class NavLinkReceiver:
             self._clock_offset = offset if self._clock_offset is None else min(self._clock_offset, offset)
             row['frame_monotonic'] = row['frame_us'] / 1e6 + self._clock_offset
             self._observation = row
+
+    def _observe_motion(self, values, received_at):
+        row = dict(zip(MOTION_FIELDS, values))
+        identity = (row['session'], row['motion_generation'])
+        with self._observation_lock:
+            if identity in self._motion_retired: return
+            if identity != self._motion_identity:
+                if self._motion_identity is not None:
+                    self._motion_retired.append(self._motion_identity)
+                    self._motion_retired = self._motion_retired[-32:]
+                self._motion_identity = identity
+                self._motion_seq = None
+                self._motion_clock_offset = None
+            if self._motion_seq is not None and not 0 < (row['seq']-self._motion_seq)&0xffffffff < 0x80000000:
+                return
+            self._motion_seq = row['seq']
+            offset = received_at-row['send_us']/1e6
+            self._motion_clock_offset = offset if self._motion_clock_offset is None else min(offset,self._motion_clock_offset)
+            self._motion = row
+
+    def latest_motion_observation(self):
+        with self._observation_lock:
+            if self._motion is None: return None
+            return dict(self._motion,frame_monotonic=self._motion['sample_us']/1e6+self._motion_clock_offset)
+
+    def _observe_trek(self, values, received_at):
+        row = dict(zip(TREK_FIELDS, values))
+        identity = (row['session'],row['map_uuid'])
+        with self._observation_lock:
+            if identity in self._trek_retired: return
+            if identity != self._trek_session:
+                if self._trek_session is not None:
+                    self._trek_retired.append(self._trek_session)
+                    self._trek_retired = self._trek_retired[-32:]
+                self._trek_session = identity
+                self._trek_seq = None
+                self._trek_clock_offset = None
+                self._trek_history.clear()
+            if self._trek_seq is not None and not 0 < (row['seq']-self._trek_seq)&0xffffffff < 0x80000000:
+                return
+            self._trek_seq = row['seq']
+            offset = received_at-row['send_us']/1e6
+            self._trek_clock_offset = offset if self._trek_clock_offset is None else min(offset,self._trek_clock_offset)
+            row['received_monotonic'] = received_at
+            self._trek = row
+            self._trek_history.append(row)
+
+    def latest_trek_observation(self):
+        with self._observation_lock:
+            if self._trek is None: return None
+            return dict(self._trek,frame_monotonic=self._trek['frame_us']/1e6+self._trek_clock_offset)
+
+    def trek_history(self):
+        with self._observation_lock:
+            return [dict(row,frame_monotonic=row['frame_us']/1e6+self._trek_clock_offset)
+                    for row in self._trek_history]
 
     def _observe_grid(self, values, received_at):
         row = dict(zip(GRID_FIELDS,values))
@@ -414,7 +523,7 @@ class NavLinkReceiver:
             return None
         return cls(**{k: config[k] for k in (
             'directory', 'host', 'port', 'flush_interval_s', 'max_files',
-            'max_file_bytes', 'allowed_source',
+            'max_file_bytes', 'allowed_source', 'command_key_file',
         ) if k in config}, logger=logger)
 
     def _open_log(self):
@@ -471,10 +580,16 @@ class NavLinkReceiver:
             while not self._stop.is_set():
                 self._flush_if_due()
                 try:
-                    # 129 detects any oversize datagram, including truncation.
-                    data, source = self._socket.recvfrom(PACKET.size + 1)
+                    # One extra byte detects control oversize; binary decoding still requires exactly 128.
+                    data, source = self._socket.recvfrom(MAX_DATAGRAM + 1)
                     wall_ns, monotonic_ns = time.time_ns(), time.monotonic_ns()
                 except socket.timeout:
+                    continue
+                if data.startswith(b'{') and self.trek_control is not None:
+                    try:
+                        self.trek_control.handle(data, source, self._socket)
+                    except (ValueError, OSError):
+                        self.rejected += 1
                     continue
                 if self.allowed_source and source[0] != self.allowed_source:
                     self.rejected += 1
@@ -484,6 +599,8 @@ class NavLinkReceiver:
                 except ValueError:
                     self.rejected += 1
                     continue
+                if values[2] == 6:
+                    self.trek_source = source  # Diagnostic only; control uses authenticated endpoint.
                 if self._bytes + 144 > self.max_file_bytes:
                     self._open_log()
                 self._file.write(RECEIPT.pack(wall_ns, monotonic_ns) + data)
@@ -527,7 +644,7 @@ def export_csv(path, output):
     """Stream a binary recording to CSV; tolerate an incomplete final record."""
     writer = csv.writer(output)
     columns = list(FIELDS[4:-1]) + ['type']
-    for fields in (GROUND_FIELDS, HEALTH_FIELDS, COMPASS_FIELDS, GRID_FIELDS):
+    for fields in (GROUND_FIELDS, HEALTH_FIELDS, COMPASS_FIELDS, GRID_FIELDS, TREK_FIELDS, MOTION_FIELDS):
         columns += [k for k in fields[4:] if k not in ('reserved', 'padding') and k not in columns]
     writer.writerow(('receive_epoch_ns', 'receive_monotonic_ns') + tuple(columns))
     with Path(path).open('rb') as source:
@@ -550,13 +667,14 @@ def main():
     parser.add_argument('--directory', default='/var/log/roomberry-navlink')
     parser.add_argument('--host', default='0.0.0.0')
     parser.add_argument('--port', type=int, default=5010)
+    parser.add_argument('--command-key-file', help='enable authenticated RoomTrek commands')
     parser.add_argument('--csv', metavar='BINARY_LOG', help='export a log to stdout')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO)
     if args.csv:
         export_csv(args.csv, sys.stdout)
         return
-    receiver = NavLinkReceiver(args.directory, args.host, args.port)
+    receiver = NavLinkReceiver(args.directory, args.host, args.port, command_key_file=args.command_key_file)
     if not receiver.start():
         raise SystemExit(1)
     try:

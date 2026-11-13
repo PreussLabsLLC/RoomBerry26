@@ -1,5 +1,5 @@
 """Read-only local dashboard data and a command index from the shipped driver."""
-# @(#)roomberry_web.py 3.1.grout.18 2026/11/05
+# @(#)roomberry_web.py 3.2.imu.1 2026/11/12 15:16:02
 import ast
 from functools import lru_cache
 from pathlib import Path
@@ -12,6 +12,9 @@ ASSETS = {'/': ('index.html','text/html; charset=utf-8'),
           '/index.html': ('index.html','text/html; charset=utf-8'),
           '/ui/': ('index.html','text/html; charset=utf-8'),
           '/ui/app.js': ('app.js','application/javascript; charset=utf-8'),
+          '/ui/speech.js': ('speech.js','application/javascript; charset=utf-8'),
+          '/ui/maps.js': ('maps.js','application/javascript; charset=utf-8'),
+          '/ui/maps.css': ('maps.css','text/css; charset=utf-8'),
           '/ui/style.css': ('style.css','text/css; charset=utf-8')}
 
 
@@ -21,13 +24,16 @@ def command_index():
     def add(group, name, url, description, mutates=False, aliases=()):
         commands.append(dict(group=group,name=name,url=url,description=description,
                              mutates=mutates,aliases=list(aliases),parameters=[]))
-    add('Mission','gridrunner','/roomba/?op=gridrunner','Reverse along grout; stop and confirm its end, then return through tag-15 scan checkpoints and front contact. Clock starts/cancels.',True,('grid',))
+    add('Mission','wall','/roomba/?op=wall','Start WALL: qualify tag 16, turn left 90 degrees, forward 200 mm, right 45 degrees, acquire and follow the right wall toward tag15. Stop and validate within300mm using two fresh scans. Cruise80mm/s; moving wheel minimum50mm/s. Clock starts/cancels. Uses right light-bumper target 30 raw units; no distance calibration required.',True)
+    add('Mission','gridrunner','/roomba/?op=gridrunner','Reverse along grout; stop and confirm its end, then return through tag-15 scan checkpoints and front contact. Start from this dashboard; Clock now starts WALL.',True,('grid',))
     add('Mission','return_to_tag15','/roomba/?op=return_to_tag15','Stop the current mission, localize with mapped tags or a valid trace, and home to tag 15. No threshold run or phone stream required.',True)
     for direction, amount in (('left','5 degrees'),('right','5 degrees'),
+                              ('left_15','15 degrees'),('right_15','15 degrees'),
+                              ('left_30','30 degrees'),('right_30','30 degrees'),
                               ('forward','50 mm'),('backward','50 mm'),
                               ('forward_500','500 mm'),('backward_500','500 mm')):
         add('Steering pad','step_'+direction,'/roomba/?op=step_'+direction,
-            'Pause the mission and move '+direction.replace('_500','')+' by '+amount+' using wheel odometry, then stop.',True)
+            'Pause the mission and move '+direction.split('_', 1)[0]+' by '+amount+' using wheel odometry, then stop.',True)
     for mode in ('clean','return_to_base','remote_control'):
         add('Mission',mode,'/roomba/?op='+mode,'Select '+mode+' mission mode.',True)
     add('Roomba','reset','/roomba/?op=reset','Send the standard driver reset command (requires a responsive robot).',True)
@@ -101,3 +107,34 @@ def groundhog_snapshot(receiver, now=None):
                                            bool(row['flags'] & 1) if name=='compass' else True)
         result[name] = data
     return result
+
+
+def speech_snapshot(receiver, sender, now=None):
+    """Diagnostic snapshot; raw telemetry never implies an authenticated speech peer."""
+    now = monotonic() if now is None else now
+    relay = None if receiver is None else receiver.trek_control
+    configured = relay is not None and sender is not None
+    peer_age = None if relay is None or relay.peer is None else max(0, now-relay.last_peer)
+    peer_fresh = peer_age is not None and peer_age <= 10
+    running = receiver is not None and receiver._thread is not None and receiver._thread.is_alive()
+    worker_running = sender is not None and sender._thread is not None and sender._thread.is_alive()
+    if not configured:
+        detail = 'Speech disabled: configure navlink.command_key_file and the same Documents/NavLink.key in RoomTrek, then restart both.'
+    elif not running:
+        detail = 'NavLink receiver is not running.'
+    elif not worker_running:
+        detail = 'Speech worker is not running.'
+    elif not peer_fresh:
+        detail = 'No fresh authenticated RoomTrek peer. Open RoomTrek in foreground, enable NavLink, and check the matching key and Wi-Fi destination.'
+    else:
+        detail = 'Authenticated RoomTrek peer ready. Test Speech waits for a phone completion acknowledgment.'
+    health = None if receiver is None else receiver.latest_health_observation()
+    imu_age = None if health is None else max(0, now-health['received_monotonic'])
+    return dict(configured=configured, ready=configured and running and worker_running and peer_fresh,
+                worker_running=worker_running,
+                detail=detail, peer_age_s=peer_age,
+                peer=None if relay is None or relay.peer is None else '{}:{}'.format(*relay.peer),
+                received=0 if receiver is None else receiver.received,
+                rejected=0 if receiver is None else receiver.rejected,
+                imu_received=health is not None and bool(health['flags'] & 1),
+                imu_age_s=imu_age)

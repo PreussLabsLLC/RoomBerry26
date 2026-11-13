@@ -1,4 +1,4 @@
-# @(#)roomberry_web_test.py 3.1.grout.16 2026/11/05
+# @(#)roomberry_web_test.py 3.2.imu.1 2026/11/12 15:16:02
 """Local console routes, precise JSON identities and safe mission command routing."""
 import io
 import json
@@ -21,12 +21,27 @@ class LocalConsoleTest(unittest.TestCase):
         self.assertIn('op=restart_oi', self.handler.wfile.getvalue().decode())
 
     def test_steering_pad_commands_use_measured_mission_steps(self):
-        for direction in ('left','right','forward','backward','forward_500','backward_500'):
+        for direction in ('left','right','left_15','right_15','left_30','right_30','forward','backward','forward_500','backward_500'):
             self.assertTrue(self.handler._mission_operation('step_'+direction, {}))
             self.handler.server.mission.manual_step.assert_called_with(direction)
         self.handler.server.roomba_control.execute.assert_not_called()
         with self.assertRaises(ValueError):
             self.handler._mission_operation('step_forward', {'distance': 500})
+
+    def test_wall_controls_route_to_coordinator_and_dashboard(self):
+        for operation, method in (('wall', 'start_wall'), ('wall_capture_100mm', 'capture_wall_clearance')):
+            self.assertTrue(self.handler._mission_operation(operation, {}))
+            getattr(self.handler.server.mission, method).assert_called_once_with()
+            self.assertEqual(any(c['name'] == operation for c in command_index()['commands']), operation == 'wall')
+            with self.assertRaises(ValueError):
+                self.handler._mission_operation(operation, {'velocity': 500})
+        self.handler.server.roomba_control.execute.assert_not_called()
+        self.handler.path = '/'
+        self.handler.do_GET()
+        page = self.handler.wfile.getvalue().decode()
+        self.assertIn('op=wall"', page)
+        self.assertNotIn('op=wall_capture_100mm', page)
+        self.assertIn('30 right light-bumper units', page)
 
     def test_return_to_tag15_routes_to_coordinator(self):
         self.assertTrue(self.handler._mission_operation('return_to_tag15', {}))

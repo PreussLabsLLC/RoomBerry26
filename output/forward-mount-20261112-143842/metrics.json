@@ -1,0 +1,842 @@
+{
+  "all_phone_sessions": {
+    "6716245317318511977": 5731
+  },
+  "session": "6716245317318511977",
+  "packets": 5731,
+  "unique_frames": 5731,
+  "tracking": {
+    "2": 5731
+  },
+  "reasons": {
+    "0": 5731
+  },
+  "sequence_gaps": 0,
+  "recorded_live_tag16_anchor": true,
+  "offline_anchor": {
+    "tag": 16,
+    "t": 1794523153.246785,
+    "log_t": 1794523156.813,
+    "accepted": true,
+    "purpose": "idle",
+    "pose": {
+      "x_mm": 3143.1948431704245,
+      "y_mm": 1183.3659989169423,
+      "heading_rad": -1.647656819430747,
+      "localized": true,
+      "localization_age": 0.02109123281115899,
+      "tag_ids": [
+        [
+          "tag16h5",
+          16
+        ]
+      ],
+      "accepted_tag_ids": [
+        [
+          "tag16h5",
+          16
+        ]
+      ],
+      "rejected_tags": [
+        [
+          [
+            "tag16h5",
+            15
+          ],
+          "hamming=1"
+        ]
+      ],
+      "relocated": false
+    },
+    "innovation": null,
+    "local_time": "2026-11-12T14:39:13.246785",
+    "phone_xy_mm": [
+      3143.194843123419,
+      1183.365998979536
+    ],
+    "wheel_xy_mm": [
+      3143.1948431704245,
+      1183.3659989169423
+    ],
+    "phone_tag_mm": 7.82782228789142e-08,
+    "wheel_tag_mm": 0.0,
+    "phone_tag_heading_deg": -1.2722218725854067e-14,
+    "wheel_tag_heading_deg": 0.0,
+    "phone_wheel_mm": 7.82782228789142e-08,
+    "phone_wheel_heading_deg": -1.2722218725854067e-14,
+    "phone_usable": true,
+    "phone_pair_delta_s": -0.03808259963989258
+  },
+  "clock_epoch_span_s": 4.482269287109375e-05,
+  "phone_feature_percentiles": [
+    1.0,
+    3.0,
+    26.0,
+    57.0
+  ],
+  "limited_intervals": [],
+  "stationary_checks": {
+    "2026-11-12T14:39:13.246785": {
+      "wheel_check_half_window_s": 1.5,
+      "nearest_wheel_sample_delta_s": -0.01078486442565918,
+      "pair_delta_s": -0.03808259963989258,
+      "phone_usable": true,
+      "phone_frames": 5,
+      "phone_span_mm": 0.4969656823448539,
+      "phone_heading_span_deg": 0.01869224844137503,
+      "wheel_span_mm": 0.0,
+      "wheel_heading_span_deg": 0.0
+    },
+    "2026-11-12T14:47:24.691597": {
+      "wheel_check_half_window_s": 0.3,
+      "nearest_wheel_sample_delta_s": 0.03040289878845215,
+      "pair_delta_s": 0.025290489196777344,
+      "phone_usable": true,
+      "phone_frames": 5,
+      "phone_span_mm": 0.45293086387335163,
+      "phone_heading_span_deg": 0.01691442275349561,
+      "wheel_span_mm": 0.0,
+      "wheel_heading_span_deg": 0.0
+    }
+  },
+  "phases": {
+    "outbound": {
+      "samples": 3133,
+      "heading_abs_percentiles_deg": [
+        7.296056080987005,
+        7.776645940157625,
+        8.636459620240112
+      ],
+      "separation_percentiles_mm": [
+        1067.9813529878588,
+        1519.398225627608,
+        1578.232463973234
+      ]
+    },
+    "return": {
+      "samples": 1781,
+      "heading_abs_percentiles_deg": [
+        5.444854469783473,
+        8.190016755994959,
+        8.79964426723139
+      ],
+      "separation_percentiles_mm": [
+        1431.6279598548988,
+        1601.6567712510325,
+        1672.5154811169955
+      ]
+    },
+    "all": {
+      "samples": 4914,
+      "heading_abs_percentiles_deg": [
+        7.119909595738743,
+        8.161343775449206,
+        8.79964426723139
+      ],
+      "separation_percentiles_mm": [
+        1171.3012080437998,
+        1574.6835104372908,
+        1672.5154811169955
+      ]
+    }
+  },
+  "tag_fixes": [
+    {
+      "tag": 16,
+      "t": 1794523153.246785,
+      "log_t": 1794523156.813,
+      "accepted": true,
+      "purpose": "idle",
+      "pose": {
+        "x_mm": 3143.1948431704245,
+        "y_mm": 1183.3659989169423,
+        "heading_rad": -1.647656819430747,
+        "localized": true,
+        "localization_age": 0.02109123281115899,
+        "tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              15
+            ],
+            "hamming=1"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:39:13.246785",
+      "phone_xy_mm": [
+        3143.194843123419,
+        1183.365998979536
+      ],
+      "wheel_xy_mm": [
+        3143.1948431704245,
+        1183.3659989169423
+      ],
+      "phone_tag_mm": 7.82782228789142e-08,
+      "wheel_tag_mm": 0.0,
+      "phone_tag_heading_deg": -1.2722218725854067e-14,
+      "wheel_tag_heading_deg": 0.0,
+      "phone_wheel_mm": 7.82782228789142e-08,
+      "phone_wheel_heading_deg": -1.2722218725854067e-14,
+      "phone_usable": true,
+      "phone_pair_delta_s": -0.03808259963989258
+    },
+    {
+      "tag": 16,
+      "t": 1794523189.224675,
+      "log_t": 1794523191.578,
+      "accepted": true,
+      "purpose": "idle",
+      "pose": {
+        "x_mm": 3142.7976969419537,
+        "y_mm": 1183.7498628781855,
+        "heading_rad": -1.646272095227008,
+        "localized": true,
+        "localization_age": 0.04334089810072328,
+        "tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              28
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:39:49.224675",
+      "phone_xy_mm": [
+        3142.5936343819844,
+        1181.3537687836952
+      ],
+      "wheel_xy_mm": [
+        3143.1948431704245,
+        1183.3659989169423
+      ],
+      "phone_tag_mm": 2.4047678553308556,
+      "wheel_tag_mm": 0.552337458018052,
+      "phone_tag_heading_deg": -0.19672953265692492,
+      "wheel_tag_heading_deg": -0.07933885266385991,
+      "phone_wheel_mm": 2.100124309760133,
+      "phone_wheel_heading_deg": -0.11739067999306499,
+      "phone_usable": true,
+      "phone_pair_delta_s": -0.020275592803955078
+    },
+    {
+      "tag": 15,
+      "t": 1794523329.535667,
+      "log_t": 1794523331.558,
+      "accepted": true,
+      "purpose": "idle",
+      "pose": {
+        "x_mm": 6693.319007553872,
+        "y_mm": 915.2055512746987,
+        "heading_rad": -0.08695716855300573,
+        "localized": true,
+        "localization_age": 0.15136975440691458,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              15
+            ],
+            "hamming=1"
+          ],
+          [
+            [
+              "tag16h5",
+              21
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:42:09.535667",
+      "phone_xy_mm": [
+        5441.484674817329,
+        1153.9482168113013
+      ],
+      "wheel_xy_mm": [
+        6709.698880761738,
+        1374.2360214811044
+      ],
+      "phone_tag_mm": 1274.3968208393608,
+      "wheel_tag_mm": 459.32262389764753,
+      "phone_tag_heading_deg": -10.392765577850373,
+      "wheel_tag_heading_deg": -3.121503082835624,
+      "phone_wheel_mm": 1287.2039422894302,
+      "phone_wheel_heading_deg": -7.271262495014748,
+      "phone_usable": true,
+      "phone_pair_delta_s": -0.01467752456665039
+    },
+    {
+      "tag": 15,
+      "t": 1794523385.380386,
+      "log_t": 1794523387.432,
+      "accepted": true,
+      "purpose": "idle",
+      "pose": {
+        "x_mm": 7084.696151421873,
+        "y_mm": 864.1045138775955,
+        "heading_rad": -0.16995903270810508,
+        "localized": true,
+        "localization_age": 0.16429296658134263,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              15
+            ],
+            "hamming=1"
+          ],
+          [
+            [
+              "tag16h5",
+              22
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:43:05.380386",
+      "phone_xy_mm": [
+        5743.750613341157,
+        1068.4524483823136
+      ],
+      "wheel_xy_mm": [
+        7208.161584042804,
+        1288.967489270194
+      ],
+      "phone_tag_mm": 1356.4265606493132,
+      "wheel_tag_mm": 442.43899117474416,
+      "phone_tag_heading_deg": -9.778476344812388,
+      "wheel_tag_heading_deg": -2.62584657503023,
+      "phone_wheel_mm": 1480.9207859872597,
+      "phone_wheel_heading_deg": -7.152629769782158,
+      "phone_usable": true,
+      "phone_pair_delta_s": 0.03393721580505371
+    },
+    {
+      "tag": 15,
+      "t": 1794523424.310153,
+      "log_t": 1794523426.289,
+      "accepted": false,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 7085.144109531936,
+        "y_mm": 869.1883739984821,
+        "heading_rad": -0.17784817977506195,
+        "localized": true,
+        "localization_age": 8.229000741266645e-06,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              2
+            ],
+            "hamming=1"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:43:44.310153",
+      "phone_xy_mm": [
+        5742.965665273834,
+        1067.4718795750498
+      ],
+      "wheel_xy_mm": [
+        7208.161584042804,
+        1288.967489270194
+      ],
+      "phone_tag_mm": 1356.7458585950546,
+      "wheel_tag_mm": 437.4332002184255,
+      "phone_tag_heading_deg": -9.274167750126407,
+      "wheel_tag_heading_deg": -2.1738317441355886,
+      "phone_wheel_mm": 1481.8432391759493,
+      "phone_wheel_heading_deg": -7.100336005990819,
+      "phone_usable": true,
+      "phone_pair_delta_s": -0.00046253204345703125
+    },
+    {
+      "tag": 15,
+      "t": 1794523427.715147,
+      "log_t": 1794523429.665,
+      "accepted": true,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 7088.158246215659,
+        "y_mm": 862.541284461189,
+        "heading_rad": -0.1681454257028676,
+        "localized": true,
+        "localization_age": 7.3430001066299155e-06,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              16
+            ],
+            "hamming=1"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:43:47.715147",
+      "phone_xy_mm": [
+        5742.508832892527,
+        1067.5467656392982
+      ],
+      "wheel_xy_mm": [
+        7208.161584042804,
+        1288.967489270194
+      ],
+      "phone_tag_mm": 1361.175811895715,
+      "wheel_tag_mm": 442.98996516565387,
+      "phone_tag_heading_deg": -9.825879760260163,
+      "wheel_tag_heading_deg": -2.7297586021256968,
+      "phone_wheel_mm": 1482.283752797556,
+      "phone_wheel_heading_deg": -7.096121158134466,
+      "phone_usable": true,
+      "phone_pair_delta_s": -0.005860567092895508
+    },
+    {
+      "tag": 15,
+      "t": 1794523432.4434,
+      "log_t": 1794523434.451,
+      "accepted": false,
+      "purpose": "final",
+      "pose": {
+        "x_mm": 7083.457037610979,
+        "y_mm": 861.7700966289917,
+        "heading_rad": -0.03305795189418559,
+        "localized": true,
+        "localization_age": 7.5000007200287655e-06,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        4.760376452002681,
+        0.016723639687288294
+      ],
+      "local_time": "2026-11-12T14:43:52.443400",
+      "phone_xy_mm": [
+        5724.710400259868,
+        1071.2038125458612
+      ],
+      "wheel_xy_mm": [
+        7208.158234536286,
+        1288.9501939830673
+      ],
+      "phone_tag_mm": 1374.7926774156526,
+      "wheel_tag_mm": 445.00924045466934,
+      "phone_tag_heading_deg": -10.833566105586792,
+      "wheel_tag_heading_deg": -3.6897007164472404,
+      "phone_wheel_mm": 1499.3435108901467,
+      "phone_wheel_heading_deg": -7.1438653891395525,
+      "phone_usable": true,
+      "phone_pair_delta_s": -0.0013434886932373047
+    },
+    {
+      "tag": 15,
+      "t": 1794523435.908271,
+      "log_t": 1794523437.821,
+      "accepted": true,
+      "purpose": "final",
+      "pose": {
+        "x_mm": 7083.672076670644,
+        "y_mm": 854.4021889694138,
+        "heading_rad": -0.02177086595177835,
+        "localized": true,
+        "localization_age": 7.915999958640896e-06,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        9.28127858414575,
+        0.028010725629695532
+      ],
+      "local_time": "2026-11-12T14:43:55.908271",
+      "phone_xy_mm": [
+        5721.976955915243,
+        1073.1125070259513
+      ],
+      "wheel_xy_mm": [
+        7208.158234536286,
+        1288.9501939830673
+      ],
+      "phone_tag_mm": 1379.1474921535616,
+      "wheel_tag_mm": 452.0274020029048,
+      "phone_tag_heading_deg": -11.808963390535304,
+      "wheel_tag_heading_deg": -4.336403103948617,
+      "phone_wheel_mm": 1501.772519403214,
+      "phone_wheel_heading_deg": -7.472560286586688,
+      "phone_usable": true,
+      "phone_pair_delta_s": 0.03336930274963379
+    },
+    {
+      "tag": 15,
+      "t": 1794523463.087915,
+      "log_t": 1794523465.019,
+      "accepted": false,
+      "purpose": "validate",
+      "pose": {
+        "x_mm": 7349.117196536477,
+        "y_mm": 821.9255295858063,
+        "heading_rad": -0.10157351597251107,
+        "localized": true,
+        "localization_age": 7.03100158716552e-06,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        96.79066385460257,
+        0.016802544762570815
+      ],
+      "local_time": "2026-11-12T14:44:23.087915",
+      "phone_xy_mm": [
+        6008.624637367068,
+        978.7076941251001
+      ],
+      "wheel_xy_mm": [
+        7563.855127445175,
+        1211.4623052510449
+      ],
+      "phone_tag_mm": 1349.6299301312852,
+      "wheel_tag_mm": 444.80476455026746,
+      "phone_tag_heading_deg": -10.961212798024944,
+      "wheel_tag_heading_deg": -3.374048063801044,
+      "phone_wheel_mm": 1572.550980499194,
+      "phone_wheel_heading_deg": -7.587164734223898,
+      "phone_usable": true,
+      "phone_pair_delta_s": 0.017169475555419922
+    },
+    {
+      "tag": 15,
+      "t": 1794523466.603008,
+      "log_t": 1794523468.586,
+      "accepted": true,
+      "purpose": "validate",
+      "pose": {
+        "x_mm": 7349.007898939665,
+        "y_mm": 821.9331739746568,
+        "heading_rad": -0.10150311479394025,
+        "localized": true,
+        "localization_age": 7.499998901039362e-06,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        96.8994908982867,
+        0.016732143583999992
+      ],
+      "local_time": "2026-11-12T14:44:26.603008",
+      "phone_xy_mm": [
+        6006.892045045327,
+        980.5272899976353
+      ],
+      "wheel_xy_mm": [
+        7563.855127445175,
+        1211.4623052510449
+      ],
+      "phone_tag_mm": 1351.4536835983831,
+      "wheel_tag_mm": 444.85084658729846,
+      "phone_tag_heading_deg": -11.28878326833471,
+      "wheel_tag_heading_deg": -3.3780817542059,
+      "phone_wheel_mm": 1573.9965124567868,
+      "phone_wheel_heading_deg": -7.910701514128811,
+      "phone_usable": true,
+      "phone_pair_delta_s": 0.0016603469848632812
+    },
+    {
+      "tag": 16,
+      "t": 1794523644.691597,
+      "log_t": 1794523646.643,
+      "accepted": true,
+      "purpose": "idle",
+      "pose": {
+        "x_mm": 3192.6156065390355,
+        "y_mm": 1117.2984897307012,
+        "heading_rad": -1.7261687359875317,
+        "localized": true,
+        "localization_age": 0.05402008707278583,
+        "tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": null,
+      "local_time": "2026-11-12T14:47:24.691597",
+      "phone_xy_mm": [
+        3560.687984416781,
+        1160.342041967072
+      ],
+      "wheel_xy_mm": [
+        3250.0492579491124,
+        1468.721718336451
+      ],
+      "phone_tag_mm": 370.58065619471165,
+      "wheel_tag_mm": 356.0855373614369,
+      "phone_tag_heading_deg": -4.814035906584028,
+      "wheel_tag_heading_deg": 2.7484014601870475,
+      "phone_wheel_mm": 437.71502507811863,
+      "phone_wheel_heading_deg": -7.562437366771076,
+      "phone_usable": true,
+      "phone_pair_delta_s": 0.025290489196777344,
+      "tag_displacement_from_start_mm": 82.50653078399486,
+      "phone_displacement_from_start_mm": 418.1275231091344,
+      "wheel_displacement_from_start_mm": 304.7060100541524,
+      "tag_heading_change_deg": -4.498401460187053,
+      "phone_heading_change_deg": -9.312437366771082,
+      "wheel_heading_change_deg": -1.7500000000000056
+    }
+  ],
+  "wheel_travel_mm": 8888.4,
+  "tag15_travel_mm": 4496.9,
+  "tag15_stop_range_mm": 382.3280118830741,
+  "end_tag16": {
+    "tag": 16,
+    "t": 1794523644.691597,
+    "log_t": 1794523646.643,
+    "accepted": true,
+    "purpose": "idle",
+    "pose": {
+      "x_mm": 3192.6156065390355,
+      "y_mm": 1117.2984897307012,
+      "heading_rad": -1.7261687359875317,
+      "localized": true,
+      "localization_age": 0.05402008707278583,
+      "tag_ids": [
+        [
+          "tag16h5",
+          16
+        ]
+      ],
+      "accepted_tag_ids": [
+        [
+          "tag16h5",
+          16
+        ]
+      ],
+      "rejected_tags": [],
+      "relocated": false
+    },
+    "innovation": null,
+    "local_time": "2026-11-12T14:47:24.691597",
+    "phone_xy_mm": [
+      3560.687984416781,
+      1160.342041967072
+    ],
+    "wheel_xy_mm": [
+      3250.0492579491124,
+      1468.721718336451
+    ],
+    "phone_tag_mm": 370.58065619471165,
+    "wheel_tag_mm": 356.0855373614369,
+    "phone_tag_heading_deg": -4.814035906584028,
+    "wheel_tag_heading_deg": 2.7484014601870475,
+    "phone_wheel_mm": 437.71502507811863,
+    "phone_wheel_heading_deg": -7.562437366771076,
+    "phone_usable": true,
+    "phone_pair_delta_s": 0.025290489196777344,
+    "tag_displacement_from_start_mm": 82.50653078399486,
+    "phone_displacement_from_start_mm": 418.1275231091344,
+    "wheel_displacement_from_start_mm": 304.7060100541524,
+    "tag_heading_change_deg": -4.498401460187053,
+    "phone_heading_change_deg": -9.312437366771082,
+    "wheel_heading_change_deg": -1.7500000000000056
+  },
+  "repeat_tag16": {
+    "tag": 16,
+    "t": 1794523644.691597,
+    "log_t": 1794523646.643,
+    "accepted": true,
+    "purpose": "idle",
+    "pose": {
+      "x_mm": 3192.6156065390355,
+      "y_mm": 1117.2984897307012,
+      "heading_rad": -1.7261687359875317,
+      "localized": true,
+      "localization_age": 0.05402008707278583,
+      "tag_ids": [
+        [
+          "tag16h5",
+          16
+        ]
+      ],
+      "accepted_tag_ids": [
+        [
+          "tag16h5",
+          16
+        ]
+      ],
+      "rejected_tags": [],
+      "relocated": false
+    },
+    "innovation": null,
+    "local_time": "2026-11-12T14:47:24.691597",
+    "phone_xy_mm": [
+      3560.687984416781,
+      1160.342041967072
+    ],
+    "wheel_xy_mm": [
+      3250.0492579491124,
+      1468.721718336451
+    ],
+    "phone_tag_mm": 370.58065619471165,
+    "wheel_tag_mm": 356.0855373614369,
+    "phone_tag_heading_deg": -4.814035906584028,
+    "wheel_tag_heading_deg": 2.7484014601870475,
+    "phone_wheel_mm": 437.71502507811863,
+    "phone_wheel_heading_deg": -7.562437366771076,
+    "phone_usable": true,
+    "phone_pair_delta_s": 0.025290489196777344,
+    "tag_displacement_from_start_mm": 82.50653078399486,
+    "phone_displacement_from_start_mm": 418.1275231091344,
+    "wheel_displacement_from_start_mm": 304.7060100541524,
+    "tag_heading_change_deg": -4.498401460187053,
+    "phone_heading_change_deg": -9.312437366771082,
+    "wheel_heading_change_deg": -1.7500000000000056
+  },
+  "sensor_errors": 1,
+  "nul_bytes": 0,
+  "battery_start_percent": 99.3,
+  "battery_end_percent": 96.7
+}

@@ -1,5 +1,629 @@
-<!-- @(#)CAPTAINSLOG.md 3.1.wall.16 2026/11/09 10:40:00 -->
+<!-- @(#)CAPTAINSLOG.md 3.2.pulse.1 2026/11/12 16:24:51 -->
 # Captains Log
+
+### 2026-11-12 — Local and GitHub check-in preparation
+
+- User explicitly requests both local Git and GitHub. Preserve independent
+  localmaster and publicationmain histories. Publication checkout points to
+  PreussLabsLLC/RoomBerry26; fetchedorigin/main, verified no divergence/changes.
+- Scope:Pi3/Mothership phone setting,CoreMotion diagnosticstream/comparison,
+  maptrails,mount/tag15surveyupdates,scanpacing,30degreepad,42mm/sfloor,
+  IOtimedshortpulses,exactspeechtranscript,tests/docs and accumulated analyses.
+  Local includes pendingruntime/maparchives and toolbackups. GitHub follows
+  existing filteredsnapshot policy: exclude runtime logs/state,local agent
+  instructions/credentials; retain reports and publication-only historicalfiles.
+- Validation:752fulltests passed plus33focused speech/battery/scan/webtests;
+  signediphonebuild and wirechecks previouslypassed. All244pendingfiles
+  reviewed:sourceSCCSidentitiesexactlyone,credentialpatternscan clear,
+  whitespace checks acceptgeneratedCSVCRLF. No robot/app deployment.
+
+### 2026-11-12 — Exact speech transcript for phrase review
+
+- User asks to log Rosie's speech for clarification. SpeechSender logs exact
+  JSON-quoted text atqueue andonce-per-job deliveryattempt, including direct
+  batteryreminders. SharedIDs join text to accepted/completed/failed/dropped
+  delivery records. Job snapshots retain text through state changes.
+- Transcript records speech_announceFalse; tests verify no recursive speech,
+  escaped multiline/custom text, directbattery path and deduplicated retrylog.
+ 33speech/battery/scan/webtests pass after change. Pi-only; no phone rebuild.
+
+### 2026-11-12 —42mm/s minimum and100ms tag-homing pulses
+
+- User requests no wheel speed below42mm/s, shorter pulses instead. Shared
+  wheel_speeds floors each nonzero explicitvelocity target to42,preserveszero
+  andsign, validatesfinite/max500. Applied atarbiter including ramps/steps;
+  padturns use42. Minimum proximity waypoint motion aligns before straight
+  advance; footprint checks use actual normalized speeds. PWM/firmwareowned
+  autonomous routines do not express explicitmm/s and are not normalized.
+- Tag15pivots/search/aim and finalforwardapproach use100msnominal pulses at42;
+  IOthread deadline brakes independently of200msmissionloop. Queuewaitbounded
+  bydeadline,checkedbeforecommands/afterpolls; serialblocking can still delay.
+  Stops/safetycancel deadline; pulsedcommands bypassramp. Longtransit50retained.
+- Fresh quiet encoder samples required betweenapproachbursts;1.5ssettletimeout
+  andthreeempty-pulse abortretainboundedstalls. Afterpulse/reversal return/
+  approach need5degnewerror;2degonlycontinuingdirection/search/aim. Existing
+  scansafety/leases/travel/300mmvalidation retained. No automatic reapproach
+  after rejectedtagfix. Controlversion3.2.pulse.1,statusminimum/pulseactive.
+-752fulltests pass(97.9s),226focusedmotion tests pass. Coverageincludesserial
+  floor,rampzero,IOdeadlinewithoutmissiontick,stops,durationbounds,measured
+  settling,stallabort,reversalhysteresis. Updatedoldconfiguredtag15testY1225.
+- Docsroomberry/docs/short-pulse-motion.md. Syncnewwheelmodule/control/mission/
+  tagreturn/manualstep/server/speech toPi3andrestart. NoPi/appdeployment or
+  hardwaremovementperformed; physicalpulse/overshoot verification pending.
+
+### 2026-11-12 — Tag15 approach rocking and speed mismatch
+
+- User observed back/forth during152528run approach. Commands alternate
+  opposite40mm/spivots/settles,forward20mm/s; no straight reverse commanded.
+ 35steadythree-sample windows: encoder centre speed p10/median/p90
+ 39.36/41.60/44.95mm/s at20requested,confirm low-speed mismatch.
+- Stopdecision15:29:06.439 error+1.89deg→-4.68degsettled. Gyro+2.11deg and
+  AR+2.01deg physical rotation afterdecision; full6.57deglog swing includes
+  cached sensor/decisiontiming. Oppositeexamplegyro-2.51deg. Pivot guard
+  prevents reversing before quiet but does not eliminate overshoot/hunting.
+-5degentry/2degcontinuing threshold plus200msloop and coast produce repeated
+  corrections; some reversals inherit tighter threshold. Diagnose/calibrate
+  speed and earlierbrake/shortpulses before changing gains. No runtime edits.
+- Notes:output/imu-roundtrip-20261112-152528/approach-rocking.md.
+
+### 2026-11-12 — First full gyro/AR/wheel/tag comparison
+
+- Run152528:4419ARnormal/4420validIMUpackets,no sequence gaps;onegeneration,
+ 3repeatIMUtimestamps deduplicated(4417samples). MedianIMUage11.7ms,p9520.8ms;
+  median4ARfeatures. Initialtag16onlyalignment;8.739m wheeltravel.
+- Finaltag16positionerrors: wheel12mm,gyroheading+wheeldistancehybrid15mm,
+  AR821mm. Headerrorswheel+6.46deg,gyro+0.91deg,AR+0.77deg. Tagfinal9.2mm
+  fromstart,heading-5.39deg. Hybrid isoffline,not an independent IMU position.
+- AR/gyroheadingabs p951.00deg,max1.60deg;wheel/gyro p954.71deg,max5.70deg.
+  Eleven30degwindows wheel328.04degvsgyro318.92deg,medianexcess.66deg/turn.
+- Tag15accepted Ywithin25.4mmof1225line;ARposerror1.03–1.24m,wheel154–262mm,
+  hybrid90–240mm. Good heading butremainingARdistanceissue. No scale fit.
+-17scans/warm2.955s,detect.289s;zero serialpoll/writefaults. Battery88→85.8%.
+  Finaltag15range393mmoutside300,safelyrejectsarrival. No runtime changes.
+- Full report/frozenconfig/log evidence, reproducible mixedtype6/7analysis,
+  metrics/CSV/map/PNG/PDF:output/imu-roundtrip-20261112-152528.
+
+### 2026-11-12 — Tag15 moved to centre grout Y1225mm
+
+- User physically relocates tag15 to Y1225mm for easier measured camera/wheel
+  alignment. Updated surveyed world_from_tagY0.790→1.225m; X7730mm,height160mm,
+  facing-X and all other landmarks unchanged. Updated config note/mount doc.
+- JSON and landmark-diff checks pass; historical recordings/replay configs
+  preserved. Pi sync/restart needed; no remote changes or robot commands.
+
+### 2026-11-12 — Motion comparison build installed on iPhone X
+
+- User requests deployment. USB discovery confirms Peters10/iPhoneX,
+  ab151810c534a3ffe07756d271a25095fe25e5d2,iOS16.7.16. Sputnik also visible
+  overWiFi but not selected. Signed RoomTrek3.2.imu.1 from/tmp/RoomTrek-motion
+  installed viaUSB;100%InstallComplete at15:20. No uninstall/data reset.
+- CoreMotion type7sender now installed; Pi receiver/web updates still require
+  user sync/restart. Device motion signs/physical streaming not verified here.
+
+### 2026-11-12 — Independent Core Motion comparison and30degree pad turns
+
+- User requests independent IMU comparison; then steering additions clarified
+  from15to30degrees. RoomTrek3.2.imu.1 requests50HzCoreMotion with arbitrary
+  yaw/gravityvertical reference. Type7at10Hz carries native attitude,processed
+  gyro,useraccel,gravity and integrated vertical gyro rotation; local2Hz events.
+  Sensor failures/gaps reset generation,ARunavailability does not stop raw IMU.
+- Pi validates/orders/records type7andexportsCSV. Fresh same-session AR and
+  wheel pairs within150ms provide relative gyro/AR/wheel turns and differences.
+  New session,generation,wheel epoch resets baseline. Web Turn comparison
+  hides stale/unavailable values; diagnostic failures isolated from control.
+  No compass/position integration or steering fusion introduced.
+- Addedpadleft+30/right-30 beside5/15,backendroutes/catalogue and measured
+  step targets. Existing braking,safety,motionlease/cancellation unchanged.
+-746fulltests passed(96.9s);166focusedmission/motion/steering/web pass.
+  Swift integration checks pass for rotated gravity axes,roll rejection,gaps;
+  Swiftfixture decodes inPython. Unsigned/signediphoneosbuildspass,JSCore
+  syntax,plist,whitespace/SCCSverified. Hardware signs/drift stillunverified.
+- Signedapp /tmp/RoomTrek-motion/Build/Products/Release-iphoneos/RoomTrek.app;
+  details/type7layout inios-app/RoomTrek/NAVLINK.md,verificationnotes/fixture
+  output/motion-comparison-20261112. No phoneinstall/Pisync/robotmoves performed.
+
+### 2026-11-12 — Forward mount round trip analysis
+
+- Run143842: live mount(-66,-58),yaw0,pitch20confirmed.5731packets allnormal,
+  no gaps,median3features. Repeated initialtag16stable within0.6mm; final
+  tag16chosen aftertag15, not the second initial scan35.98safterfirst.
+- Finalclose tag15 phone1351mm/-11.29deg,wheel445mm/-3.38deg. Returntag16
+  phone371mm/-4.81deg,wheel356mm/+2.75deg. Phone/wheelheadingp958.16deg,
+  max8.80deg; improveddirection but persistent substantial translation issue.
+-16forward500mmsteps phone/wheel advance ratios29–82%,median57%; tag15
+  also showsphone short. No constant scale fit justified. Need measured1m
+  straight test with texturedview; normaltracking does not establish accuracy.
+-12scans,warm2.973s,detect.319s; startupwrite timeout14:38:43.926beforefirst
+  scan,none later. Battery99.3→96.7%. Tag15arrival382mm outside300mm.
+- Frozen config/log evidence,analysis,metrics,straightsteps and plots:
+  output/forward-mount-20261112-143842. No runtime/config changes.
+
+### 2026-11-12 — Replacement forward-facing phone mount
+
+- User changes phone mount: lensX-66mm,Y-58mm,straightforward,20degup.
+  Active roomtrek_alignment now lens(-66,-58),yaw0,pitch20. Robot axes mean
+ 66mmback/58mmright. Pi camera extrinsics and scan resolution unchanged.
+- Updated config and mount documentation. Sync/restart/new stationarytag16
+  anchor required; no iPhone build or deployment performed.
+
+### 2026-11-12 — Pi3 versus Zero W scan timing and resolution review
+
+- Same820x616/500msgap pacing: ZeroW warmmedian6.58s/cold16.23s versus
+  Pi3warm2.974s(range2.859–3.048)/cold4.483s.13Pi3scans,12warm.
+- Older ZeroWposter stage medians detect2.85s/archive.69s versusPi3
+ .303/.037s. Pi3native.267s; deliberate1ssettle+three.5sgaps dominate.
+  Software/nativepose bindings changed too; not a controlled CPU-only test.
+- Recommend staged1296x972capture ANDmax_dimension1296, keeping
+  highest_resolutionfalse.2.49xpixels; estimated3.5–4swarm, unbenchmarked.
+  Fullsensor mode unmeasured;10sdetector timeout retained. No config changes.
+- Frozen Pi3timing evidence,metrics,comparison and notes:
+  output/pi3-scan-timing-20261112/report.md.
+
+### 2026-11-12 — Replayed map using measured mounts
+
+- User requests map.png update and measurement sensitivity. Replayed122222
+  recorded paths; recomputed full-matrix initial/finaltag16 and idle tag15
+  poses with new Pi extrinsics. Rebound phone initial alignment with measured
+  lens/yaw, freewheel with updatedtag16. No scale/path fitting or runtime changes.
+- Pi tag positions shift25–27mm. Phone path rotates+10deg with yawrevision;
+  tag15 midway error1029→782mm,finaltag16 175→157mm. Wheel final925→926mm.
+  Offset-onlyrevision38mm gives at most76mm initial-alignment error change;
+  yaw dominates (1deg at4m≈70mm). Residual discrepancy still substantial.
+- Updated prior run map.png link, preserving map-before-remeasurement.png;
+  new map/before/after PNG/PDF, frozen-input replay script,metrics and report in
+  output/pi3-mount-replay-20261112. Old analysis metrics/CSV untouched.
+
+### 2026-11-12 — Remeasured phone and Pi camera mount settings
+
+- User measures phone lens202mmleft,21mmback,optical30degleft. Active
+  roomtrek_alignment now lens(-21,202)mm,yawcorrection-30deg. Unremeasured
+  pitch15deg retained; disabled legacy phone_position untouched.
+- Pi lens centred laterally,148mmforward,137mmhigh. Retained forward-facing
+  rotation; camera_from_robot translation(0,+0.137,-0.148)m, derived as
+  minusRtimes camera centre(0.148,0,0.137)m. Prior translation(0,.160,-.125).
+- Validation:29localization/anchor tests passed; JSON, transform origin/signs,
+  SCCS and whitespace verified.
+- Updated autonomy.json and roomtrek-alignment.md. Sync/restart Roomberry and
+  new stationary tag16 anchor needed; no phone rebuild or deployment performed.
+
+### 2026-11-12 — Pi3 round trip and mount sensitivity reviewed
+
+- Run122222: active fresh session4991packets,4initializing/restnormal,no gaps;
+  previous223loaded-map packets excluded.13scans median2.976s/detect0.304s,
+  no run-time poll/write faults. Battery97.8→95.5%;9.444m wheel travel.
+- Close tag15 phone1145mm/-11.72deg versuswheel241mm/-24.95deg; finaltag16
+  phone175mm/-5.25deg versuswheel925mm/-9.75deg. Initial/finaltag86mm/+0.10deg.
+  Returnturn matchingwindows wheel131.15/74.20deg,phone128.73/72.74deg: only
+ 2.42/1.46deg differences, not a wholesale turn-heading failure.
+- Active lens10forward/180left, optical20left, yawcorrection-20. Disabled old
+  phone_position values do not apply. Diagnostic yaw-only fit still847mmRMS;
+  lens-only fit needs implausible775mmrear/326mmleft. Similarity fit1.299scale
+  is diagnostic, not a correction. Asked for physical lens/mount measurements;
+  no configuration adjusted to force agreement.
+- Rightbumper12:25:56 stops firsthoming; retry finaltag15range379mm outside300.
+  Report/plots/reproducible analysis output/pi3-roundtrip-20261112-122222.
+
+### 2026-11-12 — Pi3 first uploaded run: map resume and missing detector
+
+- NavLink/authenticated map controls/speech work.1569type6packets;365normal
+  fresh-session packets. WALL12:03:28 stops that session and resumes selected
+  map11CEE584-D76D-4B69-B3AF-2FE1C804BB7C; ARKit remains relocalizing.
+ 30s timeout then one same-map retry; SURVEY_START:Session stopped12:04:22,
+  WALLabort0mm. Map mismatch cause not established, not a transport outage.
+- Scan12:04:48 captures image but worker cannot import required
+  from apriltag import apriltag; detector unavailable on new Pi. Failure spoken.
+  Missing/wrong binding or native import dependency unresolved; no image/tag
+  quality conclusion possible. Tag localization does not restore AR map lock.
+- Zero write timeouts; startup0/1byte retry and16/80byte sensor short read.
+  Report output/pi3-startup-20261112-120250/report.md. No runtime changes.
+
+### 2026-11-12 — Mothership build deployed to iPhone X
+
+- User requests deployment to connected iPhoneX. USB confirmed Peters10,
+  iOS16.7.16, deviceab151810c534a3ffe07756d271a25095fe25e5d2.
+- Signed Release iphoneos build succeeded at /tmp/RoomTrek-mothership-signed;
+  ios-deploy USB installation completed100%/InstallComplete at11:54.
+  Installed RoomTrek3.2.mothership.1, defaultpi3.local and saved Mothership
+  field. No app uninstall/data reset or Pi commands; live reporting unverified.
+
+### 2026-11-12 — RoomTrek Mothership setting for Pi3 (3.2.mothership.1)
+
+- User upgraded ZeroW to Pi3, hostname pi3/pi3.local. Relabeled the existing
+  app host field as Mothership, default pi3.local; saved via UserDefaults
+  navlink.mothership on Done/end editing, restored across launches. Accepts
+  hostnames/IPv4, trims surrounding whitespace, rejects URLs/paths/ports;
+  invalid input restores the last saved setting with an explanation.
+- UDP5010 unchanged; endpoint applies to telemetry, heartbeat and control
+  replies. Configuration changes/reconnect execute on transport's serial
+  queue; status displays the actual selected host. Bare pi3 retains existing
+  .local fallback. Editing remains disabled during an active AR session.
+- Validation: unsigned Release iphoneos build succeeded (Xcode14.2/SDK16.2);
+  whitespace and SCCS checks passed. Device/network verification still needed.
+- Updated visible build identity and app README. Existing keys/map library
+  retained; no Pi deployment or iPhone installation performed.
+
+### 2026-11-10 — Half-second-gap uploaded run reviewed (3.2.analysis.4)
+
+- Run135820: one write timeout14:01:23.312 requesting buttons18 during scan,
+  followed GridRunner stale/safety abort. Traceback mentions timeout twice,
+  only one event. Startup0/1byte retry and separate72/80byte short read.
+- Twelve scans/speech completions;500ms gaps confirmed, warmmedian6.581s,
+  cold16.227s. Both live-map trails confirmed in actual archived PNG.
+-5434phone packets allnormal,1gap; initial phone/tag16 alignment succeeds.
+  Offline final error: phone407mm/-3.87deg,wheel317mm/+12.25deg.9.061m travel.
+  Retried tag15 validated340mm outside300mm and safely stopped again.
+- Charge estimate99.7→62.4% in126ms with unchanged14.667V, finish60.5%.
+  Whole-run current integral58.3mAh versus reported1064mAh drop: physical
+  discharge alone cannot explain it. Recalculation versus corruption unknown.
+- Report, reproducible analysis and plots:
+  output/roundtrip-halfgap-20261110-135820. Read-only runtime review.
+
+### 2026-11-10 — Half-second scan gaps and current-run map trails (3.2.trails.1)
+
+- Reduced all three stationary scan cool-off defaults from1s to0.5s, both
+  standalone camera service and server configuration fallback. Initial1s
+  settling wait remains; expected saving1.5s per scan. Existing explicit
+  camera.scan_cooloff_seconds overrides still apply.
+- Added diagnostic RunTrails, first accepted stationary tag16 seeds wheel
+  integration and qualified phone capture pairing with configured mount/lens.
+  Independent wheel/phone trails continue through idle/manual/missions and
+  coverage resets; later tag fixes do not refit drift. Phone tracking/session
+  gaps break the line; wheel epoch changes require a new tag16 anchor.
+- Mapper snapshots expose ephemeral run_trails; map.png and archived PNGs
+  render blue/red wheel and purple iPhone lines with legend. Old saved traces
+  hidden when current-run traces exist; clipping protects axes from drift.
+  Incremental trace publication avoids copying the entire path each tick.
+- Preview of uploaded133352run at
+  output/roundtrip-cooloff-20261110-133352/map.png; analysis script regenerates
+  it. Navigation/safety policies unchanged. No Pi deployment or phone build.
+- Focused182tests passed;19render/trail tests passed after clipping change.
+  Full suite738tests passed (113.6s), with local-socket access outside the
+  sandbox. SCCS and whitespace checks passed.
+
+### 2026-11-10 — Uploaded cool-off round trip reviewed (3.2.analysis.3)
+
+- Run133352: 5130phone packets all normal; one sequence gap,9.377m wheel
+  travel. All12scans announced clear mapped tag results and completed speech.
+  Three1s gaps executed each scan; cold17.535s,warmmedian7.924s.
+- No scan-time poll failures. One64/80byte short read13:41:33.196 preceded
+  final scan by14.655s; left15 refusal13:41:31 due sensor/safety readiness.
+  Roomba92.2→90.1%, no charge collapse. STATUS completion after30s quiet
+  consistent with battery reminder; words/phone percent absent in delivery log.
+- Initial-only offline tag16 alignment: final tag38mm/-3.95deg from start;
+  phone error705mm/-1.37deg; freewheel124mm/+20.88deg. Phone tag15 position
+  error0.96–1.30m, heading-12to-19deg despite all-normal tracking.
+- Tag15 accepted final pose validates351mm robot-centre range, outside300mm;
+  safe stop warning persisted. Spoken245mm is camera range, distinct origin;
+  final pose innovation83mm. Not a completed autonomous arrival.
+- Analysis, CSV, metrics, PNG/PDF and report under
+  output/roundtrip-cooloff-20261110-133352. Raw logs preserved; no runtime,
+  controller, deployment or app changes.
+
+### 2026-11-10 — Local check-in of pending RoomTrek work
+
+- Reviewed the pending map controls, survey preservation, WALL readiness,
+  steering, battery and scan speech, scan timing, and associated run reports
+  and map archives for local Git check-in at the user's request.
+- Validation: 734 Python tests passed; Git whitespace checks passed. Source
+  identification lines verified; generated browser HTML snapshots are exempt.
+
+### 2026-11-10 — Scan-stage cool-offs and spoken tag-read quality (3.2.scan.2)
+
+- User requests scan timing detail,1second gaps, confirms single-core/GIL
+  concern, and asks Rosie to speak scan results/quality. Detector already uses
+  spawned process (preprocessing/native detect/pose); capture/archive remain
+  parent camera worker. GIL separation does not add CPU capacity on one core.
+-125752run warm medians: pause/feedback0.141s,settle1.007s,capture0.093s,
+  detector call2.854s,JPEG0.693s,total5.002s. First scan17.804s, detector call
+ 15.777s versus child-measured2.185s/native2.050s; unmeasured difference can
+  include startup/IPC/scheduling and does not prove CPU-caused UART faults.
+- Camera adds1s cool-off after capture, after detection, and after archiving
+  before result publication/scan release. Existing1s pre-capture settle stays.
+  Shutdown-event waits execute outside camera/detection/mission locks, with
+  scan/motion guard held and independent polling active. Interrupted results
+  never publish/speak; cleanup still releases scan guard. Moving skipped scans
+  get no added waits. Default camera.scan_cooloff_seconds=1.0,0restoresoldpacing.
+  Expected warm~8s/cold~21s; unchanged scan deadlines, physical benefit untested.
+- Completed scan queues existing authenticated SPEAK with SCAN_RESULT: tag ID,
+  camera-to-tag centimetres, clear/marginal/weak/unavailable quality. Uses
+  configured margin/pose-error thresholds and zero corrected bits. Best
+  duplicate read wins, up to2readable tags, mapped preferred. No tags, weak-only,
+  skipped moving scans and detector failures spoken explicitly. Labels describe
+  detector reads, not localization/AR-map confidence. Existing speech priorities,
+  stale drops, delivery logging and30s battery silence timer retain their rules.
+-26focused camera/scan-speech/catalogue tests and all734full-suite tests pass
+  (101.3s). Tests cover stage ordering, held guard/free locks during waits,
+  shutdown at every gap, no premature publication/speech, callback failure
+  isolation, quality/range/mapped selection and queueing. Whitespace/SCCS pass.
+- Docs roomberry/docs/tag-scan-pipeline.md; verification notes in
+  output/scan-cooloff-speech-20261110. Pi sync/restart roomberry.py,
+  roomberry_camera.py and roomberry_speech.py; existing iPhone SPEAK supports it.
+  No robot/scan commands, Pi deployment or phone rebuild/install performed.
+
+### 2026-11-10 — Poll-timeout correlation with tag scans (3.2.analysis.2)
+
+- User asks whether timeouts coincided with scans. Twelve scan start/complete
+  windows in the125752run. Six of seven poll failures occur12:58:00.261 through
+ 12:58:05.571 during initial tag16 scan12:57:59.165–12:58:16.942 (17.777s).
+  Display serial write also times out12:58:02.870 during that same scan.
+- Seventh poll failure13:01:14.729 occurs3.061s after tag15 scan completes
+ 13:01:11.668, following confirmed pose11.810, while encoders/wheel requests
+  remain stationary until13:01:17. Other eleven scan windows (4.3–5.6s) contain
+  no poll failures. Exceptions are serial Write timeout, not zero-byte reads
+  from the earlier reset-related run. Temporal association established;
+  scan CPU/IPC/startup or serial I/O contention cause not established by logs.
+- Correlation table saved output/roundtrip-poster-20261110-1257/scan-timeouts.csv
+  and report updated. Read-only analysis; no robot/camera/app/config changes.
+
+### 2026-11-10 — Poster-door round trip with initial/final tag16 checks (3.2.analysis.2)
+
+- User completes charged round trip with Kandinsky poster near tag15. One
+  fresh phone session9855001675563444002:4719packets all normal, no feature-loss
+  interval, median18features versus5/33seconds limited on preceding full trip.
+  Two packet gaps, one duplicate camera frame. Consistent with poster helping;
+  path/turns differ, so causality is not established by this comparison alone.
+- Starting tag16 captured12:58:00.654, return13:05:06.319 and13:05:30.394.
+  Offline one-time alignment at initial tag16; scale1, configured mount/lens,
+  free wheel integration, no later tag corrections/path fitting. No live WALL
+  anchor record. Final tag scans agree2.44mm/0.30deg; last tag16 is25mm/+3.23deg
+  from first tag16. Initial sparse wheel sampling checked stationary across1.5s.
+- At last tag16: phone heading differs+0.66deg from tag pose, wheel+32.52deg.
+  Phone heading change+3.90deg versus tag+3.23deg and wheel+35.75deg modulo360.
+  Phone position differs520mm from tag, free wheels196mm. Earlier return scan
+  independently supports522/197mm and+0.42/+32.21deg. Normal tracking therefore
+  supports heading closure but does not establish reliable metric translation.
+- Tag15 checkpoints: phone–tag position differences1053–1220mm; free wheels
+ 98–269mm. Phone–wheel separation peaks1.384m and ends342mm, with possible
+  cancellation. Intermediate tag15 heading checks disagree too; endpoint phone
+  heading accuracy does not imply uniformly accurate heading along the route.
+  Wheel path9.579m. Live tag-corrected navigation is distinct from free odometry.
+- Tag15 validation again stops just outside target:354mm centre range versus
+ 300mm gate. Battery99.9→97.9%; six startup poll write errors before12:58:06 and
+  one13:01:14 after stationary tag fix/before homing drive, recovered;19NULbytes in supplied main log
+  preserved. No application/config changes, live commands or deployment.
+- Reproducible script, PNG/PDF plots, metrics and CSVs in
+  output/roundtrip-poster-20261110-1257. Identity/timing/stationary anchor checks
+  pass. Report distinguishes tag-derived reference uncertainty and no path fit.
+
+### 2026-11-10 — Early stop: low battery first, serial silence after web reset (3.2.analysis.1)
+
+- User ends test and returns Rosie to charger; read-only log review only.
+  Startup12:01:15 reset stream contains processor-sleep; first connection
+  attempt12:01:52 receives0/1bytes. Retry connects12:02:14. Tag16 fix accepted
+  12:02:37; seven15deg left pad turns complete. Forward500mm step starts12:02:59.
+-12:03:02 first low-battery classification and LOW_BATT speech. Charge report
+  changes2690→757mAh (99.8→28.1%) between adjacent samples159ms apart, capacity
+ 2696mAh; voltage/current remain14.194V/−0.594A across that jump. Integrated
+  sample current over47.6seconds before transition is~4.8mAh, not1933mAh.
+  Abrupt gauge/charge-report change, not literal71.7%discharge in that interval;
+  logs do not establish battery health or exact cause of the gauge revision.
+-30% low threshold triggers brake and seek-dock request. Forward step stops,
+  result~283mm; settled cumulative distance321.4mm. Further steps rejected for
+  low battery. Sensor polls remain healthy until12:03:55.382; no during-run
+  serial failure precedes the battery stop. No cliff/wheel-drop trigger there.
+- Restart OI12:03:34 succeeds; raw Reset Roomba web command12:03:55.864 follows.
+  First sensor timeout12:03:58.976, then17zero-byte/80expected failures through
+ 12:04:49.905. Driver reset sets OI OFF; this route does not perform full
+  startup/reconnect. Consistent with reset/off interface rather than evidence
+  of a spontaneous serial failure causing the initial stop.
+- Phone remains normal for all1486packets in one fresh session (one seq gap).
+  No complete round trip/poster comparison. Copied successful sensor rows all
+  home_base=0, so later charger placement/charging is not verified by this log.
+  After charging, wake/restart Roomberry/OI and wait for fresh Sensors Ready;
+  avoid treating a reset-completed HTTP response as restored communications.
+- Notes/metrics: output/serial-battery-20261110-1202. No app/config changes,
+  deployment, live robot/AR/reset/charging commands or new tests performed.
+
+### 2026-11-10 — Tag15/tag16 round-trip heading and position comparison (3.2.analysis.1)
+
+-11:38:43–11:45:55 recording: one fresh phone session9257763700918216142,
+ 4320packets,3986normal/334limited-insufficientFeatures, zero seq gaps. Four
+  repeated frame timestamps de-duplicated for interpolation. Phone feature
+  median5. Lost-feature interval11:42:30.498–11:43:03.794 (~33s) near tag15;
+  user confirms featureless door and plans poster. Effect not yet tested.
+- No recorded live tag16 anchor. Relative comparison fixes common stationary
+  start at11:39:10, scale1, configured dashboard lens/mount, no path fitting.
+  Wheel track integrated without tag corrections. First confirmed tag15 capture:
+  0.811m phone–wheel separation,−0.20deg heading; peak qualified separation1.112m.
+  Tag16 return capture11:45:07:0.442m separation,−5.19deg heading; wheel path9.111m.
+  Outbound |heading disagreement| median0.27deg,p95=0.72deg,max1.97deg;
+  usable return peak8.64deg. Early501/513mm wheel steps give299/321mm phone
+  displacements even with usable tracking; does not establish which is correct.
+- Supplemental offline independent first-tag15 alignment (not live calibration):
+  later tag15 fixes differ96–138mm from phone/71–153mm from free wheel track;
+  final tag16 differs764/783mm and7.78/12.78deg. Tag/camera/mount uncertainty and
+  absent initial surveyed pose prevent treating either estimate as ground truth.
+- Tag15 final robot-centre range356mm exceeds300mm gate by56mm, so homing stops
+  explicitly. Camera range~250mm is not centre range. Back to tag16 is manual.
+- Reproducible script, PNG/PDF plot, metrics and CSVs in
+  output/roundtrip-20261110-1138. Qualified/stationary baseline checks pass;
+  actual tag capture timestamps used. No live commands, deployment or app/config
+  changes. Poster may address local feature loss; earlier translation discrepancy
+  predates that interval and remains unexplained.
+
+### 2026-11-10 — Additional left/right15degree pad buttons (3.2.pad.1)
+
+- User requests +/-15degree buttons. Added Left+15deg and Right-15deg above
+  the existing5degree controls, flanking the forward50mm button. Routes
+  step_left_15/step_right_15 use the existing measured wheel-angle step runner,
+  same30mm/s wheel speeds, predictive braking, timeout, guards and cancellation.
+  Existing5degree and50/500mm controls remain available. Status labels and
+  command index include15degree turns; direction display normalized to left/right.
+-25focused manual-step/web tests pass, including measured +/-15degree turns
+  and route dispatch. Desktop1440px/mobile390px browser checks pass for both
+  button clicks, pad locking during commands, Stop availability, no overlaps
+  or horizontal overflow. Screenshots: output/steering-pad-15deg-20261110.
+  JS syntax, whitespace and SCCS checks pass. No live movement or deployment.
+- Pi sync/restart and browser reload required for new backend routes/assets;
+  no iPhone update needed. Legacy web-app unchanged.
+
+### 2026-11-10 — Healthy steering survey; tag return blocked by survey guard (3.2.maps.4)
+
+- User reports many happy beeps but refused tag15 approach. Latest11:17–11:22
+  log confirms continuous fresh session14180529187437353947 from11:17:48 through
+  11:22:26:2778packets,2775normal/3initializing, zero sequence gaps. All pad
+  movements preserve that session; no automatic restart/save queue churn.
+- Return to tag15 clicks11:21:00 and11:21:53 getHTTP400 from the unsaved-survey
+  guard, before homing starts. Pi camera accepts tag15 at11:21:32 (~0.707m camera
+  translationZ, not robot clearance), but idle mode has no autonomous target.
+  This is a command-policy rejection, not evidence of tag approach failure.
+- Narrow fix: independent Tag15Return reports return_to_tag15 to the phone
+  lifecycle guard/coordinator while retaining its existing gridrunner robot
+  execution mode. It can run with an unsaved kept survey, without AR start/save/
+  stop, and preserves the session at idle. WALL/ordinary GridRunner still refuse
+  unsaved kept surveys; active map mutations still block all mission starts.
+  Sensor/tag-fix/route/odometry/contact guards unchanged.
+-61focused tag-return/map/survey tests pass, including actual homing startup
+  with unsaved survey, stationary fix qualification before forward movement,
+  zero phone commands/jobs through idle, and retained WALL restriction.
+  All726full-suite tests pass in100.2seconds; JS syntax/whitespace/SCCS pass.
+- Pi-only update: roomberry_mission.py, roomberry_trek_survey.py and web help.
+  Sync/restart Pi, reload UI; no phone update needed. No robot movement, live
+  AR/map commands, deployment or phone installation performed. Notes/metrics:
+  output/roomtrek-tag15-20261110-1117.
+
+### 2026-11-10 — Steering-triggered AR restart churn; preserve phone by default (3.2.maps.3)
+
+- User reports happy beeps becoming sad after moving; updated11:02–11:11 logs
+  show fresh session13744358242786495527 normal for630packets until11:03:38.
+  First5degree pad turn enters remote_control, queues automatic start, stops AR
+  and resumes old seed11:03:39. Subsequent pad remote/idle transitions fill the
+  lifecycle queue; queued start/save/stop jobs keep changing sessions afterward.
+  Cached live panel has no map job/kept survey, consistent with no console
+  adoption after this Pi restart. Prior fix required explicit fresh/Keep action.
+-19phone sessions,4559packets,31valid localized packets in six brief matches.
+  Four successful child saves at11:04:52,11:04:58,11:05:12,11:09:39 (revisions2–5).
+  Later starts repeatedly resume revision5,11CEE584-D76D-4B69-B3AF-2FE1C804BB7C.
+  This is no longer evidence of zero map matches. Restart churn prevents a
+  clean continuous-session test of whether movement itself loses tracking.
+- Manual mode from idle now never starts the automatic phone lifecycle, even
+  without Keep or after Pi restart. Pad moves/idle leave a running phone session
+  untouched and cannot fill the survey queue. Explicit console fresh/Keep still
+  adds unsaved-survey mission protection. Autonomous mission behavior remains;
+  manual takeover ends the existing automatic survey once at idle, with no new
+  survey on subsequent pad steps. No default camera start during manual mode.
+-46focused map/survey/pad tests pass, covering actual four-direction moves
+  without Keep,100rapid remote/idle pairs with zero jobs/phone commands, and a
+  single save boundary for manual takeover. JS syntax, whitespace/SCCS checks
+  pass. Notes/metrics: output/roomtrek-steering-20261110-1102.
+- Pi-only change and web help update; sync/restart Roomberry to clear old queue,
+  reload console. No phone rebuild needed. No live robot/AR commands, map
+  changes or Pi deployment performed. Cached status read only.
+
+### 2026-11-10 — Limited-mapping save blocker and preserved survey steering (3.2.maps.2)
+
+- User reports grey Save survey. Read-only live Pi inventory refresh confirms
+  running fresh Surveyor, tracking2:0(normal), world mapping limited,
+  can_amend=false, no operation error. The save gate is working as implemented;
+  normal tracking alone does not qualify for a map save. Exact mission override
+  remains null/automatic old seed. No live selection/survey/motion changes made.
+- Found mounted-phone workflow gap: pad moves enter remote_control/idle, which
+  previously replaced the fresh survey through automatic mission start/save.
+  Fresh/resume console sessions now keep explicit operator ownership. Pad and
+  Stop/idle transitions retain AR without start/stop/save commands. New Keep
+  current survey for steering adopts an existing Surveyor without restarting it.
+  Ownership is not restored after Pi restart without explicit adoption.
+- Unsaved kept surveys refuse autonomous starts before robot commands. A
+  verified save or explicit Stop phone session permits normal mission lifecycle;
+  selection still explicitly chooses the next mission UUID. Existing measured
+  pad movements, sensor guards, stops and leases unchanged. Strict phone save
+  qualification unchanged; movement does not guarantee sufficient coverage.
+- Panel now identifies connection/idle/session/mode/error/mapping/tracking save
+  blockers and shows survey steering ownership. User refreshes phone snapshots
+  after collecting viewpoints; automatic refresh remains off.
+-44 focused map/survey/steering tests pass, including actual four-direction pad
+  fixture with zero phone commands during movement/idle and no lifecycle queue
+  entries. Desktop/mobile browser simulation verifies limited save disabled with
+  exact reason, Keep adoption, and save enabled after extending coverage.
+  All722full-suite tests pass in103.3seconds. SCCS/whitespace/JS syntax checks
+  pass. Verification notes: output/roomtrek-save-readiness-20261110.
+- Pi/web-only update: roomberry_trek_survey.py, roomberry_trek_maps.py,
+  web/index.html and web/maps.js, plus tests/docs. Pi sync/restart remains
+  user-owned; existing installed RoomTrek3.2.maps.1 supports it. No phone build,
+  install, deployment or robot movement requested/performed for this fix.
+
+### 2026-11-10 — Web tests: happy beeps followed by old-seed relocalization (3.2.maps.1)
+
+- Latest supplied10:43–10:47 logs show fresh web survey10:45:11; after seven
+  initializing packets,232normal-tracking packets until10:45:34. Web Start WALL
+  at10:45:34 explicitly stops that survey and resumes old kitchen seed
+  0B2FA89D-F7EA-4002-9AC7-92C32AF1D0D5 at10:45:35. Both30s attempts fail;
+  WALL aborts10:46:36,0mm travel. Earlier10:43 WALL also exhausts two attempts.
+- No successful save or next-run selection action appears in supplied log.
+  Fresh session was replaced by mission startup, not observed to lose tracking
+  spontaneously.1417loaded-map packets: all limited, no localized validity,
+  zero within-session gaps.391fresh packets; fresh medians3visible features.
+  Sparse features do not establish saved coverage or root cause of mismatch.
+- Recommend idle fresh survey, save once coverage permits, explicitly Use for
+  next run, verify displayed UUID/name before WALL. Happy tone alone is not a
+  saved-map match; stopped sessions also produce attention pings.
+- Report/metrics output/roomtrek-web-tests-20261110-1043. Phone log listing timed
+  out inside/outside sandbox; exact phone beep events unavailable. No source,
+  configuration, deployment, map-selection or movement commands performed.
+
+### 2026-11-10 — RoomTrek map-controls build installed on iPhone X (3.2.maps.1)
+
+- User explicitly requests deployment to connected iPhone10. ios-deploy identifies
+  Peters10, iPhone X, iOS16.7.16, USB device ab151810c534a3ffe07756d271a25095fe25e5d2.
+  Installs /tmp/RoomTrek-maps/Build/Products/Release-iphoneos/RoomTrek.app;
+  exit0,100% InstallComplete/Installed package confirms installation.
+- Installed build headline3.2.maps.1 2026/11/10 10:15:00. No uninstall/data wipe,
+  map changes, AR start or robot commands issued. User should open RoomTrek and
+  keep it foreground. Pi sync/restart remains outstanding/user-owned.
+
+### 2026-11-10 — Mounted-phone web map controls and 30-second battery reports (3.2.maps.1)
+
+- Added RoomTrek maps panel to existing roomberry/web console, leaving legacy
+  web-app untouched. Lists all readable phone maps with storage/revision/quality
+  metadata and shows active phone session separately from next mission choice.
+  Fresh/resume/stop/save/rename/delete and exact next-run UUID selection work
+  through asynchronous JSON jobs and the existing authenticated loopback relay.
+- Exact mission choice persists atomically in logs/roomtrek-map-selection.json,
+  overrides bootstrap/automatic choice and survives Pi restarts. Missing/corrupt
+  overrides fail explicitly; the web console can replace a corrupt selection.
+  Automatic selection remains available. Save verifies returned UUID/name;
+  rename/delete verify library result. Unknown outcomes are not blindly replayed.
+- Map mutations require robot idle and a drained mission survey lifecycle.
+  Reservation shares mission coordinator lock; Clock/web starts are rejected
+  before motion while a mutation is busy. Stop remains available. Worker holds
+  survey operation lock for whole job; read-only refresh may run during missions.
+- Phone advertises map_library_v1 and adds paginated MAP_LIST, MAP_RENAME,
+  MAP_DELETE. Page inventory revision guards against intervening library edits.
+  Local/remote deletion refuses active AR parent; filesystem errors now surface.
+  Pi refuses deleting effective mission selection/seed until another is chosen.
+  No cascade deletion, archive transfer or automatic frame reset.
+- User requests battery reports after30seconds without speech. Existing speech
+  worker announces fresh Roomba charge/capacity and iPhone battery/charging state
+  from challenge-verified heartbeat. Runs only with free speech queue; resets
+  quiet timer on acknowledgment/completion. Missing readings explicit; no report
+  if both missing. Failed attempts throttled30seconds; beeps do not count.
+-718 full Python tests pass in104.4s; final13 focused map/battery checks pass,
+  including corrupt selection recovery. Swift authentication/replay/command
+  checks pass. Signed Release iPhone build succeeds at /tmp/RoomTrek-maps.
+  Desktop1440px/mobile390px browser simulation passes fresh/save/select/rename/
+  resume/stop/delete, deletion protection, escaped names and no horizontal
+  overflow. Screenshots and browser artifacts in output/roomtrek-map-controls-20261110.
+- Docs updated. App headline3.2.maps.1 2026/11/10 10:15:00. Both Pi service and
+  phone app need updates; existing sync-up includes modules/web assets. No Pi
+  upload, phone installation, live map change or robot movement performed.
+
+### 2026-11-10 — Daylight startup and Delete Selected investigation (3.2)
+
+- Supplied 09:54/09:58/10:00 WALL starts all fail before departure. Loaded-map
+  sessions never reach normal tracking/localized validity; fresh sessions do
+  reach normal tracking. Loaded packet sequences continuous, median ages55–73ms.
+  Daylight did not resolve saved-map recognition; lighting alone insufficient.
+- User deleted selected map during run. Delete Selected removes library file
+  without stopping/clearing active AR map; selected row can differ from remote
+  surveyParentID. Deletion errors ignored. Cannot establish actual deleted ID.
+- Coordinator pins configured kitchen seed when no child revision exists,
+  even if absent from inventory. Library deletion does not request fresh WALL;
+  deleted seed would cause map-load failure on later start. These logs instead
+  show relocalization timeouts. Recommend idle local fresh Surveyor diagnostic
+  before any explicit seed-policy change. No automatic coordinate-frame reset.
+- Report/metrics: output/roomtrek-daylight-20261110-0954. Read-only iPhone log
+  listing timed out; no phone events available. No source/config changes,
+  deployment, AR commands or movement; existing pending edits preserved.
 
 ### 2026-11-09 — Local and GitHub check-in, 3.2 tag
 
@@ -1935,3 +2559,610 @@ at know location. The run will span about 15.75 tiles or 4.799 m.
   PreussLabsLLC/RoomBerry26 main. A GridRunner-screen.PNG screenshot appeared
   during final checks; reviewed and included in a follow-up asset commit in
   both repositories. Main source validation remains555/555 tests passing.
+
+
+### 2026-11-09 — RoomTrek bidirectional NavLink (3.2.navlink.1)
+
+- Inspected Swift NWConnection and Pi UDP recorder. Existing connected socket
+  retains an ephemeral source port until reconnect; now reused for command
+  receive/replies and across AR start/retry/stop. Preserve host pi, pi.local
+  fallback, port5010, 128-byte type6 poses, latest-only queue and legacy types1–5.
+- Add opt-in HMAC-SHA256 envelopes with provisioned Documents/NavLink.key /
+  Pi command_key_file, timestamp checks and per-process target UUID. Signed
+  controller-status heartbeats and endpoint challenge/proof permit authenticated
+  IP/source-port changes; unauthenticated binary poses never rebind control.
+  Connected UDP filters Pi peer; relay requires signed loopback CLI requests
+  and matching phone source, target and command ID for responses.
+- STATUS, SURVEY_START, SURVEY_SAVE, NAV_START, NAV_RETRY, SESSION_STOP route
+  to existing session/UI controller on main. Accepted and final acknowledgments,
+  lifetime target duplicate suppression (bounded capacity refuses new work),
+  explicit map-load/tracking failures, fixed30s relocalization deadline and
+  20s map-capture timeout. Timed-out navigation remains invalid until retry.
+  Idle/stopped sessions retain enabled NavLink for remote start/status.
+- Pi validates/records/exports type6 without using it in legacy navigation
+  fusion. Add roomberry_trek_control.py CLI using the existing receiver socket
+  as relay; no new service port, HTTP, WebSocket or discovery. NAVLINK.md and
+  README document key provisioning, wire format, status and CLI examples.
+- Validation:12 Python tests pass, including legacy receiver, authenticated
+  endpoint migration, malformed/replayed traffic, real shared-socket relay and
+  actual CLI subprocess. ARKit-independent Swift checks pass for all six
+  command dispatches, asynchronous acknowledgment, duplicate/changed-content
+  suppression, bad/stale MAC envelopes, wrong target and disabled control.
+  Python/Swift HMAC fixtures verified both directions; existing TrekChecks
+  pose/wire/package checks pass. Unsigned iPhoneOS Release build succeeds.
+  Source whitespace/SCCS checked. No device installation, Pi deployment,
+  robot commands or remote git operations. Physical ARKit/Wi-Fi trials remain.
+
+
+### 2026-11-09 — RoomTrek Australian SPEAK voice (3.2.voice.1)
+
+- Current RoomTrek had no speech handler. Add authenticated SPEAK with required
+  text, CLI --text, existing ID/ACK/duplicate behavior, completed on synthesis
+  completion and explicit failed on busy/invalid input/audio setup/cancellation.
+  Keep synthesis alive in a dedicated controller; audio/background cancellation
+  and delegate completion return to main, with utterance identity checks.
+- Enumerate installed en-AU AVSpeechSynthesisVoice options and log every name,
+  identifier, language and named/numeric quality in existing JSONL logs. Refresh
+  on launch, foreground return and speech. Do not infer age or gender or assume
+  any named voice is installed. User auditions for young Australian female
+  character via Test Voice: “G’day, Captain! I’m running a bit low on juice!”
+- Australian voice menu persists identifier in UserDefaults; pitch/rate sliders
+  persist, initial1.08/0.52 with supported bounds and invalid-value recovery.
+  Preferred unavailable falls back to an installed en-AU voice ordered by
+  quality/identifier, then system default; retain missing preference for restore.
+  Same configuration applies to Test Voice and remote SPEAK. Document settings,
+  inventory log export, fallbacks, limitations and CLI example.
+- Swift speech checks pass: defaults, persisted preference/pitch/rate, preferred
+  selection, missing/empty inventory fallbacks, bounds/nonfinite values, input
+  limits and exact test phrase without speaking audio. Swift authenticated
+  control checks include SPEAK and pass.12 Python NavLink tests pass including
+  actual SPEAK CLI text/ACK relay. Unsigned iPhoneOS Release build passes;
+  whitespace and SCCS checks clear. No deployment, audio audition or device
+  inventory claimed; installed voices and desired character require phone test.
+
+
+### 2026-11-09 — Roomberry mnemonic speech catalogue (3.2)
+
+- Add roomberry_speech.py with16 en-AU phrases, covering mission/navigation
+  modes, low/critical/charging batteries, scans, general statuses/errors and
+  safety stops. Keep translations out of mission/sensor logic. Server logger
+  prefixes codes and retains original diagnostic details plus speech_code/text
+  fields. Routine status/debug diagnostics are coded but not continuously spoken.
+- Effective mode/recovery changes, battery transitions, scans and safety/error
+  events enqueue catalogue text for authenticated RoomTrek SPEAK. Per-code30s
+  cooldown, four-item background queue,10s expiry, stable UUID retries, target
+  pinning and explicit delivery-result logging; no network on control thread.
+  Use ephemeral loopback client to existing NavLink5010 relay, no second service.
+  Keyless operation remains log-only. Worker lifecycle follows receiver/server.
+- CONTROL_VERSION and newly touched source/docs SCCS use3.2. Preserve pending
+  NavLink/iOS voice work. Document all16 phrases, logging and delivery behavior
+  in roomberry/docs/speech.md.233 focused speech/mission/control/server/map-log/
+  NavLink tests passed, including robot-before-speech shutdown cleanup order.
+  Whitespace and SCCS checks clear. No deployment,
+  robot movement, live speech or remote git operations.
+
+
+### 2026-11-09 — No-speech run check and Python console speech test (3.2)
+
+- Review updated11:33 logs. NavLink bound0.0.0.0:5010; latest11:33 and11:27
+  binary files and all seven Nov9 archives are16-byte headers, zero recorded
+  packets. Most recent nonempty recording Nov6 12:57 has1703 type5 /1709 type3;
+  last valid IMU sample Nov6 12:59:59.272957 Pacific. RoomTrek type6 is ARKit
+  pose rather than raw IMU. Source autonomy.json lacks command_key_file and run
+  has no Speech delivery records, consistent with disabled speech configuration.
+- Add500-character free-text Test Speech form to existing roomberry/web console
+  (legacy web-app untouched). Existing SPEAK already handles free text. POST
+  /speech queues a bounded tracked job; GET /speech.json reports auth/config/
+  worker/peer readiness, packet and IMU snapshot status and per-ID outcome.
+  Explicit unavailable before queueing, queued/accepted/final outcomes and ID
+  retained in64-job memory history; async UI uses textContent, no raw HTML.
+- Speech sender supports validated free text without expanding16-phrase catalogue;
+  stable retry ID and target preserved. Log startup missing-key explanation,
+  phone acceptance and final status/ID, without speaking delivery-result logs.
+  Document diagnostics and setup in output/speech-20261109/report.md and docs.
+- Validation:58 focused web/speech/server/NavLink tests passed, including live
+  HTTP submit/poll. JavaScriptCore DOM/fetch harness passes submit→accepted→
+  completed, server failure and invalid-input paths. Whitespace/SCCS clear.
+  No Pi deployment/restart, device installation, robot commands or live speech.
+  User-supplied runtime/map archives untouched.
+
+
+### 2026-11-09 — Configure RoomTrek command key path (3.2)
+
+- Add navlink.command_key_file=/home/pi/NavLink.key to autonomy.json, matching
+  the documented Pi CLI/provisioning path. Preserve host pi/port5010 behavior,
+  receiver bind and other configuration. Update existing JSON SCCS to3.2.
+- JSON validation confirms only key path and SCCS changed; whitespace/SCCS
+  checks pass. The secret file itself has not been found/provisioned here;
+  it must exist on the Pi and match iPhone Documents/NavLink.key. Configured
+  missing/unreadable keys fail receiver initialization, so provision before
+  restarting with this configuration. No generated secret, deployment/restart,
+  device changes or live authenticated command test.
+- Pi remote commands implemented: STATUS, SURVEY_START, SURVEY_SAVE, NAV_START,
+  NAV_RETRY, SESSION_STOP, SPEAK. Require updated foreground RoomTrek, NavLink
+  enabled and matching key; current supplied logs do not establish a live
+  authenticated link. Does not remotely launch/unlock the phone/app.
+
+
+### 2026-11-09 — Provision connected iPhone key; Pi upload delegated to user (3.2)
+
+- User supplied a short key and requested Pi roomberry-folder / iPhone setup,
+  then explicitly reserved Pi uploads for themselves. Prepare ignored local
+  roomberry/navlink.key (mode0600) and configure absolute Pi destination
+  /home/pi/Projects/Roomberry/roomberry/navlink.key. No Pi uploads or service
+  restart performed; only read-only Pi inspection completed before that steering.
+- Python/Swift key loaders now accept nonempty trimmed contents verbatim instead
+  of requiring32 bytes. Empty/missing phone key remains disabled; invalid Pi
+  key files fail explicitly. Longer existing keys preserve exact behavior.
+  Document short-key/file-location support; no credential compiled into the app.
+- Signed Release build succeeded. Install updated RoomTrek on USB iPhone X
+  Peters10 (ab151810c534a3ffe07756d271a25095fe25e5d2). Upload key to its
+  Documents/NavLink.key; download/readback after installation matches local key.
+  No uninstall or map deletion. Sandboxed install timed out; full USB install
+  succeeded. Automated launch unavailable because Xcode DeviceSupport Symbols
+  directory is missing; user must open RoomTrek and enable NavLink manually.
+-22 Python key/authentication/speech/web tests pass. Swift control checks plus
+  Python-signed short-key fixture verification pass. JSON/key location, git
+  ignore, source whitespace and one SCCS per applicable file verified. Pending
+  user Pi uploads: navlink.key, autonomy.json, roomberry_trek_control.py; then
+  restart their Roomberry process. No live Pi→phone command or speech claimed.
+
+
+### 2026-11-09 — 12:14 WALL run, confirmed speech and bypass-distance stop (3.2)
+
+- Updated logs show eight accepted/completed SPEAK commands after one startup
+  unavailable-peer result. Authenticated Pi↔iPhone speech works. Latest12:14
+  NavLink file remains16-byte header only: zero recorded binary pose/IMU packets.
+  Signed control responses are separate from binary navigation telemetry;
+  working speech does not establish ARSession running or a selected phone mode.
+- WALL bypass started12:15:46.340; stop12:16:55.243, elapsed68.902s. Abort was
+  cumulative1500mm bypass distance rather than90s timeout. Total wheel-derived
+  travel3525.17mm,3 contacts,7 wall-loss searches. Rejoined wall but never
+  recorded obstacle_bypass_heading_resumed; final heading73.72 vs reference40.69
+  and signal11.25 fail current20deg /≥20-signal qualification. No limits changed.
+- Explain Surveyor scans/saves a map; Navigator loads that map and must Start /
+  relocalize with Valid YES for map-relative poses. Type6 is recorded only,
+  deliberately not fused into WALL navigation. Analysis report saved to
+  output/wall-run-20261109-1214/report.md. No deployment, remote commands or
+  runtime/map archive changes; documentation SCCS/whitespace verified.
+
+
+### 2026-11-09 — Pi-owned survey lifecycle and installed SCCS headline (3.2)
+
+- User steered the pending survey request into the next run and clarified the Pi
+  should control the phone; user continues to handle Pi uploads. Add background
+  roomberry_trek_survey.py coordinator and enable roomtrek_survey in autonomy.json.
+  Mission non-idle transition sends STATUS, SESSION_STOP and SURVEY_START. Active
+  mode changes coalesce into one survey; idle/abort queues SURVEY_SAVE named
+  kitchen-YYMMDD from the run-start date, verifies a new map UUID/name via STATUS,
+  and sends SESSION_STOP. No extra relay/server/port. Existing WALL limits unchanged.
+- Stable per-command UUIDs/target pinning, bounded transition queue, explicit
+  unavailable/failed/unknown reporting and status.json survey snapshot. Robot
+  motion never waits for network; shutdown stops robot before draining pending
+  phone save. Errors still close speech worker/receiver. Map remains on phone;
+  no automatic transfer or claim of full kitchen coverage.
+- RoomTrek starts NavLink with a provisioned key unless an explicit persisted Off
+  choice exists. Pi owns AR mode/start/save/stop through main-thread controller;
+  foreground/unlock/camera permission remain iOS requirements. Add visible build
+  headline sourced from the AppDelegate SCCS ID: RoomTrek3.2,2026/11/09 12:33:06.
+- Signed Release build succeeds and installed on USB Peters10 without uninstall.
+  Confirm expected SCCS string in built binary.187 survey/mission/speech/server/
+  web/control tests pass, including command retry identity, dated name and new-map
+  verification, failed saves, worker drain, and robot-first cleanup on errors.
+  JSON, whitespace and one SCCS identification per applicable source verified.
+- Document uploads/config/operation in roomberry/docs/roomtrek-survey.md and
+  RoomTrek README. Pi deployment/restart left to user; no live mission, phone
+  survey or kitchen map save performed while implementing next-run automation.
+
+
+### 2026-11-09 — 12:38 run: phone poses and kitchen map confirmed (3.2)
+
+- Decode supplied latest NavLink archive:1677 type6 packets,12:38:56.231 through
+  12:41:43.816,10.001Hz, sequence0–1676 contiguous,1669 normal /8 initializing,
+  max frame age163.278ms. Survey frame XYZ/quaternion/yaw present; map-relative
+  validity clear by design. Median features3; no raw IMU/type3 packets. Pi now
+  controls AR startup: SURVEY_START acknowledged12:38:55.916; kitchen-261109
+  save/new library entry verified12:41:43.855, then phone stopped12:41:44.167.
+- First fridge bypass completed heading-resumed gate12:41:33.311 after1437.66mm.
+  Next right-bumper contact initiated reverse release; stop12:41:42.192 was
+  wheel motion opposite commanded direction, total wheel travel3630.82mm.
+  Sensor deltas support transition-accounting issue: pre-reverse +4.9mm roll
+  followed by actual−1.3mm reverse; guard compares older mission distance3341.0
+  with3344.6 after new−30/−30 command. No physical wrong-direction conclusion
+  and no safety/control changes. Phone poses remain recorded only, not steering.
+- Save report, metrics.json and decoded phone-poses.csv under
+  output/wall-run-20261109-1238. Original runtime/map logs untouched; no deployment,
+  remote phone/robot commands, map download or test changes. SCCS/whitespace clear.
+
+
+### 2026-11-09 — WALL speed floor, tag15 validation goal, speech and disagreement plots (3.2)
+
+- Analyze12:38 sensor/phone run. Stable commands held≥0.5s:30mm/s produced
+  left/right encoder medians41.73/39.30mm/s;35 produced39.88/39.88. Supports
+  poor low-speed response, not proof of firmware intent or body speed. Raise
+  WALL moving-wheel floor30→50 and cruise35→80mm/s, retain35% steering bound,
+  zero stops and all existing hard hazards/lease/contact/stale/no-progress gates.
+- Fix direction-boundary accounting: first fresh post-command/sign-change sample
+  establishes baseline; subsequent fresh increments must match direction. Count
+  all mission travel, preserve true wrong-way abort. Regression replays recorded
+  +4.9mm coast then−1.3mm reverse without false abort; sustained wrong motion
+  still aborts. No wheel-size factor calibrated from phone data.
+- Goal is robot-centre range≤300mm from surveyed tag15, confirmed by two fresh
+  post-parking tag15 fixes within75mm/0.1rad. Dead-reckon from tag16 to trigger
+  stop/face/scan at estimated range or5m checkpoint. Stable farther tag fix may
+  authorize≤100mm advances and rescans,12 steps/180s max. Unexpected contact
+  aborts during terminal approach. Global8m/360s bound aborts without claiming
+  success; previous distance-only completion removed. Log wheel prediction/tag
+  correction. Missing map target prevents an unvalidated run.
+- Add16 Australian phrases (32 total), key WALL stages, bounded approach and
+  confirmed validation/abort, map saved/phone unavailable. Important speech may
+  replace older lower-priority chatter; higher-priority queued safety preserved.
+  Existing Pi-owned survey and dated map save remain. Update wall/voice docs and
+  command description; no iPhone app change required for new text payloads.
+- Reproducible output/wall-odometry-20261109-1238/analyze.py, PNG/PDF comparison,
+  CSV and metrics/report. Align phone frame uptime with Pi receipts and only
+  early0.2m departure (no scale/full-path fit). Configured lens offset assumed;
+  end separation1.31m corrected /1.42m raw camera, heading disagreement−9.16deg,
+  max absolute14.28deg. These are relative disagreements, not ground-truth errors.
+- Full suite663 passed; final83 focused wall/speech/survey/web tests pass after
+  queue-priority and terminal-bound refinements. Independent wall simulation,
+  fresh/stale scan qualification, range, approach/contact/path/time caps and
+  speech queue covered. Plot inspected; whitespace/SCCS checks clear. No Pi
+  uploads/deployment, robot commands or physical speed/approach trial. User
+  retains Pi uploads: wall, speech, survey modules and web command description.
+
+
+### 2026-11-09 — Fixed initial tag16 alignment for next-run phone comparison (3.2)
+
+- Add roomberry_trek_anchor.py. Qualified initial tag16 robot pose pairs with
+  actual capture-time phone history, not delayed processing time: nearest normal
+  frame within250ms, at least3 samples spanning150ms,≤20mm /2deg stationary
+  spread. Fixed planar translation/yaw, scale1; no later path fitting/rebinding.
+- Existing93.6deg mount estimate was for camera+Y, not RoomTrek optical yaw.
+  Derive mapped camera+Y from quaternion and apply that mount correction plus
+  measured lens(-145,-22)mm to recover robot centre and remove pivot lever arc.
+  Expose roomtrek_alignment config; planar/mount assumptions documented, no
+  AR scale or camera-height calibration claimed. Raw phone/map coordinates stay
+  unchanged; Pi room-frame results are independent diagnostics, not steering.
+- Receiver caches ordered type6 history (600 frames), clock offset and identity
+  separately from unfiltered raw logs/legacy fusion. Binding records transform,
+  phone identity/frame, capture time and wheel baseline. Separate pure-wheel
+  trace starts at tag16 and ignores later tag15/localizer corrections. Log each
+  aligned comparison and alignment state; status includes state/separation.
+  Session/map/wheel-epoch reset invalidates for rest of run; tracking gaps pause
+  then resume same binding. Unexpected diagnostics cannot interrupt robot drive.
+- Add local tools/plot-trek-anchor.py for matching next-run log/binary/sensor CSV:
+  interpolate raw wheels at phone capture times, use recorded tag16 transform,
+  export PNG/PDF/CSV/metrics without early-departure/full-path/scale fits. Reject
+  missing/mismatched anchors and clock discontinuities. Synthetic matching traces
+  agree within float32 rounding and all exports generated successfully.
+-676 full local tests pass, including frame/offset math, pivots, timing, capture
+  stability, tracking gaps, identity/reset invalidation, independent wheel trace,
+  mission hooks and diagnostic isolation; JSON/whitespace/SCCS checks clear.
+  Pi uploads remain user-owned: main/mission/wall/NavLink, new trek_anchor module,
+  autonomy.json. No Pi deployment, physical run or new map/phone command. New
+  documentation: roomberry/docs/roomtrek-alignment.md. Await next-run logs to
+  assess actual disagreement from this common tag16 reference.
+
+
+### 2026-11-09 — Dashboard iPhone mount replaces old clip calibration (3.2)
+
+- User corrected physical mount: dashboard holder looking approximately20deg
+  left and15deg up; active lens10mm forward and180mm left of Roomba centre.
+  Update roomtrek_alignment to optical_forward basis, additive camera-to-body
+  yaw−20deg, pitch15deg metadata and lens(+10,+180)mm. Old(+Y93.6deg,
+  −145/−22mm) calibration no longer applies. Disable legacy type1 phone_position
+  soft aiding so obsolete mount values cannot affect later operation.
+- Generalize quaternion projection to optical camera−Z for new mount; horizontal
+  projection handles upward pitch without adding it to yaw. Preserve explicit
+  camera+Y basis for historical anchor records/plots. Anchor metadata records
+  basis, pitch, yaw and lens offset; transforms/plot filtering use each recorded
+  basis rather than current defaults. No AR scale or absolute camera-height
+  calibration, raw-packet change or iPhone update required.
+-217 focused anchor/wall/NavLink/mission/legacy-position tests pass. New tests
+  cover actual20-left/15-up dashboard quaternion, correct forward/left sign,
+  90deg pivot lens-arc cancellation, optical yaw at0/15/35deg upward pitch and
+  historical record compatibility. Plot smoke passes for both legacy and new
+  dashboard records, exporting PNG/PDF/CSV and matching known synthetic traces
+  within float32 rounding. All679 complete-suite tests pass. JSON, source
+  whitespace and SCCS checks clear.
+- Update alignment/wall docs and mark old12:38 plot's clip-mount assumption as
+  obsolete, not a validated current robot-centre comparison. Next run should
+  use fixed tag16 calibration with the new mount. Pi uploads remain user-owned;
+  no deployment, remote commands or physical run performed during this update.
+
+
+### 2026-11-09 — 16:33 run: dashboard tag16 alignment and 1.5m bypass abort (3.2)
+
+- Latest run stops16:35:37.046: left obstacle bypass exceeded1500mm/90s.
+  Started16:34:59.610, elapsed37.436s, so distance bound triggered; wheel path
+  3545.58mm. Three contacts, two ordinary wall-loss searches. Wall signal rejoined
+  but bypass heading never resumed: entry44.19deg vs final91.88deg (47.69deg
+  gap), IR10 below20. No tag15 validation; estimated remaining range at stop
+  1532mm wheels /2244mm phone. No control/limit changes.
+- New fixed dashboard tag16 alignment established with capture pairing25.36ms;
+  correct lens(+10,+180)mm, optical basis−20deg and pitch15deg metadata. Initial
+  live mismatch0.50mm/0.053deg.990 contiguous type6 packets,983 normal /7 init.
+  Reusable plot uses828 post-anchor normal frames, no fitting/scale adjustment.
+  At stop:760.43mm separation /−11.91deg; final767.19mm /−11.84deg, max769mm /
+  abs13.61deg. Phone trails wheel roomX by722mm at stop. Neither is ground truth;
+  old clip-mount plot is not an apples-to-apples baseline.
+- Speed response remains above commands: stable≥0.5s, duration-weighted50mm/s
+  gives69.25/65.23 left/right encoder mm/s;80 gives91.20/92.13. No firmware/body
+  speed conclusion or calibration change. kitchen-261109 save verified16:35:38.349.
+- Save plot PNG/PDF, CSV, metrics and report under
+  output/tag16-comparison-20261109-1633. Supplied runtime/map files untouched;
+  no remote commands, deployment or tests/code changes. Report/SCCS/whitespace
+  checked. Independent tag15 fix still needed to assess absolute accuracy.
+
+
+### 2026-11-09 — Bounded tag15 lucky scan and map lifecycle review (3.2)
+
+- At the 1500mm/90second obstacle-bypass limit, stop and attempt one tag15
+  acquisition at current heading, +10degrees, then -10degrees. Two distinct
+  agreeing captures are required to resume approach; exhausted views abort
+  stopped. Look bounded by75seconds,25mm translation and +/-15degree envelope;
+  each pivot8seconds. Safety/time/envelope guards also run during camera pauses.
+- Dedicated stationary tag15 solver permits2.5m acquisition, retaining normal
+  localizer1.2m gate, decision-margin/reprojection/room checks. Final approach
+  retains100mm segments, fresh scans,300mm two-capture completion and180second
+  limit, now at most24 steps. Global8m/360second and contact/hazard limits remain.
+- Review confirms every automatic mission stops the prior session and starts
+  Surveyor with resetTracking and no initialWorldMap. Same kitchen date label
+  identifies separate UUID saves; repeated runs do not accumulate old map data.
+  Accumulation would require saved-map load, successful relocalization, continued
+  mapping and another save; no lifecycle change made. Last run983/990 normal
+  tracking packets is continuity evidence, not a saved-map coverage/accuracy
+  grade. Reload/relocalization and independent tag checks remain necessary.
+- Added seven lucky-scan tests: three views/exhaustion, two-capture approach,
+  duplicate/old captures, hazards, time/translation/angle limits, scan interlock
+  and isolated expanded-range solver.212 focused tests passed. All686 full-suite tests passed; whitespace and single SCCS
+  identification checks clear. No robot movement, iPhone installation or Pi upload performed;
+  Pi deployment remains user-owned. Updated wall-mission documentation.
+
+
+### 2026-11-09 — 17:01 run reaches tag15 with manual assistance (3.2)
+
+- WALL stops17:04:43.933 at wall-loss search limit,4883mm path,11contacts.
+  Manual steering then tag-return localizes. First confirmed tag15 capture
+ 17:07:29.812 gives859mm centre range; last confirmed17:07:59.428 gives646mm.
+  Final17:08:23.171 estimate133mm is wheel-projected, no final scan verifying
+ 300mm goal. Stop17:08:23.373 uses shared close/travel guard; only524mm since
+  final fix, below750mm travel cap, consistent with crossing124mm minimum range.
+- Offline independent wheel integration from tag16 capture, including manual
+  driving, yields448mm/6.77deg error at first confirmed tag15 fix and528mm/7.06deg
+  at last: wheels201mm highX/488mm lowY. Local controller correction from its
+  more recent tag15 fix is58.3mm/0.30deg. Two final scans agree7.2mm/0.53deg.
+- No wheel/iPhone comparison available: initial command failed App must be
+  foreground, no normal frame at tag16; first type6 arrives17:05:54.680.728packets
+  in six sessions. Final596frames:553normal/6init/37insufficient-feature limited;
+  normal features0/median2/max3. Repeated map saves fail Insufficient features.
+- Exports/report/reproducible analysis under output/tag16-comparison-20261109-1701.
+  Plot visually checked, sample timestamps/epoch continuity and SCCS verified.
+  No source/control/config changes, deployment or movement; supplied logs intact.
+
+
+### 2026-11-09 — Foreground startup warning, tag-return validation, gentler left bypass (3.2)
+
+- Explain missing endpoint scan: manual recovery used standalone Tag15Return,
+  whose old finish approached bumper contact; WALL's300mm validation did not
+  apply. Add stopped validation in standalone return at estimated<=300mm:
+  two distinct fresh agreeing tag15 fixes must measure<=300mm for completion
+  and TAG15_VALIDATED speech. No wheel-only success. Three failed captures,
+  inconsistent fixes or confirmed range outside300mm abort stopped. Preserve
+  safety, close-range and travel guards; disable line handoff during validation.
+- Authenticated App must be foreground failure now logs PHONE_BG, exposes
+  persistent warning in survey status/local console, and invokes an unhappy
+  Roomba beep from the survey worker. No iPhone SPEAK attempt for this warning:
+  foreground guard also rejects speech. Offline is not labelled backgrounded;
+  successful survey startup clears warning. Robot startup remains asynchronous,
+  not gated. Console warning appears on status refresh; auto refresh remains off.
+  Catalogue now33 entries. iPhone code already disables auto sleep while active;
+  session stop re-enables it. User should unlock/open/leave RoomTrek visible and
+  verify live camera, NORMAL tracking and NavLink before the mission. Initial
+  rejection was17:01:52, successful survey by17:05:52; later sparse-feature
+  failures are separate from foregrounding. No iPhone code/install changes.
+- User additionally reports left-bypass overshoot. Logs show repeated20deg then
+ 90deg pivots. Reduce repeated obstacle-contact left turn90->45deg, preserve
+  first20deg and ordinary15deg. Keep distance/time/contact bounds. Requested
+  clarification turn-vs-travel; selected turn limit from log evidence. Physical
+  behavior still needs next run; no robot movement or Pi upload performed.
+- Four new tests cover background warning/beep/recovery vs offline, stopped
+  two-fresh-capture validation and failed/out-of-range validation; bypass test
+  now checks45deg limit.45 focused tests passed before bypass change. Broader
+  network suite required sandbox escalation for local sockets; final result
+ 690 full-suite tests passed in95.5seconds. Documentation/whitespace checked;
+  all15 touched files retain exactly one3.2 SCCS.
+
+
+### 2026-11-09 — RoomTrek audible tracking heartbeat installed (3.2)
+
+- User cannot see the mounted iPhone screen and requests10second ping with
+  different tone for tracking OK/not OK. Default-on persisted switch; short
+  high1100Hz tone requires foreground, active session, valid normal tracking,
+  AR frame<=1second old and NavLink enabled. Low440Hz double tone indicates
+  foreground but idle/stale/limited/invalid tracking or NavLink off. Does not
+  assert map quality or Pi receipt. Tones use generated short enveloped PCM
+  through the existing audio helper; no undocumented system sound identifiers.
+- Main-thread timer; no ARKit or network configuration changes. Defer heartbeat
+  during speech without interrupting/stacking missed tones. Cancel tone on
+  background/audio interruption. Speech takes precedence over an active tone.
+  Silent phone is not proof of health: volume/routing/off/background/speech
+  can suppress the ping. Active sessions retain existing idle-timer prevention.
+- Swift SpeechChecks pass:10second cadence, foreground/off, idle, tracking loss,
+  stale frames, NavLink off, speech deferral, generated WAV decode/duration;
+  existing voice preference/fallback/bounds/input checks still pass. Signed
+  iPhone Release build succeeds, installed overUSB on Peters10 iPhoneX.
+  Headline RoomTrek3.2 2026/11/09 17:25:54. Installation verified100%; actual
+  speaker audibility/volume and mounted tracking remain user checks.
+- README updated; all six modified app/test/doc/log files have one SCCS line;
+  whitespace checked. No Pi upload, robot movement or run commanded.
+
+
+### 2026-11-09 — 17:39 WALL and commanded tag15 return analysis (3.2)
+
+- User clarifies “shove” means invoking Return to tag15, no physical push.
+  Qualified tag16/phone pairing23.27ms. WALL2723type6 packets,2716normal/7init,
+  zero seq gaps; frame-age median67ms/p95=89/max204ms. Return new survey848frames,
+ 842normal/6init, no seq gaps. Saved kitchen-261109 confirmed17:44:03 and17:45:56.
+- WALL lucky scan acquires tag15 at1486mm, five100mm advances; stops17:43:59
+  on stale/unsafe Roomba sensors. Pi serial poll max3107ms/one failure, mission
+  max3621ms; phone telemetry continues. Do not attribute this Pi stall to iPhone.
+- Fixed tag16 wheel/phone separation1124mm at WALL stop, final1123/max1126mm,
+  heading−8.16/−8.17deg, maxabs11.20deg. At final commanded-return tag15 fix,
+  independent pure wheels off735mm/10.45deg (203mm too farX/707mm lowY); recently
+  tag-corrected return controller off88mm/0.82deg. New return phone session is
+  not joined to original anchor. No trajectory/scale fitting or fake continuity.
+- Two final validate captures agree0.48mm/0.075deg, centre range354.8/355.0mm;
+  stops outside300mm explicitly. Camera range248mm is not centre range. Map
+  jump about530mm at first global tag15 acceptance near17:43:32 corrects aged
+  wheel/tag16 pose. Independent phone trace does not use those corrections.
+- Read-only iPhone event download confirms heartbeat attempts and40 speech
+  completions, no heartbeat setup errors. No measured CPU/thermal/route/volume
+  diagnostics; overload unproven, silent audio unresolved despite callbacks.
+  Feature median5 WALL/3 return; map save does not prove map accuracy/coverage.
+- Plot/report/data under output/tag16-comparison-20261109-1739, filtered on-phone
+  events included. No implementation/config/installation/Pi upload/movement.
+  Supplied logs preserved; plot/timing/session/SCCS/whitespace checked.
+
+
+### 2026-11-09 — Cumulative kitchen-map resume and immutable revisions (3.2)
+
+- User requests saving/amending kitchen map across runs. SURVEY_START now
+  accepts optional map_id: load initialWorldMap into Surveyor, wait for observed
+  relocalization plus1second normal tracking, then continue mapping in the same
+  session. No reset after relocalization. Pending operation fails on map load/
+  ARKit errors or30second timeout, including missing frames. Fresh command form
+  remains available explicitly. Resumed poses carry parent map UUID and existing
+  map-valid bit after relocalization; fresh zero-map telemetry behavior unchanged.
+- SURVEY_SAVE requires fresh valid normal tracking and extending/mapped status
+  both before capture and before atomic write. Optional metadata fields parent,
+  lineage, revision and featureCount keep version1 backward-readable. Every
+  save creates a new UUID file; previous maps preserved, no independent-map merge.
+  Library UI shows revision/features. STATUS capability survey_resume_v1 exposes
+  inventory metadata, readiness and unreadable-package errors, filtered before
+  limiting to10maps. Worst-case signed10map response5178bytes<8192limit.
+- Pi chooses existing revision chain before independent snapshots, prefers
+  mapped/extending bootstraps, resumes across date boundaries, and verifies exact
+  saved acknowledgement UUID plus expected parent. Resume45second request budget
+  covers phone30second timeout. No fresh fallback after resume failure, old app
+  or unreadable inventory. Only absent kitchen library starts fresh. Robot
+  motion remains independent/asynchronous; failed mapping is not a motion gate.
+- Read-only backup of eight existing maps confirms latest short return17:45:55
+  had limited mapping; WALL17:44:02 is mapped. Configure bootstrap seed
+ 0B2FA89D-F7EA-4002-9AC7-92C32AF1D0D5 until first parent-linked kitchen revision.
+  Byte-identical840988byte seed copied to output/kitchen-map-bootstrap-20261109;
+  SHA2562ee7144dcd60794e21d213a4ebb81a7e98cdb2db2959480ec66a6b41e675376b.
+  Original iPhone files untouched. Coverage/quality need subsequent validation.
+- Loaded-map tag16 comparison now requires valid flag and localized state,
+  avoiding normal-but-not-relocalized binding. Fresh Surveyor gate unchanged.
+  Host checks cover policy, old metadata roundtrip and revision fields; Python
+  tests cover bootstrap quality/chain priority, next-run parent, date change,
+  capability/corrupt inventory, resume failure/no fallback, exact-ID/parent
+  verification and loaded-map alignment gating. Initial695full-suite pass;
+  final697full-suite tests pass in96.9seconds. Swift map/control checks pass;
+  signed iPhone Release build succeeds, installed100% on Peters10 iPhoneX.
+  Headline RoomTrek3.2 2026/11/09 18:09:21. Actual map relocalization/extension
+  awaits next physical run; no robot command issued.
+- Update survey/ARKit/NavLink/alignment docs with format, CLI and limitations.
+  Pi uploads remain user-owned: roomberry.py, trek_survey.py, trek_anchor.py,
+  autonomy.json (plus previously pending changes). No Pi upload/deployment.
+
+
+### 2026-11-09 — Local 3.2 pending-work check-in
+
+- User requests local Git check-in. Include accumulated authenticated NavLink
+  commands, Australian speech/test console/heartbeat, WALL/tag15 improvements,
+  tag16 diagnostic alignment and plots, cumulative kitchen-map revisions,
+  tests/docs, supplied map snapshots/runtime map state and kitchen seed backup.
+  Preserve established repository practice of versioning run reports/maps.
+- Local navlink.key and raw sensor/NavLink/service logs remain ignored; no
+  credentials file staged. No remote Git operation or Pi upload requested or
+  performed. Final integration validation697Python tests passed, Swift map/
+  control/voice checks and signed iPhone build passed in preceding work.
+- Pre-commit whitespace/JSON/SCCS checks clear; all195candidate files reviewed
+  for scope, applicable source/docs have one identification line. Refresh the
+  pending sync-up script's stale SCCS identity to3.2; no runtime logic change.
+
+
+### 2026-11-09 — 18:21/18:28 runs: resume timeout, late readiness, scan coast (3.2)
+
+- First Pi map resume times out30s at18:21:57 and stops AR; robot continues
+  because startup is asynchronous. Tag16 at18:21:46 cannot bind phone. No frames
+  for4min19s, later non-coordinator app restart relocalizes2.8s. First WALL has
+ 14contacts/5wall-loss searches; lucky tag15 found1886mm, six100mm advances,
+  last accepted1472mm pre-final advance.180s timeout18:27:03; path5022mm.
+  Only12.24s in approach stages, rest scans/confirmation. Ranges vary/increase.
+- Second WALL18:28:14: map resume17.4s, readiness18:28:32 after tag16 at18:28:25.
+  Another app stop/restart18:28:38/18:29:08; origin not logged; relocalizes3s.
+ 6contacts/6wall losses. Lucky-view+10deg stop command near+8.4deg coasts to
+ +17.6deg, exceeds15deg envelope; abort18:30:22,3723mm path. Translation12mm
+  within25mm limit. Save refused on limited mapping; old seed unchanged.
+-2553type6 packets in five sessions, zero within-session seq gaps; frame age
+  medians57–85ms,max192ms. Low tone30/46heartbeat attempts includes paused AR/
+  pending relocalization. No evidence of network/phone-frame stall; CPU/thermal
+  not measured. No new map revisions; no qualified wheel/iPhone comparison.
+- Read-only phone event download, metrics, tracking timeline and report saved
+  output/wall-run-20261109-1821. No robot/control/app/config changes/deployment.
+  Pi can already restart AR via SESSION_STOP then SURVEY_START(map_id). Recommend
+  bounded startup retry with robot readiness hold/tag16 pairing, settled scan
+  pivots, and scan-stability/latency improvements before extending timeouts.
+
+
+### 2026-11-09 — WALL startup readiness hold, bounded AR retry and settled scan pivots (3.2)
+
+- User authorizes proposed fixes from18:21/18:28 report. With the configured
+  RoomTrek survey coordinator, WALL starts in phone_ready and requires a fresh
+  acknowledged physical stop. Poll readiness without blocking sensor handling;
+  no camera capture or motor drive during pending mapping. Only after successful
+  phone startup request new tag16 captures, rejecting pre-readiness results.
+  Require two consistent fresh tag16 fixes AND successful stationary phone
+  pairing; failed pairing retries fresh captures while held. Current phone
+  frame must remain fresh/qualified and match acknowledged session, expected
+  map and bound identity before departure. Failures/changed session abort stopped.
+- Startup total120seconds, tag16 qualification at most60seconds after readiness;
+  existing360second drive budget starts on qualified departure. Sensor/contact/
+  lease/path guards remain active throughout. Coordinator-disabled legacy WALL
+  keeps tag-only startup. Other mission modes retain asynchronous startup.
+- Loaded-map relocalization_timeout/tracking_failure gets one intentional AR
+  restart, same saved parent, after acknowledged SESSION_STOP. At most two
+  SURVEY_START attempts with separate operation IDs; transport retries retain
+  their ID. No new start on map-load errors, unknown outcomes, failed stop or
+  cancelled startup before retry. Final failure never falls back to fresh map
+  or saves an unlocalized child. Snapshot adds start_attempt/phone_session.
+- Lucky-scan +/-10degree pivots reuse SettledTurn through WALL's strict stop/
+  lease owner, with optional0.12s pulse budget checked each mission tick and
+  measured closing-rate braking. Stop and collect fresh encoder quiet>=150ms,
+  rotation<=2deg/s and translation<=5mm/s before next pulse/reversal/camera scan.
+  All wheels retain50mm/s floor; +/-15deg/25mm envelope,8second turn,75second
+  look,180second validation and1.5second settle bounds unchanged. Pulse budget
+  is not a hardware timer; actual braking/coast needs next physical run.
+-100 focused survey/WALL/turn tests pass, covering retry order/exhaustion,
+  nonretryable outcomes/stop failure/cancellation, no drive during startup,
+  stale captures/binding failures, startup timeout, ready release, stale or
+  changed current session, pulse braking/coast settling and no forward scan
+  motion. All706 full-suite tests pass in99.0seconds. Source/SCCS/whitespace
+  checks pass; survey/WALL/alignment docs updated.
+- Pi-only update: roomberry.py, roomberry_mission.py, roomberry_trek_survey.py,
+  roomberry_wall.py, roomberry_turn_guard.py. Existing iPhone app already supports
+  AR stop/resume; no phone rebuild/install needed. Pi upload remains user-owned;
+  no deployment, robot movement or live run commanded.
+
+
+### 2026-11-09 — After-dark RoomTrek low-double investigation (3.2)
+
+- Latest19:42 run2924type6 packets/10sessions:2639loaded-map frames, zero
+  localized-valid map frames. Reasons are initializing/relocalizing, not
+  insufficientFeatures. Fresh surveys briefly normal with medians207/69features;
+  camera/frame pipeline alive. Loaded sessions have zero seq gaps, ages~60–70ms.
+- Phone event download confirms31low-double/2healthy heartbeat attempts.
+  Saved-map starts time out30s or end Session stopped before deadline. Stops'
+  UI/background/other-client origin not logged. First WALL holds, retries once
+  and aborts19:43:22; second WALL19:48:18 retries19:48:49, holds at end of copied
+  Pi log19:49:04; phone later stops19:49:14. No successful map amendment/save.
+- Darkness/changed appearance is plausible, not measured. Recommend normal
+  room lighting and same saved starting view; preserve old seed. Apple session
+  guidance supports reduced relocalization reliability with changed lighting.
+  No evidence here establishes CPU/thermal overload or a dead camera/link.
+- Details/events/metrics saved output/roomtrek-dark-20261109-1942. No source/
+  configuration changes, AR commands, movement or deployment; read-only logs.

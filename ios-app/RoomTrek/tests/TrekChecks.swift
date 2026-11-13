@@ -1,4 +1,4 @@
-// @(#)TrekChecks.swift 3.1.roomtrek.2 2026/11/08 12:00:00
+// @(#)TrekChecks.swift 3.2 2026/11/09 18:09:21
 import Foundation
 import simd
 
@@ -44,6 +44,24 @@ import simd
         let encoded = try! MapPackageIO.encode(package)
         let decoded = try! MapPackageIO.decode(encoded)
         assert(decoded.metadata.mapID == metadata.mapID && decoded.mapData == Data([1, 2, 3, 4]), "package round-trip must preserve metadata and map data")
+        assert(decoded.metadata.parentMapID == nil && decoded.metadata.revision == nil)
+        var revision = package
+        revision.metadata.parentMapID = metadata.mapID
+        revision.metadata.lineageID = metadata.mapID
+        revision.metadata.revision = 2
+        revision.metadata.featureCount = 500
+        let revisionCopy = try! MapPackageIO.decode(MapPackageIO.encode(revision))
+        assert(revisionCopy.metadata.parentMapID == metadata.mapID && revisionCopy.metadata.revision == 2)
+        assert(revisionCopy.metadata.featureCount == 500)
+        assert(MapRevisionPolicy.canAmend(localized: true, trackingNormal: true, frameAge: 0.1, mapping: "mapped", operationError: ""))
+        assert(MapRevisionPolicy.canAmend(localized: true, trackingNormal: true, frameAge: 0.1, mapping: "extending", operationError: ""))
+        assert(!MapRevisionPolicy.canAmend(localized: false, trackingNormal: true, frameAge: 0.1, mapping: "mapped", operationError: ""))
+        assert(!MapRevisionPolicy.canAmend(localized: true, trackingNormal: false, frameAge: 0.1, mapping: "mapped", operationError: ""))
+        for age in [-1.0, 0.251, Double.nan] {
+            assert(!MapRevisionPolicy.canAmend(localized: true, trackingNormal: true, frameAge: age, mapping: "mapped", operationError: ""))
+        }
+        assert(!MapRevisionPolicy.canAmend(localized: true, trackingNormal: true, frameAge: 0.1, mapping: "limited", operationError: ""))
+        assert(!MapRevisionPolicy.canAmend(localized: true, trackingNormal: true, frameAge: 0.1, mapping: "mapped", operationError: "relocalization_timeout"))
         for malformed in [Data(), Data("{}".utf8)] {
             do { _ = try MapPackageIO.decode(malformed); assertionFailure("invalid package accepted") } catch {}
         }

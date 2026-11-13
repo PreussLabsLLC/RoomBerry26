@@ -1,0 +1,49 @@
+{
+  "translation_rotation_delta_deg": 11.25,
+  "equivalent_mount_yaw_deg": -31.25,
+  "tag15_rms_nominal_mm": 1049.703601671143,
+  "tag15_rms_adjusted_mm": 847.1851039910404,
+  "note": "Diagnostic fitted rotation; not independently calibrated. Heading remains fixed by initial tag16.",
+  "tag15_adjusted": [
+    {
+      "t": "2026-11-12T12:25:40.458151",
+      "error_mm": 897.8048580722899
+    },
+    {
+      "t": "2026-11-12T12:26:44.773839",
+      "error_mm": 852.5009149277821
+    },
+    {
+      "t": "2026-11-12T12:27:09.617401",
+      "error_mm": 834.3801833460956
+    },
+    {
+      "t": "2026-11-12T12:27:25.840513",
+      "error_mm": 834.110706077195
+    },
+    {
+      "t": "2026-11-12T12:27:51.110546",
+      "error_mm": 814.7825897976584
+    }
+  ],
+  "turns": [
+    {
+      "label": "first_return_turn",
+      "start": "2026-11-12 12:28:15",
+      "end": "2026-11-12 12:28:36",
+      "wheel_turn_deg": 131.15,
+      "phone_turn_deg": 128.7317099910783,
+      "wheel_distance_mm": 20.800000000000182,
+      "phone_heading_range_deg": 128.8336817248362
+    },
+    {
+      "label": "second_return_turn",
+      "start": "2026-11-12 12:28:42.8",
+      "end": "2026-11-12 12:28:54",
+      "wheel_turn_deg": 74.199600276947,
+      "phone_turn_deg": 72.73791727923997,
+      "wheel_distance_mm": 13.02400016784668,
+      "phone_heading_range_deg": 72.77095752448176
+    }
+  ]
+}

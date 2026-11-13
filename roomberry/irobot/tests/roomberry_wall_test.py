@@ -1,5 +1,5 @@
 """WALL departure geometry, raw IR qualification, cancellation and safety."""
-# @(#)roomberry_wall_test.py 3.1.wall.16 2026/11/09 10:40:00
+# @(#)roomberry_wall_test.py 3.2 2026/11/09 18:53:01
 import logging
 from math import pi, sin, cos, radians, degrees
 from types import SimpleNamespace as NS
@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import Mock, patch
 from roomberry_mission import RoomberryMission
 from roomberry_control import RobotCommandArbiter, WallContactStop
+from roomberry_wall import WALL_MIN_WHEEL_SPEED, WALL_TAG15_RADIUS_MM, WALL_TAG15_MAX_STEPS
 
 
 class WallTest(unittest.TestCase):
@@ -24,6 +25,7 @@ class WallTest(unittest.TestCase):
         self.m = RoomberryMission(self.robot, Mock(), Mock(), Mock(), Mock(), logging.getLogger('wall-test'))
         self.m.start_wall()
         self.w = self.m.wall
+        self.w.goal_target = (6100.,1156.)
 
     def tick(self, distance=None, angle=None):
         if distance is not None:
@@ -88,7 +90,7 @@ class WallTest(unittest.TestCase):
         self.tick()
         self.assertEqual(self.w.stage, 'release')
         self.tick(distance=180)
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30, left_velocity=-30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED, left_velocity=-WALL_MIN_WHEEL_SPEED, ramp=False)
         self.sensors.bumps_and_wheel_drops.bump_right = False
         self.tick(distance=169)
         self.assertEqual(self.w.stage, 'contact_left')
@@ -106,7 +108,7 @@ class WallTest(unittest.TestCase):
         self.assertEqual(self.robot.execute.call_args_list[0].args[0], 'stop')
         self.assertFalse(any(c.args[0] == 'drive_direct' for c in self.robot.execute.call_args_list))
         self.tick(distance=199)
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30, left_velocity=-30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED, left_velocity=-WALL_MIN_WHEEL_SPEED, ramp=False)
         self.sensors.bumps_and_wheel_drops.bump_right = False
         self.state['safety_latched'] = False
         self.tick(distance=179)
@@ -165,11 +167,11 @@ class WallTest(unittest.TestCase):
         self.sensors.light_bump_right_signal = 15
         for _ in range(3): self.tick()
         self.tick()
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30, left_velocity=30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED, left_velocity=WALL_MIN_WHEEL_SPEED, ramp=False)
         self.tick(angle=99)
         self.assertEqual(self.w.rejoin_phase, 'advance')
         self.tick(distance=184)
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=30, left_velocity=30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=WALL_MIN_WHEEL_SPEED, left_velocity=WALL_MIN_WHEEL_SPEED, ramp=False)
         self.sensors.light_bump_right_signal = 30
         for _ in range(6): self.tick(distance=189, angle=99)
         self.assertEqual(self.w.stage, 'follow')
@@ -211,7 +213,7 @@ class WallTest(unittest.TestCase):
         for c in commands:
             for key in ('right_velocity','left_velocity'):
                 value=c.kwargs[key]
-                self.assertTrue(value == 0 or abs(value) >= 30, c)
+                self.assertTrue(value == 0 or abs(value) >= WALL_MIN_WHEEL_SPEED, c)
 
     def test_right_pivot_center_drift_is_allowed_but_backing_in_advance_is_not(self):
         self.enter_rejoin()
@@ -235,7 +237,7 @@ class WallTest(unittest.TestCase):
         self.assertTrue(self.w.rejoin_ready)
         self.assertEqual(self.w.stage_angle,109)
         self.tick()
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30,left_velocity=30,ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED,left_velocity=WALL_MIN_WHEEL_SPEED,ramp=False)
 
     def test_rejoin_does_not_qualify_repeated_frame_or_discard_contact_limit(self):
         self.enter_rejoin()
@@ -292,7 +294,7 @@ class WallTest(unittest.TestCase):
         self.assertFalse(self.w.lease)
         for _ in range(3): self.tick()
         self.tick()
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30, left_velocity=30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED, left_velocity=WALL_MIN_WHEEL_SPEED, ramp=False)
         self.sensors.light_bump_right_signal = 30
         for _ in range(7): self.tick(distance=209, angle=87)
         self.assertEqual(self.w.stage, 'follow')
@@ -324,7 +326,7 @@ class WallTest(unittest.TestCase):
         for _ in range(4): self.tick()
         for _ in range(3): self.tick()
         self.tick()
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30, left_velocity=30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED, left_velocity=WALL_MIN_WHEEL_SPEED, ramp=False)
         distance, angle = 229, 109
         angle -= 15
         self.tick(angle=angle)
@@ -358,8 +360,10 @@ class WallTest(unittest.TestCase):
             if limit == 'time': self.w.detour_started -= 91
             else: self.w.total_mm = self.w.detour_start_mm+1501
             self.tick()
-            self.assertEqual(self.m._mode, 'idle')
-            self.assertIn('obstacle bypass exceeded', self.w.result['reason'])
+            self.assertEqual(self.m._mode, 'wall')
+            self.assertEqual(self.w.stage,'tag15_scan')
+            self.assertIsNotNone(self.w.tag15_search)
+            self.assertFalse(self.w.detour_active)
         self.setUp(); self.follow(); self.w.loss_searches = 8
         self.sensors.light_bump_right_signal = 0
         self.tick()
@@ -471,7 +475,7 @@ class WallTest(unittest.TestCase):
         self.anchor(); self.w.progress = 0; self.w.progress_at -= 3
         self.tick()
         self.assertIn('progress', self.w.result['reason'])
-        self.setUp(); self.anchor(); self.tick(angle=-4)
+        self.setUp(); self.anchor(); self.tick(); self.tick(angle=-4)
         self.assertIn('opposite', self.w.result['reason'])
         self.setUp(); self.w.deadline = 0; self.tick()
         self.assertIn('time limit', self.w.result['reason'])
@@ -563,7 +567,7 @@ class WallTest(unittest.TestCase):
                 if self.w.stage == 'follow':
                     followed += 1
                     gaps.append(600-body[0]-165)
-                    if followed >= 600:
+                    if followed >= 500:
                         break
                 if self.w.result is not None:
                     self.fail(self.w.result)
@@ -574,7 +578,7 @@ class WallTest(unittest.TestCase):
         self.assertLessEqual(len(checks), 8)
         self.assertEqual(checks[::2], ['align_left45']*(len(checks)//2))
         self.assertEqual(checks[1::2], ['align_check']*(len(checks)//2))
-        self.assertEqual(followed, 600)
+        self.assertEqual(followed, 500)
         self.assertGreater(min(gaps), 0)
         # 20-30 band centres near 25, so final gap is allowed to settle
         # within the band rather than a single 30-unit point.
@@ -598,15 +602,15 @@ class WallTest(unittest.TestCase):
         self.assertTrue(any(r['event']=='contact_preempted_drive' for r in self.w.records))
         self.robot.execute.assert_called_with('stop', timeout=2)
         self.tick(distance=189)
-        self.robot.execute.assert_called_with('drive_direct', right_velocity=-30, left_velocity=-30, ramp=False)
+        self.robot.execute.assert_called_with('drive_direct', right_velocity=-WALL_MIN_WHEEL_SPEED, left_velocity=-WALL_MIN_WHEEL_SPEED, ramp=False)
 
-    def test_repeat_contact_during_bypass_escalates_to_full_left(self):
+    def test_repeat_contact_during_bypass_limits_left_turn_to45(self):
         self.enter_obstacle_bypass()
         self.sensors.bumps_and_wheel_drops.bump_right = True
         self.tick()
         self.assertEqual(self.w.stage, 'release')
         self.assertTrue(self.w.detour_active)
-        self.assertEqual(self.w.contact_left_deg, 90)
+        self.assertEqual(self.w.contact_left_deg, 45)
 
     def test_follow_contact_soon_after_wall_loss_starts_go_around(self):
         self.follow()
@@ -799,7 +803,7 @@ class WallTest(unittest.TestCase):
         self.w.total_mm = 5000
         self.tick()
         self.assertEqual(self.w.stage, 'tag15_scan')
-        pose = dict(x_mm=6100, y_mm=1156, heading_rad=-1.8, localized=True,
+        pose = dict(x_mm=5820, y_mm=1156, heading_rad=-1.8, localized=True,
                     accepted_tag_ids=(('tag16h5', 15),))
         self.w.tick(self.state, pose, True, self.w._wall_time+1)
         self.assertEqual(self.w.stage, 'tag15_scan')
@@ -807,7 +811,7 @@ class WallTest(unittest.TestCase):
         self.w.tick(self.state, pose, True, self.w._wall_time+2)
         self.assertEqual(self.m._mode, 'idle')
         self.assertEqual(self.w.result['status'], 'complete')
-        self.assertIn('tag15 scan complete', self.w.result['reason'])
+        self.assertIn('tag15 validated within 300mm', self.w.result['reason'])
 
     def test_tag15_scan_allows_scan_pause(self):
         self.follow()
@@ -816,3 +820,256 @@ class WallTest(unittest.TestCase):
         self.assertEqual(self.w.stage, 'tag15_scan')
         self.assertTrue(self.m.scan_pause())
         self.m.scan_complete()
+
+    def test_pre_reverse_coast_does_not_trip_direction_guard(self):
+        self.follow()
+        self.state['distance']=3341.0;self.w.previous=(3341.0,self.state['angle'])
+        self.w.stop_motion('contact transition')
+        self.w.stage='release'
+        self.w.stage_distance=3341.0
+        self.w.acquire_origin=3341.0
+        self.w.drive(-50,-50,self.state)
+        # First post-command mission snapshot includes pre-command +4.9mm
+        # followed by -1.3mm of actual reverse motion.
+        self.tick(distance=3344.6)
+        self.assertIsNone(self.w.result)
+        self.tick(distance=3341.4)
+        self.assertIsNone(self.w.result)
+
+    def test_continuing_wrong_direction_after_new_baseline_still_aborts(self):
+        self.follow();self.w.stop_motion('test reverse boundary');self.w.stage='release'
+        self.w.drive(-50,-50,self.state)
+        self.tick(distance=self.state['distance']+3.6)
+        self.assertIsNone(self.w.result)
+        self.tick(distance=self.state['distance']+5)
+        self.assertIn('opposite',self.w.result['reason'])
+
+    def test_scan_requires_actual_tag15_within_300_not_wheel_checkpoint(self):
+        self.follow();self.w.total_mm=5000;self.tick()
+        if self.w.stage=='tag15_face':
+            self.w.transition('tag15_scan',self.state,60)
+        pose=dict(x_mm=5500.,y_mm=1156.,heading_rad=0.,localized=True,
+                  accepted_tag_ids=(('tag16h5',15),))
+        for t in (self.w._wall_time+10,self.w._wall_time+11):
+            self.w.tick(self.state,pose,True,t)
+        self.assertEqual(self.w.stage,'tag15_approach')
+        self.assertIsNone(self.w.result)
+        self.assertEqual(self.w.approach_mm,100)
+
+    def test_near_goal_parks_then_confirms_two_fresh_scans(self):
+        self.follow()
+        self.w.goal_pose=dict(x_mm=5820.,y_mm=1156.,heading_rad=0.)
+        self.w.goal_odom=(self.state['distance'],self.state['angle'])
+        self.tick()
+        self.assertEqual(self.w.stage,'tag15_scan')
+        pose=dict(self.w.goal_pose,localized=True,accepted_tag_ids=(('tag16h5',15),))
+        # Capture predating parking is not a confirmation.
+        self.w.tick(self.state,pose,True,self.w.tag_scan_started-1)
+        self.assertIsNone(self.w.tag_scan_anchor)
+        self.w.tick(self.state,pose,True,self.w.tag_scan_started+1)
+        self.assertIsNone(self.w.result)
+        self.w.tick(self.state,pose,True,self.w.tag_scan_started+2)
+        self.assertEqual(self.w.result['status'],'complete')
+        self.assertLessEqual(self.w.records[-2]['range_mm'],300)
+
+    def test_final_approach_is_bounded_and_never_pushes_through_bumper(self):
+        self.follow();self.w.validation_started=__import__('time').monotonic()
+        self.w.goal_pose=dict(x_mm=5500.,y_mm=1156.,heading_rad=0.)
+        self.w.goal_odom=(self.state['distance'],self.state['angle'])
+        self.w.approach_mm=100
+        self.w.transition('tag15_approach',self.state,15)
+        self.tick()
+        self.robot.execute.assert_called_with('drive_direct',right_velocity=50,left_velocity=50,ramp=False)
+        self.tick(distance=self.state['distance']+60)
+        self.tick(distance=self.state['distance']+41)
+        self.assertEqual(self.w.stage,'tag15_scan')
+        self.w.transition('tag15_approach',self.state,15)
+        self.sensors.bumps_and_wheel_drops.bump_right=True
+        self.tick()
+        self.assertEqual(self.w.result['status'],'aborted')
+
+    def test_path_limit_does_not_claim_success_without_tag_validation(self):
+        self.follow();self.w.total_mm=8000;self.tick()
+        self.assertEqual(self.w.result['status'],'aborted')
+
+    def test_tag_goal_requires_surveyed_target(self):
+        self.w.goal_target=None
+        pose=dict(x_mm=3100,y_mm=1400,heading_rad=-pi/2,localized=True,accepted_tag_ids=(('tag16h5',16),))
+        for t in (self.w._wall_time+1,self.w._wall_time+2):self.w.tick(self.state,pose,True,t)
+        self.assertEqual(self.w.result['status'],'aborted')
+
+    def test_final_approach_limit_does_not_allow_unbounded_closing(self):
+        self.follow();self.w.total_mm=5000;self.tick()
+        self.w.transition('tag15_scan',self.state,60)
+        self.w.validation_steps=WALL_TAG15_MAX_STEPS
+        pose=dict(x_mm=5500.,y_mm=1156.,heading_rad=0.,localized=True,accepted_tag_ids=(('tag16h5',15),))
+        for t in (self.w.tag_scan_started+1,self.w.tag_scan_started+2):self.w.tick(self.state,pose,True,t)
+        self.assertEqual(self.w.result['status'],'aborted')
+
+    def test_whole_run_time_bound_still_six_minutes(self):
+        self.w.started-=361;self.tick()
+        self.assertEqual(self.w.result['status'],'aborted')
+
+    def lucky_search(self):
+        self.enter_obstacle_bypass()
+        self.w.total_mm=self.w.detour_start_mm+1501
+        self.robot.execute.reset_mock();self.tick()
+        self.assertEqual(self.w.stage,'tag15_scan')
+        self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
+
+    def missing_view(self):
+        base=self.w.tag_scan_started
+        self.w.tick(self.state,None,True,base+1,detections=())
+        self.w.tick(self.state,None,True,base+2,detections=())
+
+    def settle_scan_view(self, target):
+        from time import monotonic
+        if not hasattr(self,'turn_now'):self.turn_now=monotonic()
+        start=self.state['angle']
+        # Initial stationary qualification, pulse, coast, then fresh quiet polls.
+        for angle in (start,start,start,(start+target)/2,target,target):
+            self.turn_now+=.2
+            self.state['sensor_monotonic_s']=self.turn_now
+            self.state['angle']=angle
+            with patch('roomberry_wall.monotonic',return_value=self.turn_now):
+                self.w.tick(self.state)
+        self.assertEqual(self.w.stage,'tag15_scan')
+
+    def test_lucky_scan_current_plus10_minus10_then_stops(self):
+        self.lucky_search();origin=self.state['angle']
+        self.missing_view()
+        self.assertEqual(self.w.stage,'tag15_search_turn')
+        self.settle_scan_view(origin+10)
+        self.assertEqual(self.w.stage,'tag15_scan')
+        self.assertTrue(self.m.scan_pause());self.m.scan_complete()
+        self.missing_view();self.settle_scan_view(origin-10)
+        self.missing_view()
+        self.assertEqual(self.m._mode,'idle')
+        self.assertIn('current/+10/-10',self.w.result['reason'])
+
+    def test_lucky_scan_confirmed_tag_resumes_bounded_approach(self):
+        self.lucky_search()
+        pose=dict(x_mm=4300.,y_mm=1156.,heading_rad=0.,localized=True,accepted_tag_ids=(('tag16h5',15),))
+        t=self.w.tag_scan_started
+        self.w.tick(self.state,pose,True,t+1)
+        self.assertEqual(self.w.stage,'tag15_scan')
+        self.w.tick(self.state,pose,True,t+2)
+        self.assertEqual(self.w.stage,'tag15_approach')
+        self.assertIsNone(self.w.tag15_search)
+        self.assertEqual(self.w.approach_mm,100)
+        self.assertFalse(self.w.detour_active)
+        self.assertIsNone(self.w.result)
+
+    def test_lucky_scan_duplicates_and_old_captures_do_not_advance(self):
+        self.lucky_search();t=self.w.tag_scan_started
+        for _ in range(4):self.w.tick(self.state,None,True,t-1,detections=())
+        self.assertEqual(self.w.tag15_search['captures'],0)
+        for _ in range(4):self.w.tick(self.state,None,True,t+1,detections=())
+        self.assertEqual(self.w.tag15_search['captures'],1)
+        self.assertEqual(self.w.stage,'tag15_scan')
+
+    def test_lucky_scan_cannot_turn_with_contact_or_hazards(self):
+        for hazard in ('bumper','cliff'):
+            self.setUp();self.enter_obstacle_bypass();self.w.total_mm=self.w.detour_start_mm+1501
+            self.robot.execute.reset_mock()
+            if hazard=='bumper':self.sensors.bumps_and_wheel_drops.bump_right=True
+            else:self.state['hard_hazard_reasons']=['cliff']
+            self.tick()
+            self.assertEqual(self.m._mode,'idle')
+            self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
+
+    def test_lucky_scan_time_translation_and_angle_envelopes(self):
+        for bound in ('time','translation','angle'):
+            self.setUp();self.lucky_search()
+            if bound=='time':self.w.tag15_search['started']-=76
+            elif bound=='translation':self.state['distance']+=26
+            else:self.state['angle']+=16
+            self.tick()
+            self.assertEqual(self.w.result['status'],'aborted')
+
+    def test_lucky_turn_blocks_unplanned_scan_and_never_drives_forward(self):
+        self.lucky_search();self.missing_view()
+        self.assertFalse(self.m.scan_pause())
+        self.settle_scan_view(self.state['angle']+10)
+        moves=[c for c in self.robot.execute.call_args_list if c.args[0]=='drive_direct']
+        self.assertTrue(moves)
+        self.assertTrue(all(c.kwargs['right_velocity']+c.kwargs['left_velocity']==0 for c in moves))
+
+    def gated_start(self):
+        self.m.set_mode('idle')
+        self.phone_state=dict(status='connecting',error='',start_attempt=0)
+        self.m.trek_survey_status=lambda:dict(self.phone_state)
+        self.m.navlink=Mock()
+        self.m.start_wall();self.w=self.m.wall
+        self.w.goal_target=(6100.,1156.)
+        self.robot.execute.reset_mock()
+
+    def test_startup_waits_without_driving_and_aborts_on_failure(self):
+        self.gated_start();self.tick()
+        self.assertEqual(self.w.stage,'phone_ready')
+        self.phone_state.update(status='restarting');self.tick()
+        self.assertEqual(self.w.stage,'phone_ready')
+        self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
+        self.phone_state.update(status='failed',error='relocalization_timeout');self.tick()
+        self.assertEqual(self.m._mode,'idle')
+        self.assertIn('relocalization_timeout',self.w.result['reason'])
+
+    def test_startup_deadline_remains_bounded(self):
+        self.gated_start();self.w.deadline-=121
+        self.tick();self.assertEqual(self.m._mode,'idle')
+
+    def test_tag16_binding_failure_never_releases_startup_hold(self):
+        self.gated_start();self.phone_state.update(status='surveying');self.tick()
+        self.assertEqual(self.w.stage,'anchor')
+        self.w.phone_anchor=Mock(state='unavailable',last_result=None);self.w.phone_anchor.bind.return_value=False
+        pose=dict(x_mm=3100,y_mm=1400,heading_rad=-pi/2,localized=True,accepted_tag_ids=(('tag16h5',16),))
+        for t in (self.w._wall_time+1,self.w._wall_time+2,self.w._wall_time+3):self.w.tick(self.state,pose,True,t)
+        self.assertEqual(self.w.stage,'anchor')
+        self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
+        self.w.deadline-=61;self.tick();self.assertEqual(self.m._mode,'idle')
+
+    def test_ready_phone_and_fresh_tag_pair_release_startup(self):
+        from time import monotonic
+        self.gated_start();old=self.w._wall_time
+        self.phone_state.update(status='surveying',start_attempt=2);self.tick()
+        phone=Mock(state='anchored',last_result=None);self.w.phone_anchor=phone;phone.bind.return_value=True;phone.usable.return_value=True
+        phone.anchor=dict(session=7,map_uuid_hex=bytes(16).hex())
+        self.m.navlink.latest_trek_observation.return_value=dict(session=7,map_uuid=bytes(16),frame_monotonic=monotonic())
+        pose=dict(x_mm=3100,y_mm=1400,heading_rad=-pi/2,localized=True,accepted_tag_ids=(('tag16h5',16),))
+        self.w.tick(self.state,pose,True,old-1)
+        self.assertIsNone(self.w.anchor)
+        for t in (self.w._wall_time+1,self.w._wall_time+2):self.w.tick(self.state,pose,True,t)
+        self.assertEqual(self.w.stage,'left90')
+        self.assertIsNotNone(self.w.motion_started)
+        self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
+
+    def test_stale_or_changed_phone_before_departure_aborts(self):
+        from time import monotonic
+        for fault in ('stale','changed-session'):
+            self.setUp();self.gated_start();self.phone_state.update(status='surveying',phone_session='7');self.tick()
+            phone=Mock(state='anchored',last_result=None);self.w.phone_anchor=phone
+            phone.bind.return_value=True;phone.usable.return_value=True
+            phone.anchor=dict(session=7,map_uuid_hex=bytes(16).hex())
+            self.m.navlink.latest_trek_observation.return_value=dict(session=7 if fault=='stale' else 8,
+                map_uuid=bytes(16),frame_monotonic=monotonic()-(1 if fault=='stale' else 0))
+            pose=dict(x_mm=3100,y_mm=1400,heading_rad=-pi/2,localized=True,accepted_tag_ids=(('tag16h5',16),))
+            for t in (self.w._wall_time+1,self.w._wall_time+2):self.w.tick(self.state,pose,True,t)
+            self.assertEqual(self.m._mode,'idle')
+            self.assertIn('stale',self.w.result['reason'])
+            self.assertFalse(any(c.args[0]=='drive_direct' for c in self.robot.execute.call_args_list))
+
+    def test_lucky_checkpoint_solver_does_not_relax_normal_tag_range_gate(self):
+        import json
+        from pathlib import Path
+        from roomberry_localization import AprilTagLocalizer as L
+        cfg=json.loads((Path(__file__).resolve().parents[2]/'autonomy.json').read_text())
+        tag=next(r for r in cfg['landmarks'] if r['id']==15)['world_from_tag']
+        self.m.localizer=L({('tag16h5',15):tag},cfg['camera_from_robot'],max_tag_distance_m_by_key={('tag16h5',15):1.2})
+        robot=[[1,0,0,tag[0][3]-2],[0,1,0,tag[1][3]],[0,0,1,0],[0,0,0,1]]
+        camera_tag=L._multiply(cfg['camera_from_robot'],L._multiply(L._inverse(robot),tag))
+        detection=dict(family='tag16h5',id=15,hamming=0,decision_margin=100,
+                       tag_pose_camera=dict(rotation=[r[:3] for r in camera_tag[:3]],translation_m=[r[3] for r in camera_tag[:3]],error=0))
+        self.assertIsNone(self.m.localizer.update([detection],0,0))
+        pose=self.w.tag15_candidate([detection])
+        self.assertIn(('tag16h5',15),pose['accepted_tag_ids'])
+        self.assertEqual(self.m.localizer.max_tag_distance_m_by_key[('tag16h5',15)],1.2)

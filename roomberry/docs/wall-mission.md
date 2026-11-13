@@ -1,7 +1,7 @@
-<!-- @(#)wall-mission.md 3.1.wall.16 2026/11/09 10:40:00 -->
+<!-- @(#)wall-mission.md 3.2 2026/11/09 18:53:01 -->
 # WALL mission
 
-Control build `3.1.wall.16`. Uses the Python server's `/` console and
+Control build `3.2`. Uses the Python server's `/` console and
 `/status.json`. Clock starts WALL and a second press cancels it. Clock also
 cancels active calibration or GridRunner; start GridRunner from the console.
 No files in the legacy web-app are used or changed.
@@ -27,9 +27,14 @@ sample is held for each numeric second. SCAN takes priority during scanning.
 
 1. Position the robot facing known tag16 and press Clock or **Start WALL**.
 2. While stopped, obtain two fresh tag16 fixes agreeing within75mm and0.1rad.
-   Anchor qualification times out after60seconds. No motion begins until accepted.
+   With the RoomTrek coordinator enabled, first hold stopped for loaded-map
+   relocalization (one bounded AR restart permitted). Only then request fresh
+   tag16 scans and require successful phone pairing. Total startup is bounded
+   by120seconds, with at most60seconds for anchor qualification after readiness.
+   No motion begins until both are accepted. With the integration disabled,
+   existing tag-only60second startup behavior remains.
 3. Turn left90degrees, advance200mm, turn right45degrees and approach slowly
-   at30mm/s. Wheel-odometry targets have small braking tolerances; actual floor
+   at50mm/s. Wheel-odometry targets have small braking tolerances; actual floor
    distances and angles still require physical validation.
 4. Three distinct right light-bumper samples at or above20 stop the approach
    as an **IR candidate**, not proof of reaching the intended wall. The operator
@@ -51,7 +56,7 @@ sample is held for each numeric second. SCAN takes priority during scanning.
    This is scoped to WALL with both wheels commanded forward, not reverse/turns.
    It is a stalled-drive indication, not a fabricated physical bumper reading.
 8. During acquisition/alignment/following, either event stops first, reverses
-   at30mm/s for30mm, requires cleared bumper/safety and an acknowledged stop,
+   at50mm/s for30mm, requires cleared bumper/safety and an acknowledged stop,
    then releases the contact latch and turns left15degrees before rejoining.
    Contact during a wall-loss right search, an already active bypass, or
    in follow within500mm of travelled distance after a wall-loss search
@@ -60,7 +65,7 @@ sample is held for each numeric second. SCAN takes priority during scanning.
    close to the fridge a single large left turn overshoots the recessed
    front, so the first bypass attempt turns left20degrees only and keeps
    the contacted object's boundary on the right. If contact repeats while
-   the bypass is active, the next attempt escalates to left90degrees. It
+   the bypass is active, the next attempt uses a limited left45degree turn. It
    does not identify the fridge by vision or guarantee a mapped route
    around it.
    Isolated side-wall contacts retain the small15degree correction.
@@ -69,12 +74,12 @@ sample is held for each numeric second. SCAN takes priority during scanning.
    and stops are allowed. Recovery has a separate forty-two-event limit; acquisition retries do not consume it. Contact during
    initial departure remains an abort, and cliffs/wheel drops always abort.
 9. Rejoin uses measured right turns and short straight advances. Every nonzero
-   WALL wheel command is at least30mm/s in magnitude; stops remain zero. This
+   WALL wheel command is at least50mm/s in magnitude; stops remain zero. This
    minimum also applies to approach, reverse, pivots and tracking corrections.
    It is a commanded-speed floor, not independently measured body speed.
    Before a low-signal search, stop and collect three fresh settling frames.
-   Then turn right in measured steps using right=-30,left=30, and advance30mm
-   using both wheels=30 between turns. On>=20 IR units, stop and confirm three
+   Then turn right in measured steps using right=-50,left=50, and advance30mm
+   using both wheels=50 between turns. On>=20 IR units, stop and confirm three
    fresh readings before resuming follow. If already at target, qualify stopped
    without turning. Do not repeat initial acquisition/45degree left alignment.
    Contact rejoin uses5degree steps bounded by30degrees right or10seconds;
@@ -86,10 +91,20 @@ sample is held for each numeric second. SCAN takes priority during scanning.
    During obstacle bypass, use15degree measured right steps and50mm advances,
    bounded by90degrees/25seconds; the former350mm search cutoff is removed.
    Complete bypass remains bounded by1500mm accumulated encoder path/90seconds.
+   At that limit, stop and try one bounded tag15 look: current heading, then
+   +10degrees and -10degrees relative to that stopped heading. Each view takes
+   two fresh captures without a fix, or up to four with an unconfirmed candidate.
+   Pivots use50mm/s opposite wheels, stop within3degrees, and allow8seconds each.
+   The complete look allows75seconds, at most25mm centre translation and a hard
+   +/-15degree angular envelope. Contact or other safety failures abort it.
+   If no consistent tag15 fix is found, remain stopped and abort explicitly.
+   Two agreeing captures can resume the bounded approach below. A dedicated
+   stationary tag15 solver permits2500mm camera range while preserving the
+   normal localizer's1200mm gate and its quality/room-bound checks.
    After>=200mm and three fresh >=20 readings within20deg of entry heading,
    return to normal tracking. This is a heading/IR handoff, not identification
    of the original room wall. Contact/cliff/stall guards remain active.
-10. Follow at nominal35mm/s with proportional/derivative control centred on
+10. Follow at nominal80mm/s with proportional/derivative control centred on
    25 and a 20–30 deadband. Inside the band the robot drives straight; above
    30 it steers left, away from the right wall; below 20 it steers right,
    toward it, while the wall signal remains usable. Single-frame dips do not
@@ -101,18 +116,27 @@ sample is held for each numeric second. SCAN takes priority during scanning.
    first stops and ends the moving lease, then starts the bounded right search
    above instead of aborting after the previous1.5s wait. Permit at most eight
    wall-loss searches per run, in addition to the separate forty-two contact recoveries.
-   At 5000mm total wheel travel (about1.5m past the fridge in the 3.5m
-   run), follow stops and enters a `tag15_scan` stage: request camera scans
-   until two fresh tag-15 fixes agree within75mm/0.1rad, then finish
-   complete. Tag 15 is at the same y as tag 16 so it should be in view
-   while following the wall.
+   The goal is a validation scan with the **robot centre within300mm of
+   surveyed tag15**, not a fixed wheel distance. A separate wheel pose is
+   integrated from the qualified tag16 anchor. At its estimated300mm range,
+   or a5000mm checkpoint, park, face the tag using a bounded pivot if needed,
+   and request stationary scans. Completion requires two distinct captures
+   made after parking, accepting tag15 and agreeing within75mm/0.1rad, with
+   measured robot-centre range<=300mm. A wheel estimate alone cannot complete.
+   If the stable tag fix remains farther away (up to2500mm), advance toward
+   the tag in at most100mm measured segments, then stop and scan again.
+   Use50mm/s for those segments/pivots, at most24 steps/180seconds. A missing
+   tag, disagreeing fixes, unexpected contact or exceeded bound causes an
+   explicit abort rather than assuming arrival. Camera-to-tag range differs
+   from the robot-centre radius by the calibrated camera offset.
+   Tag validation events record the wheel-predicted pose and tag correction.
    A bump or stalled drive during a wall-loss search takes priority and starts
    the left bypass, rather than continuing to push or repeatedly steer right.
    Contact is handled as above; no automatic motion is permitted through a hard hazard.
 
 Each forward approach has a25second stage limit; the cumulative bounds above
-cover the entire acquisition/alignment sequence. Trial ends at6metres of accumulated
-wheel travel or240seconds; following itself has a180second limit. These are
+cover the entire acquisition/alignment sequence. Run aborts without claiming success at8metres of accumulated
+wheel travel or360seconds after qualified departure; following itself has a180second limit. These are
 trial limits, not room-loop completion. Cliff/wheel-drop, stale/failed sensors,
 low battery, odometry reset/discontinuity, wrong-way motion and stalled wheels
 abort. The I/O owner enforces an independent0.6second motion lease. Stop/idle
@@ -144,8 +168,9 @@ and right light-bumper channels for comparison.
 
 RoomTrek remote survey/save/navigation commands, type6 receiving, IMU fusion
 and the full survey-versus-navigation validation circuit remain subsequent work.
-This mission does not start the phone app or save an AR map. The initial tag
-anchor qualifies departure; driving does not require continuous tag visibility.
+This mission cannot launch a backgrounded phone app. The configured Pi survey
+coordinator resumes/saves the AR map and WALL holds for startup readiness.
+The initial tag/phone anchor qualifies departure; driving does not require continuous tag visibility.
 
 ## HTTP and deployment
 
@@ -157,3 +182,58 @@ For this wall.16 update over wall.15, sync `roomberry_wall.py`,
 `roomberry_control.py` and `roomberry_mission.py`,
 restart the service and verify version `3.1.wall.16`. No physical trial has been
 performed as part of this implementation.
+
+
+## 3.2 speed and direction-transition changes
+
+The12:38 run's stable30mm/s commands produced median encoder speeds of about
+39–42mm/s, and35mm/s commands about40mm/s. This supports avoiding that low-speed
+range; it does not prove firmware intent or true body speed. Set the moving
+wheel floor to50mm/s and cruise to80mm/s, with the existing35% steering cap
+(roughly52–108mm/s before integer rounding). These are provisional commands,
+not guaranteed real speeds. Stops remain zero; contact, cliff, wheel-drop,
+lease, stale-sensor, odometry and no-progress guards remain active.
+
+After a new wheel-sign pattern or a stopped-to-moving transition, the first
+fresh sensor sample establishes a direction baseline. It may include coast
+from the previous command and is not judged against the new command. Later
+fresh samples must agree with the commanded direction; continuing wrong-way
+motion still aborts. All mission-snapshot travel remains counted in path bounds.
+This fixes the recorded forward-coast/reverse-transition false abort without
+removing the direction guard. The independent movement lease still brakes if
+the mission loop stalls.
+
+Additional spoken codes cover anchoring, wall acquisition/loss/search/rejoin,
+contact release, fridge bypass, tag15 approach/validation, completion/abort,
+map save and unavailable phone. See [speech catalogue](speech.md).
+
+The speed floor, terminal approach and scan quality require a physical trial.
+Pi uploads remain with the operator; no deployment is implied by host tests.
+
+
+## Tag16-aligned phone comparison
+
+The initial qualified tag16 pose also establishes a fixed RoomTrek room-frame
+alignment using the dashboard mount’s optical-forward correction (20° left,15° up)
+and lens offset(10mm forward,180mm left).
+A separate wheel trace and aligned phone robot-centre trace are logged without
+steering corrections. See [alignment and next-run plotting](roomtrek-alignment.md)
+for pairing, reset behavior, mount assumptions and required Pi uploads.
+
+Explicit **Return to tag15**, including recovery after manual steering, now also
+parks at estimated300mm and requests a validation scan. Two fresh agreeing
+tag15 captures must confirm centre range<=300mm before reporting completion
+and speaking TAG15_VALIDATED. Missing/disagreeing fixes or a measured range
+outside300mm stop explicitly; wheel estimates cannot complete the run. Existing
+contact, close-range and travel guards remain. This replaces the old bumper
+approach endpoint for standalone mapped-tag return.
+
+Lucky-scan pivots use the shared measured-settling controller through WALL's
+acknowledged stop/lease owner. A0.12second pulse budget is checked each mission
+tick (not a hardware timer); after each pulse, brake and require fresh encoder
+samples showing at least150ms quiet, <=2degrees/s rotation and<=5mm/s translation
+before another pulse, reversal or camera scan. Measured closing-rate braking
+also applies. Moving wheels retain the50mm/s floor. The8second turn timeout,
+75second look bound, +/-15degree angular and25mm translation envelope stay
+unchanged; excessive coast or1.5second settling failure still aborts stopped.
+Actual coast response needs the next physical run.

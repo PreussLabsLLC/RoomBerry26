@@ -1,4 +1,4 @@
-<!-- @(#)README.md 3.1.roomtrek.3 2026/11/08 14:00:00 -->
+<!-- @(#)README.md 3.2.imu.1 2026/11/12 15:16:02 -->
 # RoomTrek
 
 For the phone-by-phone walkthrough, see [Room scan and transfer guide](ROOM-SCAN-GUIDE.md).
@@ -119,15 +119,28 @@ in robot body axes (identity in v1, configurable in `MountTransform`). The three
 body — are never silently reinterpreted: only an explicit Reset changes
 the session identity.
 
+## Mothership
+
+The **Mothership — report to (UDP 5010)** field selects the Raspberry Pi that
+receives telemetry, heartbeats and control replies. It defaults to `pi3.local`.
+Enter `pi3`, `pi3.local`, or an IPv4 address, then tap Done. The app remembers
+this setting across launches and reconnects an existing link when it changes.
+Stop the current AR session before editing this field. Enter a host only,
+without `http://`, a path or a port; the UDP port stays 5010. The phone and Pi
+must be on the same reachable network. A UDP-ready message does not confirm
+that the Pi has received packets. Shared-key provisioning is unchanged.
+
 ## NavLink
 
 Optional and off by default. Host defaults to `pi`, port 5010, 10 Hz latest-only UDP.
 The approved experimental v1/type-6 extension is specified in [NAVLINK.md](NAVLINK.md).
 It preserves full map UUID, camera quaternion and explicit relocalization state.
-Existing Pi receivers **reject type 6**; receiver support is a follow-up, and this
-implementation does not change robot behavior. UDP send completion is not receipt.
-Only fresh, normal, relocalized Navigator poses set the validity bit; Surveyor
-packets are diagnostic only. Camera pose is always distinct from robot-center pose.
+The Pi receiver records and exports type 6 without feeding it into robot
+localization. Authenticated bidirectional commands share this socket; see
+[NAVLINK.md](NAVLINK.md#bidirectional-control-32navlink1) for key provisioning,
+wire format, operation status and Python CLI examples. UDP send completion is not receipt.
+Fresh, normal, relocalized loaded-map poses (Navigator or resumed Surveyor) set
+the validity bit; fresh Surveyor packets remain diagnostic only. Camera pose is always distinct from robot-center pose.
 
 ## Logging
 
@@ -171,7 +184,7 @@ return-to-start measurements.
 - Mount transform is identity: NavLink reports camera pose, and every HUD labels it "CAMERA, not robot center".
 - `worldMappingStatus == mapped` means ARKit is satisfied, not that the
   kitchen coverage is good.
-- NavLink type 6 needs Pi receiver and exporter support; current receivers reject it.
+- Remote control requires a provisioned shared key and the upgraded Pi receiver.
 - Host-side `tests/TrekChecks.swift` covers yaw/validity, map token,
   type-6 wire bytes and JSON round-trip. Feature-point overlay, File
   transfer, relocalization timing and the 30.48 cm error require the
@@ -181,7 +194,7 @@ return-to-start measurements.
 
 - Mount calibration (`T_B_C` from measured values) so NavLink can mark
   robot-axle pose.
-- Add and test the specified NavLink type 6 receiver on the Pi before fusion.
+- Validate bidirectional commands and type-6 telemetry on the Pi and phones before fusion.
 - Investigate relocalization sensitivity to camera height, lighting and
   mount before attempting fusion with wheel odometry.
 
@@ -229,8 +242,68 @@ No ARKit runtime or cross-device accuracy result is claimed from build checks.
 Before kitchen trials, verify Stop/Start logging, Reset/Retry, camera permission
 denial, background interruption, feature-poor/covered camera, malformed import,
 map rename/delete, and Files export/import. Invalid/limited/stale observations
-must never carry the NavLink valid bit. Keep telemetry disabled until a matching
-receiver exists. For each trial record map UUID, phone/OS, camera height, start
+must never carry the NavLink valid bit. Use the matching receiver and provision the shared key before remote-control
+trials. For each trial record map UUID, phone/OS, camera height, start
 orientation, lighting, time to candidate, tracking losses, checkpoint errors and
 return displacement. Record failed attempts as well as successes; use physical
 marks/tape measurements rather than encoder estimates as the reference.
+
+
+## Spoken voice
+
+Use the Australian voice menu and **Test Voice** to audition installed `en-AU`
+options for the desired young female character. The chosen identifier, pitch
+(initially 1.08) and rate (initially 0.52) persist. No voice name, age or gender
+is assumed. Missing voices fall back to another installed Australian voice,
+then the system default. Voice names, identifiers and quality levels are in
+Export Log + Pose CSV's JSONL file. See [SPEAK settings and CLI](NAVLINK.md#speak-voice-settings).
+
+
+## Pi-owned run surveys
+
+Roomberry can now start Surveyor at mission start, save `kitchen-YYMMDD` when
+returning to idle and stop the phone session after saving. See
+[Pi-controlled survey setup](../../roomberry/docs/roomtrek-survey.md).
+With a provisioned key, the app starts NavLink enabled unless explicitly turned
+Off; that setting persists. Keep the app foreground. The headline now displays
+its SCCS version and build timestamp so the installed build is identifiable.
+
+## Audible tracking heartbeat
+
+Enabled by default; the **10s tracking ping** switch persists its setting.
+With RoomTrek foregrounded, a short high1100Hz tone means an active session,
+valid normal tracking, a frame no more than1second old and NavLink enabled.
+A lower440Hz double tone means the app is awake but tracking/session/NavLink
+needs attention. Idle sessions also use the low double tone, so they do not
+pretend to be tracking. Tone interval is10seconds; speech delays the next tone
+without interrupting speech or replaying missed pings.
+
+Tones stop when RoomTrek backgrounds or audio is interrupted. Silence can also
+mean ping disabled, volume/routing problems, or speech in progress; it is not
+a healthy signal. Set the iPhone media volume and check the speaker before
+mounting it. Active sessions prevent automatic screen sleep as before.
+The high tone confirms local tracking, not successful Pi delivery, map coverage
+or saved-map quality. No UDP configuration or robot control changes.
+
+## Kitchen map revisions
+
+The Pi now resumes the newest saved kitchen map rather than starting fresh on
+every mission. Authenticated SURVEY_START accepts map_id, loads initialWorldMap
+and completes after relocalization; mapping continues in that same session.
+SURVEY_SAVE writes a new UUID-backed revision with parent/lineage/revision and
+feature-count metadata. Previous maps are preserved. Invalid/stale tracking,
+failed relocalization or limited mapping prevents an automatic revision save.
+The library shows revision number and feature count; old packages remain readable.
+This extends one loaded map; it does not merge the independent maps from earlier
+runs or guarantee coverage/accuracy improvement. See
+[Pi lifecycle](../../roomberry/docs/roomtrek-survey.md) and
+[command examples](NAVLINK.md#cumulative-kitchen-maps-32).
+
+## Additional motion comparison
+
+Build3.2.imu.1 adds a separate Core Motion stream alongside ARKit: attitude,
+gyro, gravity, user acceleration and integrated vertical gyro rotation. The Pi
+web console compares relative gyro, ARKit and wheel turns; it hides unavailable
+or stale comparisons. This is diagnostic only and cannot steer or correct pose.
+See [type7packet and comparison details](NAVLINK.md#type-7--independent-core-motion-diagnostics-32imu1).
+The iPhone app and Pi receiver must both be updated; the existing key remains.

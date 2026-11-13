@@ -1,4 +1,4 @@
-// @(#)app.js 3.1.grout.16 2026/11/05
+// @(#)app.js 3.2.imu.1 2026/11/12 15:12:06
 'use strict';
 const $ = id => document.getElementById(id);
 const node = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
@@ -12,6 +12,19 @@ async function getJSON(url) { const controller = new AbortController(); const ti
 async function robot() {
   try {
     const s = await getJSON('/status.json');
+    const comparison = s.motion_comparison;
+    const turns = comparison?.fresh ? comparison.last : null;
+    $('trek-motion-status').textContent = turns ? 'Comparing fresh gyro, ARKit and wheel samples' : `Waiting: ${comparison?.state || 'motion telemetry unavailable'}`;
+    $('trek-motion-values').replaceChildren(...(turns ? [
+      metric('Gyro turn', `${fmt(turns.gyro_turn_deg)}°`),
+      metric('ARKit turn', `${fmt(turns.ar_turn_deg)}°`),
+      metric('Wheel turn', `${fmt(turns.wheel_turn_deg)}°`),
+      metric('ARKit − gyro', `${fmt(turns.ar_minus_gyro_deg)}°`),
+      metric('Wheels − gyro', `${fmt(turns.wheel_minus_gyro_deg)}°`)
+    ] : []));
+    const phoneWarning = s.roomtrek_survey?.warning || '';
+    $('roomtrek-warning').textContent = phoneWarning;
+    $('roomtrek-warning').hidden = !phoneWarning;
     $('connection').textContent = 'ROBOT ONLINE'; $('connection').className = 'connection';
     $('robot-summary').replaceChildren(metric('Mission', s.mission_mode || 'unavailable'), metric('Sensors', s.ready ? 'Ready' : 'Not ready', `Poll age ${fmt(s.age, 2)} s`), metric('Roomba battery', s.battery_status || '—'), metric('Safety', s.oi_stopped ? 'OI stopped' : (s.hard_hazard_reasons || []).join(', ') || 'Clear'));
     $('version-status').textContent = `Pi control ${s.control_version || 'older build / unavailable'} · wheel-size factor ${fmt(s.wheel_size_adjustment, 6)} · firmware ${s.firmware_release || 'unknown'}`;
@@ -19,8 +32,10 @@ async function robot() {
       const step = s.manual_step, unit = step.axis === 'angle' ? '°' : ' mm';
       $('steering-status').textContent = `${step.direction}: ${step.status} · measured ${fmt(step.measured, 1)}${unit} / target ${fmt(step.target, 0)}${unit}${step.reason ? ` · ${step.reason}` : ''}`;
     } else {
-      $('steering-status').textContent = 'Turns: 5° · moves: 50 / 500 mm · measured by wheel odometry.';
+      $('steering-status').textContent = 'Turns: 5° / 15° / 30° · moves: 50 / 500 mm · measured by wheel odometry.';
     }
+    const w = s.wall;
+    $('wall-status').textContent = w ? `WALL: ${w.stage || 'idle'} · ${w.result ? w.result.reason : `right light-bumper target ${fmt(w.target_signal, 0)} units · current ${fmt(w.last?.signal, 0)}`} · physical clearance unknown` : '';
     const g = s.gridrunner;
     if (g) {
       const homing = g.kind === 'return_to_tag15';

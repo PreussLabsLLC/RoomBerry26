@@ -1,0 +1,12 @@
+{
+  "packets": 2924,
+  "loaded_map_packets": 2639,
+  "loaded_map_valid_packets": 0,
+  "normal_fresh_packets": 254,
+  "heartbeat": {
+    "tracking_ok": 2,
+    "attention_required": 31
+  },
+  "last_phone_event": "2026-11-10T03:49:14Z",
+  "last_pi_log": "2026-11-09 19:49:04.752"
+}

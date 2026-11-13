@@ -1,0 +1,1353 @@
+{
+  "session": "9257763700918216142",
+  "packets": 4320,
+  "unique_camera_frames": 4316,
+  "duplicate_camera_frames": 4,
+  "tracking": {
+    "2": 3986,
+    "1": 334
+  },
+  "reasons": {
+    "0": 3986,
+    "3": 334
+  },
+  "sequence_gaps": 0,
+  "clock_epoch_span_s": 0.00251007080078125,
+  "relative_reference_epoch": 1794339550.0,
+  "room_anchor": {
+    "t": 1794339671.240448,
+    "tag": 15,
+    "pose": {
+      "x_mm": 6316.491787464605,
+      "y_mm": 1146.4930433076538,
+      "heading_rad": -0.4541611348212564,
+      "localized": true,
+      "localization_age": 6.200000643730164e-05,
+      "tag_ids": [
+        [
+          "tag16h5",
+          15
+        ]
+      ],
+      "accepted_tag_ids": [
+        [
+          "tag16h5",
+          15
+        ]
+      ],
+      "rejected_tags": [
+        [
+          [
+            "tag16h5",
+            28
+          ],
+          "unknown landmark"
+        ]
+      ],
+      "relocated": false
+    },
+    "offline": true
+  },
+  "phone_feature_percentiles": [
+    0.0,
+    5.0,
+    118.0,
+    282.0
+  ],
+  "phone_quality_gaps": [
+    {
+      "start": 1794339750.4980981,
+      "end": 1794339783.7941332,
+      "reason": 3,
+      "packets": 334
+    }
+  ],
+  "recorded_tag16_anchor": false,
+  "phase_stats": {
+    "outbound": {
+      "samples": 2004,
+      "absolute_heading_percentiles_deg": [
+        0.27235205838050447,
+        0.7210453601052643,
+        1.9688951733769962
+      ],
+      "max_separation_mm": 1112.4270561667943
+    },
+    "return": {
+      "samples": 1233,
+      "absolute_heading_percentiles_deg": [
+        6.25986747528278,
+        8.028110210575443,
+        8.644717980527526
+      ],
+      "max_separation_mm": 1082.0980684388685
+    }
+  },
+  "reference_checks": {
+    "pre_motion": {
+      "pair_delta_s": -0.011374950408935547,
+      "phone_usable": true,
+      "phone_frames": 5,
+      "phone_position_variation_mm": 0.26897149662106423,
+      "phone_heading_variation_deg": 0.02761346501175024,
+      "wheel_distance_variation_mm": 0.0,
+      "wheel_angle_variation_deg": 0.0
+    },
+    "offline_tag15": {
+      "pair_delta_s": 0.03376007080078125,
+      "phone_usable": true,
+      "phone_frames": 5,
+      "phone_position_variation_mm": 0.037183174799112075,
+      "phone_heading_variation_deg": 0.009510377896200727,
+      "wheel_distance_variation_mm": 0.0,
+      "wheel_angle_variation_deg": 0.0
+    }
+  },
+  "tag15_validated_robot_range_mm": 356.1571450806905,
+  "checkpoints": {
+    "before_move": {
+      "t": 1794339550.0,
+      "local_time": "2026-11-10T11:39:10",
+      "phone_x_mm": 1.0907011052793333e-10,
+      "phone_y_mm": 1.963393942219782e-09,
+      "wheel_x_mm": 0.0,
+      "wheel_y_mm": 0.0,
+      "separation_mm": 1.9664211302149683e-09,
+      "heading_delta_deg": -4.5036544608530045e-15,
+      "wheel_path_mm": 0.0,
+      "phone_usable": true
+    },
+    "tag15_first_fix": {
+      "t": 1794339671.240448,
+      "local_time": "2026-11-10T11:41:11.240448",
+      "phone_x_mm": 2268.5555410309203,
+      "phone_y_mm": -248.64117152529127,
+      "wheel_x_mm": 3052.7432365107934,
+      "wheel_y_mm": -41.68490132989977,
+      "separation_mm": 811.0371381849428,
+      "heading_delta_deg": -0.1954777273740369,
+      "wheel_path_mm": 3066.9,
+      "phone_usable": true
+    },
+    "tag15_stop": {
+      "t": 1794339755.729881,
+      "local_time": "2026-11-10T11:42:35.729881",
+      "phone_x_mm": 3262.242822395519,
+      "phone_y_mm": -546.5910917471068,
+      "wheel_x_mm": 4315.25481291545,
+      "wheel_y_mm": -338.3746075652354,
+      "separation_mm": 1073.4003710004051,
+      "heading_delta_deg": 0.07031310962097458,
+      "wheel_path_mm": 4377.1,
+      "phone_usable": false
+    },
+    "tag16_return": {
+      "t": 1794339907.285975,
+      "local_time": "2026-11-10T11:45:07.285975",
+      "phone_x_mm": -412.2810278440873,
+      "phone_y_mm": -166.80583017702708,
+      "wheel_x_mm": -179.80080801400004,
+      "wheel_y_mm": 209.26687689735581,
+      "separation_mm": 442.1286392199676,
+      "heading_delta_deg": -5.192888483496451,
+      "wheel_path_mm": 9110.5,
+      "phone_usable": true
+    },
+    "end": {
+      "t": 1794339955.207158,
+      "local_time": "2026-11-10T11:45:55.207158",
+      "phone_x_mm": -418.4866902855964,
+      "phone_y_mm": -166.1515418384324,
+      "wheel_x_mm": -179.80080801400004,
+      "wheel_y_mm": 209.26687689735581,
+      "separation_mm": 444.87069977899193,
+      "heading_delta_deg": -4.524126179206639,
+      "wheel_path_mm": 9110.5,
+      "phone_usable": true
+    }
+  },
+  "max_separation_mm": 1112.4270561667943,
+  "max_heading_delta_deg": 8.644717980527526,
+  "tag_fixes": [
+    {
+      "t": 1794339661.455415,
+      "log_t": 1794339664.835,
+      "tag": 15,
+      "accepted": false,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 6302.406135951612,
+        "y_mm": 1077.3318821242278,
+        "heading_rad": -0.4039880050989284,
+        "localized": true,
+        "localization_age": 7.599999662488699e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": null,
+      "phone_x_mm": 6316.98335996679,
+      "phone_y_mm": 1146.3613435857621,
+      "wheel_x_mm": 6316.491787464605,
+      "wheel_y_mm": 1146.4930433076538,
+      "phone_tag_mm": 70.55183916566696,
+      "wheel_tag_mm": 70.58095915178062,
+      "phone_heading_delta_deg": -2.8848591693643084,
+      "wheel_heading_delta_deg": -2.87470857805178,
+      "phone_frame_pair_delta_s": -0.046698808670043945,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339666.444761,
+      "log_t": 1794339669.645,
+      "tag": 15,
+      "accepted": false,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 6344.762277078638,
+        "y_mm": 1151.2422666344798,
+        "heading_rad": -0.4596231256228296,
+        "localized": true,
+        "localization_age": 8.200004231184721e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              1
+            ],
+            "hamming=1"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "phone_x_mm": 6317.147014452447,
+      "phone_y_mm": 1146.6049990352676,
+      "wheel_x_mm": 6316.491787464605,
+      "wheel_y_mm": 1146.4930433076538,
+      "phone_tag_mm": 28.001910304481104,
+      "wheel_tag_mm": 28.666630517471358,
+      "phone_heading_delta_deg": 0.29939570188111764,
+      "wheel_heading_delta_deg": 0.31294902066942326,
+      "phone_frame_pair_delta_s": 0.030019044876098633,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339671.240448,
+      "log_t": 1794339674.269,
+      "tag": 15,
+      "accepted": true,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 6316.491787464605,
+        "y_mm": 1146.4930433076538,
+        "heading_rad": -0.4541611348212564,
+        "localized": true,
+        "localization_age": 6.200000643730164e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              28
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "phone_x_mm": 6316.491787467625,
+      "phone_y_mm": 1146.4930433130562,
+      "wheel_x_mm": 6316.491787464605,
+      "wheel_y_mm": 1146.4930433076538,
+      "phone_tag_mm": 6.188976122500433e-09,
+      "wheel_tag_mm": 0.0,
+      "phone_heading_delta_deg": 3.1805546814635168e-15,
+      "wheel_heading_delta_deg": 3.1805546814635168e-15,
+      "phone_frame_pair_delta_s": 0.03376007080078125,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339688.929546,
+      "log_t": 1794339691.972,
+      "tag": 15,
+      "accepted": false,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 6678.83497657848,
+        "y_mm": 1092.680178596352,
+        "heading_rad": -0.5153662331117745,
+        "localized": true,
+        "localization_age": 5.6999968364834785e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        89.59658630949399,
+        0.0017950069676433422
+      ],
+      "phone_x_mm": 6601.231326450051,
+      "phone_y_mm": 1019.8416873964204,
+      "wheel_x_mm": 6690.052218461121,
+      "wheel_y_mm": 1003.775379810933,
+      "phone_tag_mm": 106.43200793717143,
+      "wheel_tag_mm": 89.60965217279629,
+      "phone_heading_delta_deg": 0.37900369661574473,
+      "wheel_heading_delta_deg": -0.10320618326994627,
+      "phone_frame_pair_delta_s": 0.04255199432373047,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339693.653603,
+      "log_t": 1794339697.058,
+      "tag": 15,
+      "accepted": true,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 6678.216369592706,
+        "y_mm": 1073.666935429756,
+        "heading_rad": -0.4983668672956574,
+        "localized": true,
+        "localization_age": 5.1999930292367935e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        70.87420384259812,
+        0.018794372783760505
+      ],
+      "phone_x_mm": 6600.8194138702365,
+      "phone_y_mm": 1016.4747041430904,
+      "wheel_x_mm": 6690.052218461121,
+      "wheel_y_mm": 1003.775379810933,
+      "phone_tag_mm": 96.23533693323513,
+      "wheel_tag_mm": 70.88664800408459,
+      "phone_heading_delta_deg": -0.3704039326735382,
+      "wheel_heading_delta_deg": -1.0771980989324237,
+      "phone_frame_pair_delta_s": -0.04872488975524902,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339714.932359,
+      "log_t": 1794339718.648,
+      "tag": 15,
+      "accepted": false,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 7001.965084417579,
+        "y_mm": 903.4728856479198,
+        "heading_rad": -0.46954872419219873,
+        "localized": true,
+        "localization_age": 5.500006955116987e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              28
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": [
+        65.85473933028267,
+        0.06127274278190553
+      ],
+      "phone_x_mm": 6883.817422748209,
+      "phone_y_mm": 823.8882697504506,
+      "wheel_x_mm": 7061.404762824948,
+      "wheel_y_mm": 785.7080825561555,
+      "phone_tag_mm": 142.45203068221883,
+      "wheel_tag_mm": 131.9152160154902,
+      "phone_heading_delta_deg": -3.9909448288651754,
+      "wheel_heading_delta_deg": -4.588356072164643,
+      "phone_frame_pair_delta_s": -0.03001999855041504,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339720.263587,
+      "log_t": 1794339723.95,
+      "tag": 15,
+      "accepted": true,
+      "purpose": "localize",
+      "pose": {
+        "x_mm": 6996.629487455251,
+        "y_mm": 889.3743698657216,
+        "heading_rad": -0.4499069462821188,
+        "localized": true,
+        "localization_age": 5.40000619366765e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        62.96308810140682,
+        0.08091452069198546
+      ],
+      "phone_x_mm": 6882.6312217842315,
+      "phone_y_mm": 824.0302548246214,
+      "wheel_x_mm": 7061.404762824948,
+      "wheel_y_mm": 785.7080825561555,
+      "phone_tag_mm": 131.3980895846853,
+      "wheel_tag_mm": 122.23966387294082,
+      "phone_heading_delta_deg": -5.037373442546525,
+      "wheel_heading_delta_deg": -5.713747048545515,
+      "phone_frame_pair_delta_s": 0.038108110427856445,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339728.913094,
+      "log_t": 1794339732.303,
+      "tag": 15,
+      "accepted": false,
+      "purpose": "final",
+      "pose": {
+        "x_mm": 6987.29310777879,
+        "y_mm": 904.6374251802687,
+        "heading_rad": -0.22224280023765353,
+        "localized": true,
+        "localization_age": 5.3999945521354675e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              15
+            ],
+            "hamming=1"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": [
+        22.200940996281602,
+        0.02051808679071465
+      ],
+      "phone_x_mm": 6889.898299007866,
+      "phone_y_mm": 819.4406361651265,
+      "wheel_x_mm": 7066.352856208998,
+      "wheel_y_mm": 783.6482650656434,
+      "phone_tag_mm": 129.39954263449124,
+      "wheel_tag_mm": 144.52965331408708,
+      "phone_heading_delta_deg": -4.2109436743526345,
+      "wheel_heading_delta_deg": -4.537941763343366,
+      "phone_frame_pair_delta_s": -0.012424945831298828,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339733.934983,
+      "log_t": 1794339737.372,
+      "tag": 15,
+      "accepted": true,
+      "purpose": "final",
+      "pose": {
+        "x_mm": 6989.311921607915,
+        "y_mm": 915.9085373490062,
+        "heading_rad": -0.23741815753937479,
+        "localized": true,
+        "localization_age": 7.299997378140688e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        30.751903427229955,
+        0.03569344409243591
+      ],
+      "phone_x_mm": 6889.223007782161,
+      "phone_y_mm": 821.1807770641344,
+      "wheel_x_mm": 7066.352856208998,
+      "wheel_y_mm": 783.6482650656434,
+      "phone_tag_mm": 137.80834241586118,
+      "wheel_tag_mm": 153.06235732105267,
+      "phone_heading_delta_deg": -3.539272001060148,
+      "wheel_heading_delta_deg": -3.6684578373517014,
+      "phone_frame_pair_delta_s": 0.03174996376037598,
+      "usable_phone": true
+    },
+    {
+      "t": 1794339751.271213,
+      "log_t": 1794339754.133,
+      "tag": 15,
+      "accepted": false,
+      "purpose": "validate",
+      "pose": {
+        "x_mm": 7380.9264779621035,
+        "y_mm": 862.8480216220863,
+        "heading_rad": -0.06509229712913944,
+        "localized": true,
+        "localization_age": 5.1999930292367935e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        80.24182098672958,
+        0.12078031974446635
+      ],
+      "phone_x_mm": 7254.23508462804,
+      "phone_y_mm": 700.0656383725195,
+      "wheel_x_mm": 7517.376463355158,
+      "wheel_y_mm": 656.7622422005317,
+      "phone_tag_mm": 206.27363729118494,
+      "wheel_tag_mm": 247.16380599423235,
+      "phone_heading_delta_deg": -10.247494395443363,
+      "wheel_heading_delta_deg": -10.592002339818746,
+      "phone_frame_pair_delta_s": 0.026788949966430664,
+      "usable_phone": false
+    },
+    {
+      "t": 1794339755.729881,
+      "log_t": 1794339759.35,
+      "tag": 15,
+      "accepted": true,
+      "purpose": "validate",
+      "pose": {
+        "x_mm": 7381.152514327267,
+        "y_mm": 861.786793575425,
+        "heading_rad": -0.062238706416012146,
+        "localized": true,
+        "localization_age": 5.800009239464998e-05,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "innovation": [
+        79.46574213063137,
+        0.12363391045759364
+      ],
+      "phone_x_mm": 7253.164115100459,
+      "phone_y_mm": 700.585520666441,
+      "wheel_x_mm": 7517.376463355158,
+      "wheel_y_mm": 656.7622422005317,
+      "phone_tag_mm": 205.83216639805772,
+      "wheel_tag_mm": 246.15448595390183,
+      "phone_heading_delta_deg": -10.489710207143656,
+      "wheel_heading_delta_deg": -10.755501044138668,
+      "phone_frame_pair_delta_s": -0.032402992248535156,
+      "usable_phone": false
+    },
+    {
+      "t": 1794339907.285975,
+      "log_t": 1794339911.889,
+      "tag": 16,
+      "accepted": true,
+      "purpose": "idle",
+      "pose": {
+        "x_mm": 3119.5285651014874,
+        "y_mm": 1115.925412537243,
+        "heading_rad": -1.883799526795346,
+        "localized": true,
+        "localization_age": 0.2314117189962417,
+        "tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              12
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "innovation": null,
+      "phone_x_mm": 3679.442079038785,
+      "phone_y_mm": 1635.9320766833844,
+      "wheel_x_mm": 3162.4978115677604,
+      "wheel_y_mm": 1897.9182190866813,
+      "phone_tag_mm": 764.1400878412348,
+      "wheel_tag_mm": 783.1724622565242,
+      "phone_heading_delta_deg": 7.784835333862592,
+      "wheel_heading_delta_deg": 12.782246089984998,
+      "phone_frame_pair_delta_s": 0.026842117309570312,
+      "usable_phone": true
+    }
+  ],
+  "steps": [
+    {
+      "t": 1794339560.664,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 500.9033368900964,
+      "reason": "predictive braking before target",
+      "start_t": 1794339555.282,
+      "phone_usable": true,
+      "phone_heading_deg": 2.8879100667333213,
+      "phone_distance_mm": 299.39680643934884,
+      "raw_camera_distance_mm": 290.33740696938884
+    },
+    {
+      "t": 1794339567.36,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 513.0165389465513,
+      "reason": "predictive braking before target",
+      "start_t": 1794339562.002,
+      "phone_usable": true,
+      "phone_heading_deg": 2.863541284338275,
+      "phone_distance_mm": 320.9185989222703,
+      "raw_camera_distance_mm": 311.9758044222036
+    },
+    {
+      "t": 1794339568.935,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -3.828406209273948,
+      "reason": "predictive braking before target",
+      "start_t": 1794339568.096,
+      "phone_usable": true,
+      "phone_heading_deg": -3.567270749147253,
+      "phone_distance_mm": 6.6291696275513265,
+      "raw_camera_distance_mm": 4.574615782285462
+    },
+    {
+      "t": 1794339571.127,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -5.359768692983527,
+      "reason": "predictive braking before target",
+      "start_t": 1794339570.303,
+      "phone_usable": true,
+      "phone_heading_deg": -5.466875835396859,
+      "phone_distance_mm": 4.0390596938118355,
+      "raw_camera_distance_mm": 13.206810367918365
+    },
+    {
+      "t": 1794339578.498,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 518.4001843049772,
+      "reason": "predictive braking before target",
+      "start_t": 1794339573.188,
+      "phone_usable": true,
+      "phone_heading_deg": 4.645150942302476,
+      "phone_distance_mm": 371.55208991481777,
+      "raw_camera_distance_mm": 356.9694046509163
+    },
+    {
+      "t": 1794339581.173,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -4.1565553129260016,
+      "reason": "predictive braking before target",
+      "start_t": 1794339580.389,
+      "phone_usable": true,
+      "phone_heading_deg": -4.054895052937198,
+      "phone_distance_mm": 1.7762541903121534,
+      "raw_camera_distance_mm": 11.81801654434544
+    },
+    {
+      "t": 1794339586.72,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -6.0160669002876315,
+      "reason": "predictive braking before target",
+      "start_t": 1794339585.752,
+      "phone_usable": true,
+      "phone_heading_deg": -5.956214402731122,
+      "phone_distance_mm": 1.7182998879070495,
+      "raw_camera_distance_mm": 18.77618718298541
+    },
+    {
+      "t": 1794339593.611,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 511.2219904937442,
+      "reason": "predictive braking before target",
+      "start_t": 1794339588.236,
+      "phone_usable": true,
+      "phone_heading_deg": 2.4157257123787614,
+      "phone_distance_mm": 463.2450501174432,
+      "raw_camera_distance_mm": 455.6094746093124
+    },
+    {
+      "t": 1794339599.59,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 504.26811523911056,
+      "reason": "predictive braking before target",
+      "start_t": 1794339594.413,
+      "phone_usable": true,
+      "phone_heading_deg": 3.283446467611942,
+      "phone_distance_mm": 448.9106284395424,
+      "raw_camera_distance_mm": 438.5666469630683
+    },
+    {
+      "t": 1794339605.438,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 506.9599379183228,
+      "reason": "predictive braking before target",
+      "start_t": 1794339600.298,
+      "phone_usable": true,
+      "phone_heading_deg": 5.612616295575888,
+      "phone_distance_mm": 404.72335617619274,
+      "raw_camera_distance_mm": 387.11210419222516
+    },
+    {
+      "t": 1794339607.497,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -4.703470485679421,
+      "reason": "predictive braking before target",
+      "start_t": 1794339606.679,
+      "phone_usable": true,
+      "phone_heading_deg": -4.569791343614656,
+      "phone_distance_mm": 3.2992365040869123,
+      "raw_camera_distance_mm": 11.293604125900593
+    },
+    {
+      "t": 1794339609.403,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -6.344216003939685,
+      "reason": "predictive braking before target",
+      "start_t": 1794339608.572,
+      "phone_usable": true,
+      "phone_heading_deg": -6.198510328391211,
+      "phone_distance_mm": 0.7166574183182822,
+      "raw_camera_distance_mm": 19.86700383217525
+    },
+    {
+      "t": 1794339611.17,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -4.265938347476684,
+      "reason": "predictive braking before target",
+      "start_t": 1794339610.473,
+      "phone_usable": true,
+      "phone_heading_deg": -4.155121021559624,
+      "phone_distance_mm": 0.9714052165705798,
+      "raw_camera_distance_mm": 14.02129764377836
+    },
+    {
+      "t": 1794339613.058,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -5.0,
+      "measured": -5.797300831186265,
+      "reason": "predictive braking before target",
+      "start_t": 1794339612.252,
+      "phone_usable": true,
+      "phone_heading_deg": -5.709369699675912,
+      "phone_distance_mm": 2.142881481276065,
+      "raw_camera_distance_mm": 19.36499725110897
+    },
+    {
+      "t": 1794339777.747,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -16.516838217153317,
+      "reason": "predictive braking before target",
+      "phone_usable": false
+    },
+    {
+      "t": 1794339780.929,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -14.547943595241001,
+      "reason": "predictive braking before target",
+      "phone_usable": false
+    },
+    {
+      "t": 1794339783.372,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -15.751156975298521,
+      "reason": "predictive braking before target",
+      "phone_usable": false
+    },
+    {
+      "t": 1794339786.711,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -14.87609269889306,
+      "reason": "predictive braking before target",
+      "start_t": 1794339785.475,
+      "phone_usable": true,
+      "phone_heading_deg": -14.67524562095909,
+      "phone_distance_mm": 9.372117522279249,
+      "raw_camera_distance_mm": 37.00745347701765
+    },
+    {
+      "t": 1794339789.085,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -16.29807214805193,
+      "reason": "predictive braking before target",
+      "start_t": 1794339787.736,
+      "phone_usable": true,
+      "phone_heading_deg": -15.979471723368347,
+      "phone_distance_mm": 5.8630063550024,
+      "raw_camera_distance_mm": 44.89671859824206
+    },
+    {
+      "t": 1794339790.95,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -14.547943595240994,
+      "reason": "predictive braking before target",
+      "start_t": 1794339789.566,
+      "phone_usable": true,
+      "phone_heading_deg": -13.947213240392225,
+      "phone_distance_mm": 5.584570525096315,
+      "raw_camera_distance_mm": 39.969957850759876
+    },
+    {
+      "t": 1794339793.826,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -16.188689113501255,
+      "reason": "predictive braking before target",
+      "start_t": 1794339792.346,
+      "phone_usable": true,
+      "phone_heading_deg": -15.72286818274106,
+      "phone_distance_mm": 4.193760357483291,
+      "raw_camera_distance_mm": 46.000313179963385
+    },
+    {
+      "t": 1794339796.57,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -14.329177526139631,
+      "reason": "predictive braking before target",
+      "start_t": 1794339795.235,
+      "phone_usable": true,
+      "phone_heading_deg": -14.176722331264894,
+      "phone_distance_mm": 4.208698035214228,
+      "raw_camera_distance_mm": 42.81531611728592
+    },
+    {
+      "t": 1794339799.506,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -15.313624837095773,
+      "reason": "predictive braking before target",
+      "start_t": 1794339798.229,
+      "phone_usable": true,
+      "phone_heading_deg": -14.78529385218211,
+      "phone_distance_mm": 3.7238202788985553,
+      "raw_camera_distance_mm": 43.47812098554374
+    },
+    {
+      "t": 1794339802.042,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -14.876092698893046,
+      "reason": "predictive braking before target",
+      "start_t": 1794339800.79,
+      "phone_usable": true,
+      "phone_heading_deg": -14.078297744316554,
+      "phone_distance_mm": 2.9518168940508365,
+      "raw_camera_distance_mm": 42.79811044749265
+    },
+    {
+      "t": 1794339804.757,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -16.079306078950594,
+      "reason": "predictive braking before target",
+      "start_t": 1794339803.501,
+      "phone_usable": true,
+      "phone_heading_deg": -15.500566518769382,
+      "phone_distance_mm": 2.7022980937289276,
+      "raw_camera_distance_mm": 48.57320026080386
+    },
+    {
+      "t": 1794339807.631,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -14.547943595241037,
+      "reason": "predictive braking before target",
+      "start_t": 1794339806.341,
+      "phone_usable": true,
+      "phone_heading_deg": -13.836714519722012,
+      "phone_distance_mm": 3.8533532178628596,
+      "raw_camera_distance_mm": 41.02960061142088
+    },
+    {
+      "t": 1794339814.557,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 512.7922203899516,
+      "reason": "predictive braking before target",
+      "start_t": 1794339809.281,
+      "phone_usable": true,
+      "phone_heading_deg": -0.3772656177897342,
+      "phone_distance_mm": 461.56351871035355,
+      "raw_camera_distance_mm": 462.80682645216
+    },
+    {
+      "t": 1794339817.042,
+      "direction": "right",
+      "status": "complete",
+      "axis": "angle",
+      "target": -15.0,
+      "measured": -16.188689113501255,
+      "reason": "predictive braking before target",
+      "start_t": 1794339815.614,
+      "phone_usable": true,
+      "phone_heading_deg": -15.809417752099856,
+      "phone_distance_mm": 7.513963730108009,
+      "raw_camera_distance_mm": 48.53584063777702
+    },
+    {
+      "t": 1794339823.805,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 515.2597245125626,
+      "reason": "predictive braking before target",
+      "start_t": 1794339818.496,
+      "phone_usable": true,
+      "phone_heading_deg": -4.14506371900388,
+      "phone_distance_mm": 455.91589522170926,
+      "raw_camera_distance_mm": 468.9777071026727
+    },
+    {
+      "t": 1794339827.335,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 14.54794359524098,
+      "reason": "predictive braking before target",
+      "start_t": 1794339825.901,
+      "phone_usable": true,
+      "phone_heading_deg": 14.341011047781206,
+      "phone_distance_mm": 9.635805932755751,
+      "raw_camera_distance_mm": 35.35770787572159
+    },
+    {
+      "t": 1794339830.149,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 14.329177526139631,
+      "reason": "predictive braking before target",
+      "start_t": 1794339828.778,
+      "phone_usable": true,
+      "phone_heading_deg": 14.229150994466186,
+      "phone_distance_mm": 5.074162860713319,
+      "raw_camera_distance_mm": 40.17460153493867
+    },
+    {
+      "t": 1794339836.743,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 508.75448637113186,
+      "reason": "predictive braking before target",
+      "start_t": 1794339831.547,
+      "phone_usable": true,
+      "phone_heading_deg": -6.2835627446634765,
+      "phone_distance_mm": 419.6265894994354,
+      "raw_camera_distance_mm": 439.4052232559545
+    },
+    {
+      "t": 1794339843.988,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 519.9704142011833,
+      "reason": "predictive braking before target",
+      "start_t": 1794339838.684,
+      "phone_usable": true,
+      "phone_heading_deg": -3.66527975541957,
+      "phone_distance_mm": 440.6523861204262,
+      "raw_camera_distance_mm": 452.1827383505114
+    },
+    {
+      "t": 1794339848.817,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 5.0,
+      "measured": 3.0627249674191717,
+      "reason": "predictive braking before target",
+      "start_t": 1794339847.989,
+      "phone_usable": true,
+      "phone_heading_deg": 2.837188120229383,
+      "phone_distance_mm": 1.6252417971205677,
+      "raw_camera_distance_mm": 8.126492159830507
+    },
+    {
+      "t": 1794339855.244,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 509.65176059753594,
+      "reason": "predictive braking before target",
+      "start_t": 1794339849.852,
+      "phone_usable": true,
+      "phone_heading_deg": -1.1761401415952102,
+      "phone_distance_mm": 414.5521815802212,
+      "raw_camera_distance_mm": 418.2362349592702
+    },
+    {
+      "t": 1794339861.489,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 510.1003977107375,
+      "reason": "predictive braking before target",
+      "start_t": 1794339856.187,
+      "phone_usable": true,
+      "phone_heading_deg": -1.0325131682765198,
+      "phone_distance_mm": 391.7596541094204,
+      "raw_camera_distance_mm": 395.0166291232756
+    },
+    {
+      "t": 1794339864.241,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 14.110411457038282,
+      "reason": "predictive braking before target",
+      "start_t": 1794339862.879,
+      "phone_usable": true,
+      "phone_heading_deg": 13.67945535463776,
+      "phone_distance_mm": 7.763885323636257,
+      "raw_camera_distance_mm": 36.18857258056856
+    },
+    {
+      "t": 1794339871.256,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 516.605635852171,
+      "reason": "predictive braking before target",
+      "start_t": 1794339865.928,
+      "phone_usable": true,
+      "phone_heading_deg": -0.8408487447772898,
+      "phone_distance_mm": 396.0308833979747,
+      "raw_camera_distance_mm": 398.72367693175147
+    },
+    {
+      "t": 1794339877.195,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 508.3058492579312,
+      "reason": "predictive braking before target",
+      "start_t": 1794339871.919,
+      "phone_usable": true,
+      "phone_heading_deg": 1.9025646217859036,
+      "phone_distance_mm": 378.8032270866114,
+      "raw_camera_distance_mm": 372.802823720504
+    },
+    {
+      "t": 1794339884.35,
+      "direction": "forward",
+      "status": "complete",
+      "axis": "distance",
+      "target": 500.0,
+      "measured": 508.978804927734,
+      "reason": "predictive braking before target",
+      "start_t": 1794339879.089,
+      "phone_usable": true,
+      "phone_heading_deg": 6.269374743972945,
+      "phone_distance_mm": 417.56783510063184,
+      "raw_camera_distance_mm": 398.7888257951102
+    },
+    {
+      "t": 1794339888.022,
+      "direction": "backward",
+      "status": "complete",
+      "axis": "distance",
+      "target": -50.0,
+      "measured": -48.67712678242242,
+      "reason": "predictive braking before target",
+      "start_t": 1794339886.712,
+      "phone_usable": true,
+      "phone_heading_deg": -8.298711986303378,
+      "phone_distance_mm": 47.85077493856843,
+      "raw_camera_distance_mm": 21.795045356127698
+    },
+    {
+      "t": 1794339892.512,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 16.188689113501255,
+      "reason": "predictive braking before target",
+      "start_t": 1794339891.126,
+      "phone_usable": true,
+      "phone_heading_deg": 12.690587843976258,
+      "phone_distance_mm": 7.129689643014624,
+      "raw_camera_distance_mm": 32.91358603066741
+    },
+    {
+      "t": 1794339894.348,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 13.782262353386244,
+      "reason": "predictive braking before target",
+      "start_t": 1794339893.083,
+      "phone_usable": true,
+      "phone_heading_deg": 13.45720115218452,
+      "phone_distance_mm": 13.79509342355587,
+      "raw_camera_distance_mm": 29.012841252004087
+    },
+    {
+      "t": 1794339897.369,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 15.094858767994424,
+      "reason": "predictive braking before target",
+      "start_t": 1794339896.038,
+      "phone_usable": true,
+      "phone_heading_deg": 14.575283895961926,
+      "phone_distance_mm": 8.75340164743422,
+      "raw_camera_distance_mm": 37.89292866348425
+    },
+    {
+      "t": 1794339900.491,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 13.782262353386216,
+      "reason": "predictive braking before target",
+      "start_t": 1794339899.232,
+      "phone_usable": true,
+      "phone_heading_deg": 11.287002518010523,
+      "phone_distance_mm": 4.5816527575317885,
+      "raw_camera_distance_mm": 31.383787595900113
+    },
+    {
+      "t": 1794339901.925,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 15.313624837095801,
+      "reason": "predictive braking before target",
+      "start_t": 1794339900.816,
+      "phone_usable": true,
+      "phone_heading_deg": 14.517224556660786,
+      "phone_distance_mm": 1.681936012409779,
+      "raw_camera_distance_mm": 47.15075713735815
+    },
+    {
+      "t": 1794339903.742,
+      "direction": "left",
+      "status": "complete",
+      "axis": "angle",
+      "target": 15.0,
+      "measured": 15.751156975298514,
+      "reason": "predictive braking before target",
+      "start_t": 1794339902.494,
+      "phone_usable": true,
+      "phone_heading_deg": 13.900990321181235,
+      "phone_distance_mm": 2.516612203498333,
+      "raw_camera_distance_mm": 41.79649081794152
+    }
+  ]
+}

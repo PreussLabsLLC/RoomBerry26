@@ -1,4 +1,4 @@
-// @(#)MapStore.swift 3.1.roomtrek.2 2026/11/08 12:00:00
+// @(#)MapStore.swift 3.2.maps.1 2026/11/10 10:15:00
 import ARKit
 import Foundation
 
@@ -8,6 +8,7 @@ import Foundation
 /// bounded; failures throw rather than crashing the session.
 final class MapStore {
     private let directory: URL
+    private(set) var inventoryErrors: [String] = []
 
     init(directory: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("RoomTrekMaps", isDirectory: true)) {
         self.directory = directory
@@ -20,12 +21,15 @@ final class MapStore {
     }
 
     func entries() -> [Entry] {
+        inventoryErrors = []
         let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return [] }
+        guard let items = try? fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { inventoryErrors = ["Map directory unreadable"]; return [] }
         var result: [Entry] = []
         for url in items where url.pathExtension == MapPackageIO.fileExtension {
             guard let data = try? Data(contentsOf: url),
-                  let package = try? MapPackageIO.decode(data) else { continue }
+                  let package = try? MapPackageIO.decode(data) else {
+                inventoryErrors.append(url.lastPathComponent); continue
+            }
             result.append(Entry(package: package, url: url))
         }
         return result.sorted { $0.package.metadata.created > $1.package.metadata.created }
@@ -35,15 +39,26 @@ final class MapStore {
         directory.appendingPathComponent("\(mapID.uuidString).\(MapPackageIO.fileExtension)")
     }
 
-    func save(name: String, description: String, worldMap: ARWorldMap, tracking: String, mapping: String) throws {
-        let metadata = MapPackageIO.makeMetadata(name: name.isEmpty ? "Untitled map" : name,
+    func save(name: String, description: String, worldMap: ARWorldMap, tracking: String, mapping: String, parentMapID: UUID? = nil) throws -> MapMetadata {
+        var metadata = MapPackageIO.makeMetadata(name: name.isEmpty ? "Untitled map" : name,
                                                    description: description,
                                                    trackingAtCapture: tracking,
                                                    mappingAtCapture: mapping)
+        if let parentMapID = parentMapID {
+            let parent = try loadPackage(for: parentMapID).metadata
+            metadata.parentMapID = parentMapID
+            metadata.lineageID = parent.lineageID ?? parent.mapID
+            metadata.revision = (parent.revision ?? 1) + 1
+        } else {
+            metadata.lineageID = metadata.mapID
+            metadata.revision = 1
+        }
+        metadata.featureCount = worldMap.rawFeaturePoints.points.count
         let mapData = try NSKeyedArchiver.archivedData(withRootObject: worldMap, requiringSecureCoding: true)
         let package = MapPackage(metadata: metadata, mapData: mapData)
         let data = try MapPackageIO.encode(package)
         try data.write(to: fileURL(for: metadata.mapID), options: .atomic)
+        return metadata
     }
 
     func loadWorldMap(for mapID: UUID) throws -> ARWorldMap {
@@ -61,8 +76,8 @@ final class MapStore {
         fileURL(for: mapID)
     }
 
-    func delete(mapID: UUID) {
-        try? FileManager.default.removeItem(at: fileURL(for: mapID))
+    func delete(mapID: UUID) throws {
+        try FileManager.default.removeItem(at: fileURL(for: mapID))
     }
 
     func rename(mapID: UUID, to newName: String) throws {

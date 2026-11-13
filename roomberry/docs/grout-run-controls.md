@@ -1,7 +1,8 @@
-<!-- @(#)grout-run-controls.md 3.1.tiles.10 2026/11/06 -->
+<!-- @(#)grout-run-controls.md 3.1.wall.10 2026/11/08 16:00:00 -->
 # November 4 run controls and wheel-size adjustment
 
-Pi control build: `3.1.grout.19`. Open the Pi's `/` local console and press
+Pi control build: `3.1.wall.10`. Clock now starts/cancels WALL; see
+[WALL mission](wall-mission.md). GridRunner starts from the web console. Open the Pi's `/` local console and press
 **Check version** (or **Refresh all**). The page displays the running Pi control
 version, wheel-size factor and Roomba firmware release when available.
 
@@ -36,8 +37,9 @@ points). The map's start offset below is separate from this requested formula.
 
 Align the robot at tag 15, facing it, over the single grout stripe. Keep the
 GridRunner phone set to **Reverse** and streaming throughout the whole mission.
-Update/restart the Pi, verify build **3.1.grout.19**, then press Clock or the web
-**Start grout out-and-back** button once. Clock again or web Stop cancels.
+Update/restart the Pi, verify build **3.1.wall.10**, then press the web
+**Start grout out-and-back** button once. Clock or web Stop cancels an active
+grout run; from idle Clock starts WALL.
 No iPhone rebuild or direction change at turnaround is required.
 
 1. **Outbound:** reverse at 100 mm/s with existing bounded steering. The first

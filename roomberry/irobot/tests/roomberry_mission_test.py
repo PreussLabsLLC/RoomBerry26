@@ -1,4 +1,4 @@
-# @(#)roomberry_mission_test.py 3.1.wall.16 2026/11/09 10:40:00
+# @(#)roomberry_mission_test.py 3.2.pulse.1 2026/11/12 16:09:50
 import json
 import logging
 import unittest
@@ -37,6 +37,15 @@ class RoomberryMissionTest(unittest.TestCase):
         self.logger = logging.getLogger("RoomberryMissionTest")
         self.robot.consume_clock_button_press.return_value = False
         self.mission = RoomberryMission(self.robot, self.camera, self.mapper, self.navigation, self.localizer, self.logger)
+
+    def test_motion_diagnostic_failure_does_not_interrupt_control(self):
+        self.robot.snapshot.return_value = dict(oi_stopped=True)
+        with patch.object(self.mission.motion_comparison, 'update', side_effect=RuntimeError('diagnostic only')), \
+                patch.object(self.logger, 'exception') as logged:
+            self.mission._tick()
+        self.assertEqual(self.mission.motion_comparison.state, 'error')
+        self.assertFalse(self.mission.motion_comparison.snapshot()['fresh'])
+        logged.assert_called_once()
 
     def test_idle_startup_runs_multiple_mission_loops_with_display(self):
         mission = self.mission
@@ -123,7 +132,7 @@ class RoomberryMissionTest(unittest.TestCase):
     def test_configured_tag15_parks_to_lower_x_and_faces_positive_x(self):
         config = json.loads((Path(__file__).resolve().parents[2] / 'autonomy.json').read_text())
         tag = next(v for v in config['landmarks'] if v['id'] == 15)['world_from_tag']
-        self.assertEqual(self.mission._tag_approach_waypoint(tag, 500), (7230.0, 790.0))
+        self.assertEqual(self.mission._tag_approach_waypoint(tag, 500), (7230.0, 1225.0))
         self.assertAlmostEqual(self.mission._tag_normal_heading(tag), 0)
 
     def test_scan_debug_names_target_and_planned_heading(self):
@@ -788,19 +797,18 @@ class RoomberryMissionTest(unittest.TestCase):
         pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=0)
         command = self.mission._command_for(self._waypoint_action((50, 0)), pose)
         self.assertEqual(command[0], 'drive_straight')
-        self.assertLessEqual(command[1]['velocity'], 40)
+        self.assertEqual(command[1]['velocity'], 42)
         self.assertIsNone(self.mission._command_for(self._waypoint_action((30, 0)), pose))
         self.assertEqual(self.mission._command_for(
             self._waypoint_action((100, 0)), dict(pose, heading_rad=-0.7))[0], 'spin_left')
 
-    def test_proximity_limits_outer_wheel_without_flattening_arc(self):
+    def test_proximity_at_minimum_speed_aligns_before_straight_advance(self):
         self.mission._mode = MODE_DISCOVERY
         self.mission._discovery_ir_proximity = True
         pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=-0.5)
         operation, wheels, _ = self.mission._command_for(self._waypoint_action(), pose)
-        self.assertEqual(operation, 'drive_direct')
-        self.assertGreater(wheels['right_velocity'], wheels['left_velocity'])
-        self.assertLessEqual(max(wheels.values()), 40)
+        self.assertEqual(operation, 'spin_left')
+        self.assertGreaterEqual(wheels['velocity'], 42)
 
     def test_alignment_pivot_slows_as_error_shrinks(self):
         self.assertLess(self.mission._turn_action('align', 0.13)['velocity'],
@@ -1417,7 +1425,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual((tag15[0][2], tag15[1][2]), (1, 0))
         self.assertEqual(
             self.mission._tag_approach_waypoint(tag15, 500),
-            (7230.0, 790.0),
+            (7230.0, 1225.0),
         )
         self.assertAlmostEqual(self.mission._tag_normal_heading(tag15), 0)
 
@@ -1795,7 +1803,7 @@ class RoomberryMissionTest(unittest.TestCase):
         calls = self.robot.execute.call_args_list
         drive = [c for c in calls if c.args[0] == 'drive_straight']
         self.assertTrue(drive)
-        self.assertEqual(drive[-1].kwargs['velocity'], 40)
+        self.assertEqual(drive[-1].kwargs['velocity'], 42)
 
     def test_single_proximity_spike_does_not_start_detour(self):
         self.use_visit_landmarks()

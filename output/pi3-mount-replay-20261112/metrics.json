@@ -1,0 +1,148 @@
+{
+  "old_mount": {
+    "lens_mm": [
+      10.0,
+      180.0
+    ],
+    "mount_yaw_deg": -20.0
+  },
+  "new_mount": {
+    "enabled": true,
+    "heading_basis": "optical_forward",
+    "mount_yaw_deg": -30.0,
+    "mount_pitch_deg": 15.0,
+    "lens_x_mm": -21.0,
+    "lens_y_mm": 202.0
+  },
+  "translation_rotation_change_deg": 9.999999999999998,
+  "fixes": [
+    {
+      "tag": 16,
+      "t": 1794514984.412329,
+      "old": {
+        "x_mm": 3114.330598457278,
+        "y_mm": 1144.092979255835,
+        "heading_rad": -1.5988676522709595,
+        "localized": true,
+        "localization_age": 0.026630242962710327,
+        "tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              5
+            ],
+            "unknown landmark"
+          ],
+          [
+            [
+              "tag16h5",
+              8
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "new": {
+        "x_mm": 3111.6698953897226,
+        "y_mm": 1171.1775456968794,
+        "heading_rad": -1.5988676522709595
+      },
+      "old_phone_error_mm": 3.449996005798681e-10,
+      "new_phone_error_mm": 3.880999564979649e-10,
+      "old_wheel_error_mm": 0.0,
+      "new_wheel_error_mm": 0.0,
+      "tag_shift_mm": 27.214942221379964
+    },
+    {
+      "tag": 15,
+      "t": 1794515204.773839,
+      "old": {
+        "x_mm": 6522.415117240263,
+        "y_mm": 910.5548916270233,
+        "heading_rad": 0.051678927325861324,
+        "localized": true,
+        "localization_age": 0.07807924151802581,
+        "tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            15
+          ]
+        ],
+        "rejected_tags": [
+          [
+            [
+              "tag16h5",
+              0
+            ],
+            "unknown landmark"
+          ]
+        ],
+        "relocated": false
+      },
+      "new": {
+        "x_mm": 6497.559136976706,
+        "y_mm": 907.1351222201616,
+        "heading_rad": 0.05167892732586122
+      },
+      "old_phone_error_mm": 1028.5348147072061,
+      "new_phone_error_mm": 782.1801186671651,
+      "old_wheel_error_mm": 297.2985829882867,
+      "new_wheel_error_mm": 332.3910385761153,
+      "tag_shift_mm": 25.09012908811772
+    },
+    {
+      "tag": 16,
+      "t": 1794515425.097257,
+      "old": {
+        "x_mm": 3175.785070846353,
+        "y_mm": 1083.9545947230483,
+        "heading_rad": -1.5970661941543631,
+        "localized": true,
+        "localization_age": 0.07224638093339308,
+        "tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "accepted_tag_ids": [
+          [
+            "tag16h5",
+            16
+          ]
+        ],
+        "rejected_tags": [],
+        "relocated": false
+      },
+      "new": {
+        "x_mm": 3173.5199926995597,
+        "y_mm": 1109.4621017137936,
+        "heading_rad": -1.597066194154363
+      },
+      "old_phone_error_mm": 174.99723460163577,
+      "new_phone_error_mm": 157.161081186065,
+      "old_wheel_error_mm": 924.9061212547056,
+      "new_wheel_error_mm": 926.27664082073,
+      "tag_shift_mm": 25.607879488430857
+    }
+  ]
+}

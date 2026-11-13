@@ -1,6 +1,6 @@
 {
-  "_sccsid": "@(#)autonomy.json 3.1.posgate.2 2026/11/09 10:29:42",
-  "_note": "Room dimensions and tag positions are surveyed. Intrinsics and camera mount are illustrative placeholders. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. Tag 15 moved 2026/11/09 to the same y as tag 16 (0.79 m) so it is in view when following the wall. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
+  "_sccsid": "@(#)autonomy.json 3.2.tag15.1 2026/11/12 15:23:38",
+  "_note": "Room dimensions and tag positions are surveyed. Intrinsics remain illustrative placeholders. Camera mount remeasured 2026/11/12: Pi lens 148 mm forward, centred laterally, 137 mm high; forward-facing orientation retained. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. Tag 15 moved 2026/11/12 to y=1.225 m on the centre grout line for measured camera/wheel alignment; x, height and orientation are unchanged. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
   "start_mode": "idle",
   "motion_ramp": {
     "enabled": true,
@@ -31,12 +31,26 @@
     "host": "0.0.0.0",
     "port": 5010,
     "directory": "/var/log/roomberry-navlink",
+    "command_key_file": "/home/pi/Projects/Roomberry/roomberry/navlink.key",
     "flush_interval_s": 10,
     "max_files": 20,
     "max_file_bytes": 16777216
   },
-  "phone_position": {
+  "roomtrek_alignment": {
     "enabled": true,
+    "heading_basis": "optical_forward",
+    "mount_yaw_deg": 0.0,
+    "mount_pitch_deg": 20.0,
+    "lens_x_mm": -66.0,
+    "lens_y_mm": -58.0
+  },
+  "roomtrek_survey": {
+    "enabled": true,
+    "map_prefix": "kitchen",
+    "seed_map_id": "0B2FA89D-F7EA-4002-9AC7-92C32AF1D0D5"
+  },
+  "phone_position": {
+    "enabled": false,
     "max_speed_mm_s": 5.0,
     "time_constant_s": 20.0,
     "mount_yaw_deg": 93.6,
@@ -68,8 +82,8 @@
   },
   "camera_from_robot": [
     [0, -1, 0, 0],
-    [0, 0, -1, 0.16],
-    [1, 0, 0, -0.125],
+    [0, 0, -1, 0.137],
+    [1, 0, 0, -0.148],
     [0, 0, 0, 1]
   ],
   "landmarks": [
@@ -113,7 +127,7 @@
       "max_tag_distance_m": 1.2,
       "world_from_tag": [
         [0, 0, 1, 7.73],
-        [-1, 0, 0, 0.79],
+        [-1, 0, 0, 1.225],
         [0, -1, 0, 0.16],
         [0, 0, 0, 1]
       ]

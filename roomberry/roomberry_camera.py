@@ -1,5 +1,5 @@
 """Camera ownership, explicit scan requests, and AprilTag 3 detection."""
-# @(#)roomberry_camera.py 3.1.grout.5 2026/11/02 21:00:00
+# @(#)roomberry_camera.py 3.2.trails.1 2026/11/10 13:54:11
 
 from threading import Event, Lock, Thread
 import json
@@ -22,6 +22,7 @@ SNAPSHOT_INTERVAL = 20
 APRILTAG_FAMILY = 'tag16h5'
 DETECTION_MAX_DIMENSION = 0
 SCAN_SETTLE_SECONDS = 1.0
+SCAN_COOLOFF_SECONDS = 0.5
 DETECTOR_TIMEOUT_SECONDS = 10.0
 ANNOTATION_SETTINGS = frozenset((
     'annotate_background', 'annotate_foreground', 'annotate_text_size',
@@ -322,7 +323,8 @@ class CameraService:
     def __init__(self, logger, camera=None, detector=None,
                  snapshot_interval=SNAPSHOT_INTERVAL, snapshot_root=None,
                  pause_for_detection=False, scan_pause=None, scan_complete=None,
-                 scan_settle_seconds=SCAN_SETTLE_SECONDS, capture_resolution=None):
+                 scan_settle_seconds=SCAN_SETTLE_SECONDS, capture_resolution=None,
+                 scan_cooloff_seconds=SCAN_COOLOFF_SECONDS, scan_result=None):
         self.logger = logger
         self._camera = camera
         self.detector = detector if detector is not None else AprilTagDetector(isolate_process=True)
@@ -335,6 +337,8 @@ class CameraService:
         self.scan_pause = scan_pause
         self.scan_complete = scan_complete
         self.scan_settle_seconds = max(0.0, float(scan_settle_seconds))
+        self.scan_cooloff_seconds = max(0.0, float(scan_cooloff_seconds))
+        self.scan_result = scan_result
         if self.pause_for_detection and (
                 self.scan_pause is None or self.scan_complete is None):
             raise ValueError(
@@ -512,6 +516,17 @@ class CameraService:
                 self._capture_scan(requested)
             # Requests arriving during capture/archiving wake the next scan.
 
+    def _scan_cooloff(self, timings, name, paused):
+        """Wait only on the camera worker, outside camera/detection/mission locks."""
+        if not paused:
+            return False
+        stage = monotonic()
+        interrupted = self._shutdown.wait(self.scan_cooloff_seconds)
+        timings[name] = (monotonic() - stage) * 1000.0
+        self.logger.debug('Scan cool-off stage=%s requested_s=%.3f elapsed_ms=%.3f interrupted=%s',
+                          name, self.scan_cooloff_seconds, timings[name], interrupted)
+        return interrupted
+
     def _capture_scan(self, requested=False):
         """Archive every frame; only run stationary detection when pause permits."""
         started = monotonic()
@@ -540,6 +555,8 @@ class CameraService:
                 captured_at = time()
                 self.last_capture_time = captured_at
             timings['capture'] = (monotonic() - stage) * 1000.0
+            if self._scan_cooloff(timings, 'cooloff_after_capture', paused):
+                return
             if detect_allowed:
                 stage = monotonic()
                 try:
@@ -562,17 +579,22 @@ class CameraService:
                         item.get('depth_mm'), item.get('decision_margin'), item.get('hamming'),
                         (item.get('tag_pose_camera') or {}).get('error'), item.get('pose_ms'), captured_at,
                     )
+            if self._scan_cooloff(timings, 'cooloff_after_detect', paused):
+                return
             report = {
                 'captured_at': captured_at, 'image_size': [int(image.shape[1]), int(image.shape[0])],
                 'color': 'RGB', 'paused': paused, 'requested': bool(requested),
                 'detection_skipped': not detect_allowed, 'detector_error': error_text,
                 'tags': list(detections), 'timings_ms': timings,
+                'scan_cooloff_seconds': self.scan_cooloff_seconds if paused else 0.0,
             }
             if self.snapshot_root is not None:
                 try:
                     self._save_periodic_snapshot(image, captured_at, report)
                 except Exception:
                     self.logger.exception('Vision archive could not be saved.')
+            if self._scan_cooloff(timings, 'cooloff_after_archive', paused):
+                return
             timings['total'] = (monotonic() - started) * 1000.0
             # Publish after archiving so slow full-resolution detection/storage
             # cannot make a stationary result expire before the mission sees it.
@@ -584,6 +606,11 @@ class CameraService:
                     self._last_detection_duration = timings['detect'] / 1000.0
             self.logger.debug('Vision scan: tags=%d paused=%s skipped=%s image=%s timings_ms=%s',
                               len(detections), paused, not detect_allowed, image.shape, timings)
+            if self.scan_result is not None:
+                try:
+                    self.scan_result(report)  # Queue speech only; no network I/O here.
+                except Exception:
+                    self.logger.exception('Unable to queue tag scan announcement.', extra=dict(speech_announce=False))
         except Exception:
             self.logger.exception('Vision capture failed.')
         finally:
@@ -617,7 +644,8 @@ class CameraService:
             report['timings_ms']['image_save'] = (monotonic() - started) * 1000.0
             report['timings_ms']['through_image_save'] = sum(
                 report['timings_ms'].get(key, 0.0)
-                for key in ('pause', 'settle', 'camera_lock', 'capture', 'detect', 'image_save')
+                for key in ('pause', 'settle', 'camera_lock', 'capture', 'cooloff_after_capture',
+                            'detect', 'cooloff_after_detect', 'image_save')
             )
             report_path = filepath.with_suffix('.json')
             temporary = report_path.with_suffix('.json.tmp')

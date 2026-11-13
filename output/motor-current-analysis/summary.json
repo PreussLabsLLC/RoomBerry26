@@ -1,0 +1,128 @@
+{
+  "recording": "roomberry/logs/sensors/roomberry-sensors-20261028-142005.csv",
+  "log": "roomberry/logs/roomberry.log",
+  "valid_samples": 13209,
+  "rejected_samples": 1,
+  "rejection_reason": "OI mode outside valid 0\u20133 range; entire malformed row excluded",
+  "sample_interval_percentiles_s": [
+    0.12599999999997635,
+    0.14000000000010004,
+    0.15999999999996817,
+    5.691999999999993
+  ],
+  "sample_delay_percentiles_s": [
+    0.07799999999997453,
+    0.11799999999996089,
+    0.13200000000001297
+  ],
+  "max_left_a": 0.781,
+  "max_right_a": 0.699,
+  "valid_wheel_overcurrent_samples": 0,
+  "near_rest_start_count": 53,
+  "near_rest_median_peak_a": 0.233,
+  "later_moving_sample_count": 1170,
+  "later_moving_median_a": 0.157,
+  "raw_command_transition_count": 805,
+  "brief_zero_pulse_count": 118,
+  "restart_pulse_count": 8,
+  "transitions": {
+    "start": {
+      "count": 280,
+      "measurable_peak_count": 280,
+      "contact_near": 82,
+      "median_peak_a": 0.216,
+      "p95_peak_a": 0.319,
+      "median_peak_minus_baseline_a": 0.099,
+      "no_contact_median_peak_a": 0.2295,
+      "no_contact_count": 198
+    },
+    "stop": {
+      "count": 280,
+      "measurable_peak_count": 280,
+      "contact_near": 78,
+      "median_peak_a": 0.079,
+      "p95_peak_a": 0.5660999999999999,
+      "median_peak_minus_baseline_a": -0.05775000000000001,
+      "no_contact_median_peak_a": 0.057,
+      "no_contact_count": 202
+    },
+    "speed_change": {
+      "count": 9,
+      "measurable_peak_count": 9,
+      "contact_near": 0,
+      "median_peak_a": 0.153,
+      "p95_peak_a": 0.32199999999999995,
+      "median_peak_minus_baseline_a": 0.034,
+      "no_contact_median_peak_a": 0.153,
+      "no_contact_count": 9
+    },
+    "direction_change": {
+      "count": 110,
+      "measurable_peak_count": 109,
+      "contact_near": 2,
+      "median_peak_a": 0.231,
+      "p95_peak_a": 0.3425999999999999,
+      "median_peak_minus_baseline_a": 0.07200000000000001,
+      "no_contact_median_peak_a": 0.231,
+      "no_contact_count": 107
+    }
+  },
+  "spikes": [
+    {
+      "timestamp": "2026-10-28T14:29:00.582",
+      "left_a": 0.781,
+      "right_a": 0.294,
+      "physical_bumper": true,
+      "last_transition": "stop",
+      "seconds_after_transition": 0.0019999999999527063,
+      "command": [
+        0,
+        0
+      ],
+      "nearest_transition": "stop",
+      "offset_from_nearest_s": 0.0019999999999527063
+    },
+    {
+      "timestamp": "2026-10-28T14:33:12.514",
+      "left_a": 0.552,
+      "right_a": 0.699,
+      "physical_bumper": true,
+      "last_transition": "stop",
+      "seconds_after_transition": 0.0030000000000427463,
+      "command": [
+        0,
+        0
+      ],
+      "nearest_transition": "stop",
+      "offset_from_nearest_s": 0.0030000000000427463
+    },
+    {
+      "timestamp": "2026-10-28T14:32:19.694",
+      "left_a": 0.655,
+      "right_a": 0.366,
+      "physical_bumper": true,
+      "last_transition": "stop",
+      "seconds_after_transition": 0.008000000000038199,
+      "command": [
+        0,
+        0
+      ],
+      "nearest_transition": "stop",
+      "offset_from_nearest_s": 0.008000000000038199
+    },
+    {
+      "timestamp": "2026-10-28T14:40:07.806",
+      "left_a": 0.477,
+      "right_a": 0.626,
+      "physical_bumper": true,
+      "last_transition": "stop",
+      "seconds_after_transition": 0.0019999999999527063,
+      "command": [
+        0,
+        0
+      ],
+      "nearest_transition": "stop",
+      "offset_from_nearest_s": 0.0019999999999527063
+    }
+  ]
+}

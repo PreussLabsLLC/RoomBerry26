@@ -1,5 +1,6 @@
-// @(#)RoomTrekSession.swift 3.1.roomtrek.2 2026/11/08 12:00:00
+// @(#)RoomTrekSession.swift 3.2.imu.1 2026/11/12 15:12:06
 import ARKit
+import CoreMotion
 import Foundation
 
 /// ARSession engine for both modes. The view controller owns the ARSCNView
@@ -18,10 +19,47 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
     var poseLogInterval: TimeInterval = 0.5 // 2 Hz default; never per-frame
     var navLinkEnabled: Bool = false {
         didSet {
-            if navLinkEnabled && running { startLink() } else { link.stop() }
+            if navLinkEnabled { startLink() } else { link.stop() }
         }
     }
-    private var running = false
+    private(set) var running = false
+    private(set) var operationError = ""
+    var navigationCompletion: ((String, String) -> Void)?
+    private var relocTimedOut = false
+    private var navigationDeadline: TimeInterval?
+    let control = TrekControl(key: TrekControl.loadKey())
+
+    private var requiresRelocalization: Bool { mode == .navigate || mapID != nil }
+    var canAmendSurvey: Bool {
+        guard mode == .survey, running, !interrupted, !failed, let pose = latestPose else { return false }
+        return MapRevisionPolicy.canAmend(localized: !requiresRelocalization || relocState == .localized,
+            trackingNormal: pose.isValid && pose.tracking == 2,
+            frameAge: ProcessInfo.processInfo.systemUptime - pose.timestamp,
+            mapping: pose.worldMappingStatus, operationError: operationError)
+    }
+
+    func operationSnapshot() -> [String: Any] {
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        let level = UIDevice.current.batteryLevel
+        return ["running": running, "mode": mode == .survey ? "survey" : "navigate",
+                "session": String(sessionID), "map_id": mapID?.uuidString ?? "",
+                "tracking": lastTracking, "interrupted": interrupted, "failed": failed,
+                "relocalization": String(describing: relocState), "error": operationError,
+                "can_amend": canAmendSurvey, "mapping": lastMapping,
+                "battery_percent": level < 0 ? -1 : Int((level * 100).rounded()),
+                "battery_state": UIDevice.current.batteryState.rawValue]
+    }
+
+    func failOperation(_ detail: String) {
+        operationError = detail
+        logger.logEvent("operation_error", detail)
+        navigationResult("failed", detail)
+    }
+
+    private func navigationResult(_ state: String, _ detail: String) {
+        let callback = navigationCompletion; navigationCompletion = nil
+        callback?(state, detail)
+    }
     private var lastTracking = ""
     private var lastMapping = ""
     private var observedRelocalizing = false
@@ -44,19 +82,31 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
     private var batteryState: UInt8 = 0
     private var batteryReadAt: TimeInterval = -1
 
+    private let motion = TrekMotion()
+    private var motionSequence: UInt32 = 0
+    private var lastMotionLog: TimeInterval = -1
+
     let logger = TrekLogger()
     let link = TrekLink()
 
     override init() {
         super.init()
+        control.send = { [weak self] data in self?.link.sendControl(data) }
+        control.snapshot = { [weak self] in self?.operationSnapshot() ?? [:] }
+        link.onReceive = { [weak self] data in self?.control.receive(data) }
+        link.onHeartbeat = { [weak self] in self?.control.heartbeat() }
     }
 
     // MARK: - Session control
 
-    func startSurveyor(arSession: ARSession) {
-        mode = .survey; mapID = nil; relocState = .notNeeded
-        begin(arSession: arSession)
-        logger.logEvent("session_start", "Surveyor")
+    func startSurveyor(arSession: ARSession, map: ARWorldMap? = nil, mapID: UUID? = nil) {
+        mode = .survey; self.mapID = mapID; relocState = mapID == nil ? .notNeeded : .relocalizing
+        begin(arSession: arSession, initialWorldMap: map)
+        if let mapID = mapID {
+            logger.logEvent("map_load", mapID.uuidString)
+            logger.logEvent("relocalization_attempt", "amend map=\(mapID.uuidString)")
+        }
+        logger.logEvent("session_start", mapID == nil ? "Surveyor fresh" : "Surveyor amend map=\(mapID!.uuidString)")
     }
 
     func startNavigator(arSession: ARSession, map: ARWorldMap, mapID: UUID) {
@@ -76,16 +126,20 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         // is the marker that the Pi must rebind.
         let map: ARWorldMap
         do { map = try MapStore().loadWorldMap(for: mapID) }
-        catch { report("Reset failed: \(error.localizedDescription)"); return }
+        catch { failOperation("map_load: \(error.localizedDescription)"); report(operationError); return }
         startNavigator(arSession: arSession, map: map, mapID: mapID)
         logger.logEvent("relocalization_retry", "map=\(mapID.uuidString)")
     }
 
     func stop() {
+        running = false; navigationDeadline = nil
+        motion.stop()
+        sendMotion()
         timer?.invalidate(); timer = nil
-        link.stop()
+        if !navLinkEnabled { link.stop() }
+        navigationResult("failed", "Session stopped")
         logger.logEvent("session_stop", mode == .survey ? "Surveyor" : "Navigator")
-        if mode == .navigate && relocState != .localized {
+        if requiresRelocalization && relocState != .localized {
             logger.logEvent("relocalization_outcome", "stopped_without_candidate")
         }
         logger.flush()
@@ -96,6 +150,7 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
     private var arSessionRef: ARSession? { arSession }
 
     private func begin(arSession: ARSession, initialWorldMap: ARWorldMap? = nil) {
+        operationError = ""; relocTimedOut = false
         latestPose = nil; previous = nil
         observedRelocalizing = false
         lastTracking = ""; lastMapping = ""
@@ -104,13 +159,15 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         arSession.delegate = self
         arSession.delegateQueue = .main
         guard ARWorldTrackingConfiguration.isSupported else {
+            running = false; failed = true; operationError = "ARKit world tracking unsupported"
+            navigationResult("failed", operationError)
             report("ARKit world tracking is not supported on this device.")
             logger.logEvent("session_error", "unsupported")
             return
         }
         let config = ARWorldTrackingConfiguration()
         config.worldAlignment = .gravity
-        if mode == .navigate, let map = initialWorldMap {
+        if let map = initialWorldMap {
             config.initialWorldMap = map
         }
         // Same power profile as StarLock: lowest 30 fps video format.
@@ -124,14 +181,18 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         sequence = 0
         interrupted = false; failed = false
         previous = nil; lastLogged = 0; normalSince = nil
-        if mode == .navigate {
+        if requiresRelocalization {
             relocState = .relocalizing
             relocStarted = ProcessInfo.processInfo.systemUptime
+            navigationDeadline = ProcessInfo.processInfo.systemUptime + 30
         } else {
+            navigationDeadline = nil
             relocState = .notNeeded
         }
         UIDevice.current.isBatteryMonitoringEnabled = true
         batteryReadAt = -1
+        motionSequence = 0; lastMotionLog = -1
+        motion.start()
         startLink()
         if timer == nil {
             timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.tick() }
@@ -187,7 +248,8 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         _ = horizontal
 
         // Relocalization state machine (Navigator only).
-        if mode == .navigate {
+        if requiresRelocalization && !relocTimedOut {
+            if tracking != 2 && navigationDeadline == nil { navigationDeadline = now + 30 }
             let relocalizingNow = (tracking == 1 && reason == 4)
             if relocalizingNow {
                 if relocState != .relocalizing { relocStarted = now }
@@ -197,6 +259,9 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
             } else if observedRelocalizing, tracking == 2, let since = normalSince, now - since >= 1.0 {
                 if relocState != .localized {
                     relocState = .localized
+                    navigationDeadline = nil
+                    operationError = ""
+                    navigationResult("completed", "Localized candidate; accuracy unverified")
                     let elapsed = relocStarted.map { now - $0 } ?? 0
                     logger.logEvent("relocalization_outcome", String(format: "localized_candidate after %.1fs", elapsed))
                     report(String(format: "RELOCALIZED (candidate) after %.1fs · valid pose", elapsed))
@@ -216,7 +281,7 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         if mappingKey != lastMapping {
             logger.logEvent("mapping_status", mappingKey); lastMapping = mappingKey
         }
-        let valid = baseValid && (mode == .survey || relocState == .localized)
+        let valid = baseValid && !relocTimedOut && (!requiresRelocalization || relocState == .localized)
         var pose = TrekPose()
         pose.position = positionM
         pose.orientation = quat
@@ -259,7 +324,10 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
 
     func sessionWasInterrupted(_ session: ARSession) {
         interrupted = true; latestPose = nil; previous = nil; normalSince = nil
-        if mode == .navigate { relocState = .relocalizing; observedRelocalizing = false }
+        if requiresRelocalization {
+            relocState = .relocalizing; observedRelocalizing = false
+            if navigationDeadline == nil { navigationDeadline = ProcessInfo.processInfo.systemUptime + 30 }
+        }
         logger.logEvent("interrupted", "")
     }
 
@@ -267,7 +335,7 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         interrupted = false
         sessionID = UInt64.random(in: 1...UInt64.max)
         sequence = 0; previous = nil; normalSince = nil
-        if mode == .navigate { relocState = .relocalizing; relocStarted = ProcessInfo.processInfo.systemUptime }
+        if requiresRelocalization { relocState = .relocalizing; relocStarted = ProcessInfo.processInfo.systemUptime }
         if navLinkEnabled { startLink() }
         logger.logEvent("interruption_ended", "new session=\(sessionID)")
     }
@@ -275,6 +343,8 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
     func session(_ session: ARSession, didFailWithError error: Error) {
         failed = true; latestPose = nil; previous = nil; normalSince = nil
         logger.logEvent("session_error", error.localizedDescription)
+        operationError = "tracking_failure: \(error.localizedDescription)"
+        navigationResult("failed", operationError)
         report("TRACKING error: \(error.localizedDescription)")
     }
 
@@ -283,6 +353,13 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
     private func tick() {
         guard running else { return }
         let now = ProcessInfo.processInfo.systemUptime
+        if requiresRelocalization, !failed, !relocTimedOut, relocState != .localized,
+           let deadline = navigationDeadline, now >= deadline {
+            relocTimedOut = true; relocState = .lost
+            operationError = "relocalization_timeout: no localized candidate within 30 seconds; retry required"
+            navigationResult("failed", operationError)
+            logger.logEvent("relocalization_outcome", operationError); report(operationError)
+        }
         if now - batteryReadAt >= 1 || batteryReadAt < 0 {
             let device = UIDevice.current
             let level = device.batteryLevel
@@ -295,6 +372,7 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
             }
             batteryReadAt = now
         }
+        sendMotion()
         guard let pose = latestPose else { return }
         let age = now - pose.timestamp
         var packet = TrekPacket()
@@ -311,11 +389,36 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         packet.quaternion = pose.orientation
         packet.yaw = pose.yaw
         packet.features = pose.features
-        // Only Navigator observations can be valid map-relative measurements.
-        if mode == .navigate && pose.mapID != nil && pose.isValid && age >= 0 && age <= 0.25 && !interrupted && !failed {
+        // Loaded-map Surveyor and Navigator observations share validity rules.
+        if pose.mapID != nil && pose.isValid && age >= 0 && age <= 0.25 && !interrupted && !failed && !relocTimedOut {
             packet.flags = 1
         }
         if navLinkEnabled { link.send(packet.encoded(), session: sessionID) }
+    }
+
+    private func sendMotion() {
+        guard sessionID != 0 else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        var packet = motion.packet
+        packet.session = sessionID
+        packet.sequence = motionSequence; motionSequence &+= 1
+        packet.sendUS = TrekPoseMath.microseconds(now)
+        let age = now-Double(packet.sampleUS)/1_000_000
+        packet.sampleAgeUS = age >= 0 ? UInt32(clamping: TrekPoseMath.microseconds(age)) : .max
+        packet.flags = packet.state == 2 && age >= 0 && age <= 0.25 ? 1 : 0
+        if navLinkEnabled { link.send(packet.encoded(), session: sessionID) }
+        if now-lastMotionLog >= 0.5 {
+            let fields: [String: Any] = ["session": String(sessionID), "sample_us": packet.sampleUS,
+                "generation": packet.generation, "state": packet.state, "valid": packet.flags == 1,
+                "gyro_rad_s": [packet.gyro.x, packet.gyro.y, packet.gyro.z],
+                "user_acceleration_ms2": [packet.acceleration.x, packet.acceleration.y, packet.acceleration.z],
+                "gravity_g": [packet.gravity.x, packet.gravity.y, packet.gravity.z],
+                "quaternion": [packet.quaternion.x, packet.quaternion.y, packet.quaternion.z, packet.quaternion.w],
+                "integrated_yaw_rad": packet.integratedYaw]
+            if let data = try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys]),
+               let text = String(data: data, encoding: .utf8) { logger.logEvent("motion_sample", text) }
+            lastMotionLog = now
+        }
     }
 
     // MARK: - Helpers
@@ -339,6 +442,59 @@ final class RoomTrekSession: NSObject, ARSessionDelegate {
         case 5: return "interrupted"
         case 6: return "session error"
         default: return "other"
+        }
+    }
+}
+
+
+/// Main-queue sensor state; independent of ARSession pose and tracking state.
+private final class TrekMotion {
+    private let manager = CMMotionManager()
+    private var integrator = TrekGyroIntegrator()
+    private var token: UInt32 = 0
+    private(set) var packet = TrekMotionPacket()
+
+    func stop() {
+        token &+= 1
+        manager.stopDeviceMotionUpdates()
+        packet.state = 0; packet.flags = 0
+    }
+
+    func start() {
+        stop()
+        integrator = TrekGyroIntegrator()
+        packet.generation &+= 1
+        packet.sampleUS = 0; packet.integratedYaw = 0
+        guard manager.isDeviceMotionAvailable,
+              CMMotionManager.availableAttitudeReferenceFrames().contains(.xArbitraryZVertical) else { return }
+        packet.state = 1
+        manager.deviceMotionUpdateInterval = 0.02
+        let current = token
+        manager.startDeviceMotionUpdates(using: .xArbitraryZVertical, to: .main) { [weak self] sample, error in
+            guard let self = self, self.token == current else { return }
+            guard error == nil, let sample = sample else {
+                self.packet.state = 3; self.packet.flags = 0
+                self.packet.generation &+= 1; self.integrator = TrekGyroIntegrator(); return
+            }
+            let r = sample.rotationRate, g = sample.gravity, a = sample.userAcceleration
+            let q = sample.attitude.quaternion
+            let values = [sample.timestamp, r.x, r.y, r.z, g.x, g.y, g.z, a.x, a.y, a.z, q.x, q.y, q.z, q.w]
+            guard values.allSatisfy({ $0.isFinite }),
+                  (g.x*g.x+g.y*g.y+g.z*g.z) > 0.64,
+                  (g.x*g.x+g.y*g.y+g.z*g.z) < 1.44 else {
+                self.packet.state = 3; self.packet.generation &+= 1
+                self.integrator = TrekGyroIntegrator(); return
+            }
+            if !self.integrator.add(time: sample.timestamp, rate: SIMD3(r.x,r.y,r.z), gravity: SIMD3(g.x,g.y,g.z)) {
+                self.packet.generation &+= 1
+            }
+            self.packet.state = 2
+            self.packet.sampleUS = TrekPoseMath.microseconds(sample.timestamp)
+            self.packet.quaternion = SIMD4(Float(q.x), Float(q.y), Float(q.z), Float(q.w))
+            self.packet.gyro = SIMD3(Float(r.x), Float(r.y), Float(r.z))
+            self.packet.gravity = SIMD3(Float(g.x), Float(g.y), Float(g.z))
+            self.packet.acceleration = SIMD3(Float(a.x*9.80665), Float(a.y*9.80665), Float(a.z*9.80665))
+            self.packet.integratedYaw = Float(self.integrator.yaw)
         }
     }
 }

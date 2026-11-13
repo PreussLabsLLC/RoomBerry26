@@ -1,0 +1,141 @@
+[
+  {
+    "capture_epoch": 1794274904.88718,
+    "purpose": "WALL first confirmed tag15",
+    "confirmed": true,
+    "tag_x_mm": 6333.663963193689,
+    "tag_y_mm": 1298.0458225604127,
+    "tag_range_mm": 1485.8885844857423,
+    "wheel_x_mm": 6057.424038266187,
+    "wheel_y_mm": 553.7880600438203,
+    "wheel_vs_tag_mm": 793.869078116887,
+    "tag_minus_wheel_heading_deg": -11.86598017216641,
+    "local_innovation": null,
+    "phone_x_mm": 5232.131656606594,
+    "phone_y_mm": 85.41665463651798,
+    "phone_vs_tag_mm": 1638.243852835982,
+    "phone_vs_wheel_mm": 948.9358717155628
+  },
+  {
+    "capture_epoch": 1794275071.898989,
+    "purpose": "localize",
+    "confirmed": false,
+    "tag_x_mm": 6563.001033313789,
+    "tag_y_mm": 894.3759228532958,
+    "tag_range_mm": 1171.657339633974,
+    "wheel_x_mm": 6663.576313789894,
+    "wheel_y_mm": 400.1769865744526,
+    "wheel_vs_tag_mm": 504.32923340015435,
+    "tag_minus_wheel_heading_deg": 4.987234499535843,
+    "local_innovation": null
+  },
+  {
+    "capture_epoch": 1794275076.7001,
+    "purpose": "localize",
+    "confirmed": true,
+    "tag_x_mm": 6561.351837488513,
+    "tag_y_mm": 892.3464810189613,
+    "tag_range_mm": 1173.1211914880912,
+    "wheel_x_mm": 6663.576313789894,
+    "wheel_y_mm": 400.1769865744526,
+    "wheel_vs_tag_mm": 502.6735071762334,
+    "tag_minus_wheel_heading_deg": 5.0950094812425135,
+    "local_innovation": null
+  },
+  {
+    "capture_epoch": 1794275095.965575,
+    "purpose": "localize",
+    "confirmed": false,
+    "tag_x_mm": 6948.022219967422,
+    "tag_y_mm": 899.2581074798602,
+    "tag_range_mm": 789.573671366238,
+    "wheel_x_mm": 7068.118312260402,
+    "wheel_y_mm": 286.1231121855326,
+    "wheel_vs_tag_mm": 624.7860384472584,
+    "tag_minus_wheel_heading_deg": 3.8112571615964144,
+    "local_innovation": [
+      88.61033249151008,
+      0.022308341781180907
+    ]
+  },
+  {
+    "capture_epoch": 1794275100.675516,
+    "purpose": "localize",
+    "confirmed": true,
+    "tag_x_mm": 6933.008874690101,
+    "tag_y_mm": 876.5862434889018,
+    "tag_range_mm": 801.6807540313404,
+    "wheel_x_mm": 7068.118312260402,
+    "wheel_y_mm": 286.1231121855326,
+    "wheel_vs_tag_mm": 605.7237567977195,
+    "tag_minus_wheel_heading_deg": 5.556716132683165,
+    "local_innovation": [
+      74.49641019377997,
+      0.008155664222755377
+    ]
+  },
+  {
+    "capture_epoch": 1794275117.945621,
+    "purpose": "final",
+    "confirmed": false,
+    "tag_x_mm": 7111.022346056626,
+    "tag_y_mm": 772.6204061523177,
+    "tag_range_mm": 619.2215971391453,
+    "wheel_x_mm": 7252.675777509243,
+    "wheel_y_mm": 191.00783001756724,
+    "wheel_vs_tag_mm": 598.6141356169284,
+    "tag_minus_wheel_heading_deg": 11.250409986412079,
+    "local_innovation": [
+      30.98356244613548,
+      0.09932973149307456
+    ]
+  },
+  {
+    "capture_epoch": 1794275122.445256,
+    "purpose": "final",
+    "confirmed": true,
+    "tag_x_mm": 7109.790367039929,
+    "tag_y_mm": 772.1920249366318,
+    "tag_range_mm": 620.4652389879093,
+    "wheel_x_mm": 7252.675777509243,
+    "wheel_y_mm": 191.00783001756724,
+    "wheel_vs_tag_mm": 598.4908595364724,
+    "tag_minus_wheel_heading_deg": 11.276010326010237,
+    "local_innovation": [
+      31.96096463214915,
+      0.0997765417086911
+    ]
+  },
+  {
+    "capture_epoch": 1794275147.830138,
+    "purpose": "validate",
+    "confirmed": false,
+    "tag_x_mm": 7379.272541394004,
+    "tag_y_mm": 843.5993300549897,
+    "tag_range_mm": 354.79943405051273,
+    "wheel_x_mm": 7581.837553983094,
+    "wheel_y_mm": 137.09173125763652,
+    "wheel_vs_tag_mm": 734.9731773905901,
+    "tag_minus_wheel_heading_deg": 10.52659126783259,
+    "local_innovation": [
+      87.55551365814496,
+      0.013060087284679778
+    ]
+  },
+  {
+    "capture_epoch": 1794275152.63532,
+    "purpose": "validate",
+    "confirmed": true,
+    "tag_x_mm": 7379.097096581332,
+    "tag_y_mm": 844.0450481818107,
+    "tag_range_mm": 355.0404411621656,
+    "wheel_x_mm": 7581.837553983094,
+    "wheel_y_mm": 137.09173125763652,
+    "wheel_vs_tag_mm": 735.4499883592136,
+    "tag_minus_wheel_heading_deg": 10.451104468704807,
+    "local_innovation": [
+      87.98855698315921,
+      0.01437758047125115
+    ]
+  }
+]

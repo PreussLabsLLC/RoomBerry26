@@ -1,4 +1,4 @@
-# @(#)roomberry_camera_test.py 3.1.scan.1 2026/11/02 21:00:00
+# @(#)roomberry_camera_test.py 3.2.trails.1 2026/11/10 13:54:11
 import json
 import tempfile
 from pathlib import Path
@@ -53,6 +53,71 @@ class CameraServiceTest(unittest.TestCase):
 
 
 class VisionArchiveTest(unittest.TestCase):
+    def test_cooloffs_keep_pause_and_free_locks_until_result_publication(self):
+        trace = []
+        held = [False]
+        camera, detector = Mock(), Mock()
+        pixels = np.zeros((8, 8, 3), dtype=np.uint8)
+        camera.capture_array.side_effect = lambda: (trace.append('capture') or pixels)
+        detector.detect.side_effect = lambda image: (trace.append('detect') or [{'id':16}])
+        detector.last_timings_ms = {}
+        def pause():
+            held[0] = True; trace.append('pause'); return True
+        def complete():
+            self.assertTrue(held[0]); held[0] = False; trace.append('complete')
+        service = CameraService(Mock(), camera=camera, detector=detector, snapshot_root='mocked',
+                                pause_for_detection=True, scan_pause=pause, scan_complete=complete)
+        service._save_periodic_snapshot = lambda *args: trace.append('archive')
+        def wait(seconds):
+            self.assertTrue(held[0])
+            self.assertIsNone(service.last_detection_ready_time)
+            for lock in (service._lock, service._detection_lock):
+                self.assertTrue(lock.acquire(blocking=False)); lock.release()
+            trace.append(('wait', seconds)); return False
+        service._shutdown.wait = wait
+        def announce(report):
+            self.assertTrue(held[0])
+            self.assertIsNotNone(service.last_detection_ready_time)
+            for name in ('cooloff_after_capture', 'cooloff_after_detect', 'cooloff_after_archive'):
+                self.assertIn(name, report['timings_ms'])
+            trace.append('announce')
+        service.scan_result = announce
+        service._capture_scan(True)
+        self.assertEqual(trace, ['pause', ('wait',1.0), 'capture', ('wait',0.5), 'detect',
+                                 ('wait',0.5), 'archive', ('wait',0.5), 'announce', 'complete'])
+        self.assertFalse(held[0])
+
+    def test_shutdown_interrupts_each_cooloff_without_publishing_or_speaking(self):
+        for cancel_at in (2, 3, 4):  # Settle is wait1; the three cool-offs follow.
+            with self.subTest(cancel_at=cancel_at):
+                camera, detector, complete, announce = Mock(), Mock(), Mock(), Mock()
+                camera.capture_array.return_value = np.zeros((8,8,3), dtype=np.uint8)
+                detector.detect.return_value = [{'id':16}]; detector.last_timings_ms = {}
+                service = CameraService(Mock(), camera=camera, detector=detector, snapshot_root='mocked',
+                                        pause_for_detection=True, scan_pause=lambda:True,
+                                        scan_complete=complete, scan_result=announce)
+                service._save_periodic_snapshot = Mock()
+                count = [0]
+                def wait(seconds):
+                    count[0] += 1; return count[0] == cancel_at
+                service._shutdown.wait = wait
+                service._capture_scan(True)
+                self.assertIsNone(service.last_detection_ready_time)
+                announce.assert_not_called()
+                complete.assert_called_once_with()
+
+    def test_speech_callback_failure_does_not_lose_detection_or_pause_cleanup(self):
+        camera, detector, complete = Mock(), Mock(), Mock()
+        camera.capture_array.return_value = np.zeros((8,8,3), dtype=np.uint8)
+        detector.detect.return_value = [{'id':16}]; detector.last_timings_ms = {}
+        service = CameraService(Mock(), camera=camera, detector=detector,
+                                pause_for_detection=True, scan_pause=lambda:True,
+                                scan_complete=complete, scan_settle_seconds=0, scan_cooloff_seconds=0,
+                                scan_result=Mock(side_effect=RuntimeError('speech unavailable')))
+        service._capture_scan(True)
+        self.assertEqual(service.latest_detections[0]['id'], 16)
+        complete.assert_called_once_with()
+
     def test_full_resolution_color_archive_and_report_round_trip(self):
         with tempfile.TemporaryDirectory() as directory:
             camera = Mock()
@@ -66,7 +131,7 @@ class VisionArchiveTest(unittest.TestCase):
             service = CameraService(Mock(), camera=camera, detector=detector,
                                     snapshot_root=directory, pause_for_detection=True,
                                     scan_pause=lambda: True, scan_complete=complete,
-                                    scan_settle_seconds=0)
+                                    scan_settle_seconds=0, scan_cooloff_seconds=0)
             service._capture_scan(True)
             report, = service.recent_scans(tags_only=True)
             self.assertEqual(report['tags'][0]['distance_mm'], 500.0)
@@ -114,7 +179,7 @@ class VisionArchiveTest(unittest.TestCase):
             service = CameraService(Mock(), camera=camera, detector=detector,
                                     snapshot_root=directory, pause_for_detection=True,
                                     scan_pause=lambda: True, scan_complete=complete,
-                                    scan_settle_seconds=0)
+                                    scan_settle_seconds=0, scan_cooloff_seconds=0)
             service._capture_scan()
             report, = service.recent_scans()
             self.assertEqual(report['detector_error'], 'bad detector')

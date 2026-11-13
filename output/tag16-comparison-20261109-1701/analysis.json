@@ -1,0 +1,98 @@
+{
+  "anchor": {
+    "heading_rad": -1.869953563322383,
+    "x_mm": 3139.4136040094136,
+    "y_mm": 1188.6996336696398
+  },
+  "anchor_capture_epoch": 1794272526.33948,
+  "fixes": [
+    {
+      "capture_epoch": 1794272844.848989,
+      "time": "2026-11-09T17:07:24.848989",
+      "purpose": "localize",
+      "confirmed": false,
+      "tag_x_mm": 6869.647933494454,
+      "tag_y_mm": 882.4985252312142,
+      "tag_range_mm": 865.3101498944252,
+      "wheel_x_mm": 7044.930262349146,
+      "wheel_y_mm": 437.4900320596869,
+      "tag_minus_wheel_x_mm": -175.2823288546915,
+      "tag_minus_wheel_y_mm": 445.00849317152733,
+      "wheel_error_mm": 478.2849086094161,
+      "tag_minus_wheel_heading_deg": 4.762427611445404,
+      "local_innovation": null
+    },
+    {
+      "capture_epoch": 1794272849.811577,
+      "time": "2026-11-09T17:07:29.811577",
+      "purpose": "localize",
+      "confirmed": true,
+      "tag_x_mm": 6873.256710151804,
+      "tag_y_mm": 851.3931120855113,
+      "tag_range_mm": 858.9401486200617,
+      "wheel_x_mm": 7044.930262349146,
+      "wheel_y_mm": 437.4900320596869,
+      "tag_minus_wheel_x_mm": -171.67355219734145,
+      "tag_minus_wheel_y_mm": 413.90308002582447,
+      "wheel_error_mm": 448.0932583502204,
+      "tag_minus_wheel_heading_deg": 6.771312558460641,
+      "local_innovation": null
+    },
+    {
+      "capture_epoch": 1794272874.460824,
+      "time": "2026-11-09T17:07:54.460824",
+      "purpose": "final",
+      "confirmed": false,
+      "tag_x_mm": 7082.506975045893,
+      "tag_y_mm": 849.1700716923405,
+      "tag_range_mm": 650.1909832874461,
+      "wheel_x_mm": 7287.264409732069,
+      "wheel_y_mm": 355.1040979711579,
+      "tag_minus_wheel_x_mm": -204.75743468617566,
+      "tag_minus_wheel_y_mm": 494.06597372118256,
+      "wheel_error_mm": 534.8147281520244,
+      "tag_minus_wheel_heading_deg": 6.528021763495408,
+      "local_innovation": [
+        65.40994619870506,
+        0.00412149581002863
+      ]
+    },
+    {
+      "capture_epoch": 1794272879.427717,
+      "time": "2026-11-09T17:07:59.427717",
+      "purpose": "final",
+      "confirmed": true,
+      "tag_x_mm": 7086.098205792747,
+      "tag_y_mm": 842.87836365278,
+      "tag_range_mm": 646.0693785700694,
+      "wheel_x_mm": 7287.264409732069,
+      "wheel_y_mm": 355.1040979711579,
+      "tag_minus_wheel_x_mm": -201.16620393932226,
+      "tag_minus_wheel_y_mm": 487.77426568162207,
+      "wheel_error_mm": 527.628255373613,
+      "tag_minus_wheel_heading_deg": 7.060774409719195,
+      "local_innovation": [
+        58.26956772657568,
+        0.005176791965288974
+      ]
+    }
+  ],
+  "phone": {
+    "packets": 728,
+    "sessions": 6,
+    "first_received": "2026-11-09T17:05:54.679871",
+    "last_session_packets": 596,
+    "last_session_tracking": {
+      "1": 43,
+      "2": 553
+    },
+    "last_session_reasons": {
+      "1": 6,
+      "0": 553,
+      "3": 37
+    },
+    "normal_features_min": 0,
+    "normal_features_median": 2.0,
+    "normal_features_max": 3
+  }
+}

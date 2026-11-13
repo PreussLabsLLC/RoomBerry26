@@ -1,4 +1,4 @@
-// @(#)MapPackage.swift 3.1.roomtrek.2 2026/11/08 12:00:00
+// @(#)MapPackage.swift 3.2 2026/11/09 18:09:21
 import Foundation
 
 /// Metadata preserved with every saved map. The ISO-8601 creation
@@ -16,6 +16,11 @@ struct MapMetadata: Codable {
     var mappingAtCapture: String
     var worldAlignmentNote: String = "gravity-aligned ARKit world; origin is the session origin, not a surveyed room fixture"
     var description: String = ""
+    // Optional fields preserve decoding of all version1 map packages.
+    var parentMapID: UUID?
+    var lineageID: UUID?
+    var revision: Int?
+    var featureCount: Int?
 }
 
 /// Versioned JSON container for offline transfer. `mapData` is the
@@ -116,5 +121,14 @@ enum UIDeviceModelFallback {
 #else
         "iPhone"
 #endif
+    }
+}
+
+/// Pure save policy shared by the AR session and host-side checks.
+enum MapRevisionPolicy {
+    static func canAmend(localized: Bool, trackingNormal: Bool, frameAge: TimeInterval,
+                         mapping: String, operationError: String) -> Bool {
+        localized && trackingNormal && frameAge >= 0 && frameAge <= 0.25
+            && ["mapped", "extending"].contains(mapping) && operationError.isEmpty
     }
 }

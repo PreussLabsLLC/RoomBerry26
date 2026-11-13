@@ -1,4 +1,4 @@
-# @(#)roomberry_turn_guard_test.py 3.1.grout.13 2026/11/04
+# @(#)roomberry_turn_guard_test.py 3.2 2026/11/09 18:53:01
 import math
 import unittest
 from unittest.mock import Mock
@@ -20,6 +20,16 @@ class SettledTurnTest(unittest.TestCase):
         self.assertFalse(self.guard.prepare(self.sample(100.2),sign))
         self.assertTrue(self.guard.prepare(self.sample(100.4),sign))
         self.guard.dispatched(sign)
+
+    def test_short_scan_pulse_brakes_before_target_and_waits_for_coast(self):
+        self.guard=SettledTurn(self.mission,lambda:self.now,max_pulse_s=.12)
+        self.arm(1)
+        self.assertFalse(self.guard.prepare(self.sample(100.6,5),1,math.radians(5)))
+        self.assertEqual(self.guard.phase,'settling')
+        self.assertFalse(self.guard.prepare(self.sample(100.8,9),None,math.radians(1)))
+        self.assertFalse(self.guard.prepare(self.sample(101.,10),None,0))
+        self.assertTrue(self.guard.prepare(self.sample(101.2,10),None,0))
+        self.assertEqual(self.guard.phase,'idle')
 
     def test_exact_reversal_failure_timing_waits_for_settling(self):
         self.arm(1)

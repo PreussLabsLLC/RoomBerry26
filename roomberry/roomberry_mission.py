@@ -1,5 +1,5 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 3.1.wall.16 2026/11/09 10:40:00
+# @(#)roomberry_mission.py 3.2.pulse.1 2026/11/12 16:09:50
 
 from math import atan2, cos, hypot, isfinite, pi, sin
 from random import uniform, choice
@@ -8,6 +8,10 @@ from time import monotonic, time
 
 from irobot.openinterface.constants import MODES, ROBOT
 
+from roomberry_wheel_speed import MIN_WHEEL_SPEED, wheel_speeds
+from roomberry_motion import MotionComparison
+from roomberry_run_trails import RunTrails
+from roomberry_speech import MODE_CODES
 from roomberry_calibration import CalibrationDrive, MODE_CALIBRATION
 from roomberry_gridrunner import GridDrive, MODE_GRIDRUNNER
 from roomberry_tag_return import Tag15Return
@@ -39,7 +43,7 @@ WAYPOINT_LOOKAHEAD_MM = 250.0
 # At 80 mm/s outside-wheel speed, this keeps the inner wheel above 30 mm/s.
 WAYPOINT_MAX_STEERING = 0.45
 WAYPOINT_HEADING_DEADBAND_RAD = 0.03
-MIN_TURN_SPEED = 30
+MIN_TURN_SPEED = MIN_WHEEL_SPEED
 BUMP_GO_SECONDS = 120.0
 BLOCKED_RETRY_SECONDS = 10.0
 BLOCKED_VIEW_SEARCHES = 2
@@ -144,6 +148,9 @@ class RoomberryMission:
         self.localizer = localizer
         self.phone_position = None
         self.navlink = None
+        self.trek_alignment_config = {}
+        self.run_trails = None
+        self.motion_comparison = MotionComparison(logger)
         self._phone_bump_baseline = None
         self.calibration = None
         self.gridrunner = None
@@ -151,6 +158,11 @@ class RoomberryMission:
         self._manual_step = None
         self._manual_step_status = None
         self._announced_mode = None
+        self.on_mode_change = None
+        self.before_mode_change = None
+        self.trek_survey_status = None
+        self._phone_mode = None
+        self._phone_lifecycle_mode = None
         self.logger = logger
         self.dock_waypoint_mm = dock_waypoint_mm
         self.wall_follow = wall_follow or {'enabled': False}
@@ -223,11 +235,13 @@ class RoomberryMission:
             self._send_stop('mission shutdown')
             self._flush_map('mission shutdown')
 
-    def set_mode(self, mode, wake_robot=True):
+    def set_mode(self, mode, wake_robot=True, phone_mode=None):
         if mode not in (MODE_IDLE, MODE_CLEAN, MODE_RETURN_TO_BASE,
                         MODE_DISCOVERY, MODE_REMOTE, MODE_CALIBRATION, MODE_GRIDRUNNER, MODE_WALL):
             raise ValueError('Unsupported mission mode: ' + str(mode))
         with self._coord_lock:
+            if self.before_mode_change is not None:
+                self.before_mode_change(phone_mode or mode)
             self._send_stop('mission mode transition')
             if self._manual_step is not None:
                 self._manual_step = None
@@ -264,6 +278,7 @@ class RoomberryMission:
                 self.gridrunner.result = dict(status='cancelled',reason='mode changed to '+mode)
             calibration = CalibrationDrive(self) if mode == MODE_CALIBRATION else None
             self._mode = mode
+            self._phone_lifecycle_mode = phone_mode
             self._run_map = None
             self._last_pose = None
             if mode == MODE_WALL:
@@ -363,7 +378,8 @@ class RoomberryMission:
                 if wake_robot and mode == MODE_DISCOVERY:
                     self.robot_control.execute('wake')
 
-            self.logger.info('Mission mode changed to %s', mode)
+            self.logger.info('Mission mode changed to %s', mode,
+                             extra=dict(speech_code=MODE_CODES.get(mode, 'STATUS'), speech_announce=False))
             if leaving_active:
                 self._flush_map('leaving active mode')
             self._announce_mode()
@@ -445,7 +461,7 @@ class RoomberryMission:
                             for k in ('distance','angle'))):
                 raise RuntimeError('Return to tag 15 requires valid wheel odometry')
             run = Tag15Return(self, state, prior=prior)
-            self.set_mode(MODE_GRIDRUNNER, wake_robot=False)
+            self.set_mode(MODE_GRIDRUNNER, wake_robot=False, phone_mode='return_to_tag15')
             self.gridrunner = run
             run.start()
 
@@ -454,6 +470,7 @@ class RoomberryMission:
         with self._coord_lock:
             run = self.calibration
             return dict(mission_mode=self._mode,
+                motion_comparison=self.motion_comparison.snapshot(),
                 wall=dict(stage=None if self.wall is None else self.wall.stage,
                     result=None if self.wall is None else self.wall.result,
                     last=None if self.wall is None else self.wall.last,
@@ -478,14 +495,23 @@ class RoomberryMission:
 
     def _announce_mode(self):
         """Announce real mode transitions, including the bump-and-go submode."""
+        phone_mode = self._phone_lifecycle_mode or self._mode
+        if self._phone_mode != phone_mode:
+            self._phone_mode = phone_mode
+            if self.on_mode_change is not None:
+                try: self.on_mode_change(phone_mode)
+                except Exception: self.logger.exception('RoomTrek mode dispatch failed; robot control continues.')
         bump = (self._mode == MODE_DISCOVERY and self._blocked_waypoint is not None
                 and self._blocked_waypoint.get('wander') is not None)
         display_stage = 'bump' if bump else self._discovery_stage
-        identity = (self._mode, bool(bump))
+        spoken_mode = ('recovery' if self._mode in (MODE_CLEAN, MODE_RETURN_TO_BASE)
+                       and self.navigation.mode == 'recovery' else self._mode)
+        identity = (spoken_mode, bool(bump))
         self.robot_control.set_drive_display(self._mode, display_stage, self._scan_active)
         if identity != self._announced_mode:
             self._announced_mode = identity
-            self.logger.info('Navigation mode: %s.', 'bump-and-go' if bump else self._mode)
+            self.logger.info('Navigation mode: %s.', 'bump-and-go' if bump else spoken_mode,
+                             extra=dict(speech_code=MODE_CODES.get(spoken_mode, 'STATUS'), speech_announce=True))
             self._button_beep('mode_change')
 
     def _flush_map(self, reason):
@@ -614,6 +640,7 @@ class RoomberryMission:
             # remote control) until the stationary capture has completed.
             self.robot_control.set_scan_active(True)
             self._send_stop('AprilTag scan pause', smooth=True, force=True)
+            self.logger.info('Stationary scan started.', extra=dict(speech_code='SCAN', speech_announce=True))
             self._flush_map('stationary AprilTag scan')
             self._button_beep('neutral')
             pose = self._scan_pose
@@ -754,6 +781,16 @@ class RoomberryMission:
     def _tick(self):
         self._observe_phone_bumps()
         state = self.robot_control.snapshot()
+        try:
+            self.motion_comparison.update(self.navlink, state)
+        except Exception:
+            self.motion_comparison.state = 'error'
+            self.logger.exception('Motion comparison unavailable; control continues.',
+                                  extra=dict(speech_announce=False))
+        if self.run_trails is None:
+            self.run_trails = RunTrails(self.mapper, self.navlink, self.logger,
+                                       self.trek_alignment_config)
+        self.run_trails.update(state)
         generation = state.get('restart_generation', 0)
         if isinstance(generation, int) and generation != self._restart_generation:
             self._restart_generation = generation
@@ -854,6 +891,10 @@ class RoomberryMission:
                 enabled=(self._mode in (MODE_DISCOVERY, MODE_CLEAN, MODE_RETURN_TO_BASE)
                          and state.get('age') is not None and state['age'] <= .5))
         self._scan_pose = pose
+        if (new_detections and pose and pose.get('localized')
+                and any(tag[1] == 16 for tag in pose.get('accepted_tag_ids', ()))
+                and self.camera.pause_for_detection is True):
+            self.run_trails.anchor(pose, detection_timestamp, state)
         if new_detections:
             self._button_beep('happy' if pose and pose.get('accepted_tag_ids') else 'unhappy')
         if self._mode in (MODE_IDLE, MODE_REMOTE) and new_detections:
@@ -910,7 +951,7 @@ class RoomberryMission:
             return
 
         if self._mode == MODE_WALL:
-            self.wall.tick(state, pose, new_detections, detection_timestamp)
+            self.wall.tick(state, pose, new_detections, detection_timestamp, detections=detections)
             return
 
         if self._mode == MODE_CALIBRATION:
@@ -2651,8 +2692,8 @@ class RoomberryMission:
                 # IR scatter slows approach; only physical contact starts a detour.
                 kwargs = dict(kwargs)
                 for key in ('velocity', 'right_velocity', 'left_velocity'):
-                    if operation in ('drive_straight', 'drive_direct') and kwargs.get(key, 0) > 40:
-                        kwargs[key] = 40
+                    if operation in ('drive_straight', 'drive_direct') and kwargs.get(key, 0) > MIN_WHEEL_SPEED:
+                        kwargs[key] = MIN_WHEEL_SPEED
         signature = (operation, tuple(sorted(kwargs.items())))
         continuous = bool(action.get('continuous',
                                      action.get('kind') == GO_TO_WAYPOINT))
@@ -2694,7 +2735,9 @@ class RoomberryMission:
                                 disable_cleaning=False, smooth=action.get('speed_steps', False) or action.get('ramp', True))
         started = monotonic()
         try:
-            if action.get('speed_steps', False):
+            if action.get('pulse_s') is not None:
+                self.robot_control.execute(operation, ramp=False, pulse_s=action['pulse_s'], **kwargs)
+            elif action.get('speed_steps', False):
                 self.robot_control.execute(operation, ramp=False, steps=True, **kwargs)
             elif action.get('ramp', True):
                 self.robot_control.execute(operation, **kwargs)
@@ -2782,7 +2825,10 @@ class RoomberryMission:
         pivot = abs(error) > (leave if was_turning else enter)
         max_speed = DISCOVERY_SPEED if self._mode == MODE_DISCOVERY else NAVIGATION_SPEED
         if self._mode == MODE_DISCOVERY and getattr(self, '_discovery_ir_proximity', False):
-            max_speed = min(max_speed, 40)
+            max_speed = min(max_speed, MIN_WHEEL_SPEED)
+            # At minimum speed there is no slower inside wheel for a curve.
+            # Align first, then advance straight at the representable speed.
+            pivot = pivot or abs(error) > WAYPOINT_HEADING_DEADBAND_RAD
         if not pivot:
             # Pure-pursuit curvature, bounded so neither wheel reverses. Slow
             # down on bends and near the goal instead of overshooting it.
@@ -2797,6 +2843,7 @@ class RoomberryMission:
             # Keep the outside wheel at or below the normal transit speed.
             speed = min(speed, max_speed / (1.0 + abs(steering)))
             right, left = int(speed * (1.0 + steering)), int(speed * (1.0 - steering))
+            left, right = wheel_speeds((left, right))
             speed = (right + left) / 2.0
             yaw = (right - left) / ROBOT.WHEEL_BASE
             cap = min(duration, DRIVE_WATCHDOG_SECONDS, distance / max(speed, 1))

@@ -107,7 +107,7 @@ venv.bak/
 roomberry/**/map-state.json
 roomberry/**/map-state.json.tmp
 roomberry/logs/sensors/
-# @(#).gitignore 3.1.grout.19 2026/11/05
+# @(#).gitignore 3.2 2026/11/09 22:00:00
 roomberry/logs/navlink/
 *.log.*
 
@@ -124,3 +124,6 @@ xcuserdata/
 
 # macOS Finder metadata
 .DS_Store
+
+# Local NavLink authentication key; provision separately on Pi and phone
+/roomberry/navlink.key

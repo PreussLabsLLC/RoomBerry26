@@ -1,4 +1,4 @@
-# @(#)roomberry_calibration_test.py 3.1.grid.1 2026/11/03 20:30:00
+# @(#)roomberry_calibration_test.py 3.1.wall.4 2026/11/08 19:00:00
 """Scan-free calibration route, GroundHog steering, and failure stops."""
 import logging
 from copy import deepcopy
@@ -232,7 +232,7 @@ class CalibrationTest(unittest.TestCase):
         self.assertEqual(run.result['status'],'cancelled')
         self.assertEqual(self.m._mode,'remote_control')
 
-    def test_clock_release_and_second_press_starts_gridrunner_after_cancel(self):
+    def test_clock_release_and_second_press_starts_wall_after_cancel(self):
         self.start()
         old = self.c
         self.state['clock_button']=True
@@ -243,8 +243,8 @@ class CalibrationTest(unittest.TestCase):
         self.state['clock_button']=True
         self.assertTrue(self.m._handle_clock(self.state))
         self.assertIs(self.m.calibration,old)
-        self.assertEqual(self.m._mode,'gridrunner')
-        self.assertEqual(self.m.gridrunner.stage,'waiting')
+        self.assertEqual(self.m._mode,'wall')
+        self.assertEqual(self.m.wall.stage,'anchor')
         self.camera.request_scan.assert_not_called()
 
     def test_tracking_abort_restores_passive_before_idle_feedback(self):
@@ -261,7 +261,7 @@ class CalibrationTest(unittest.TestCase):
         # The next physical rising edge can start a new baseline.
         self.state['clock_button']=True
         self.assertTrue(self.m._handle_clock(self.state))
-        self.assertEqual(self.m._mode,'gridrunner')
+        self.assertEqual(self.m._mode,'wall')
         self.m.start_calibration()
         self.c=self.m.calibration
         self.tick()

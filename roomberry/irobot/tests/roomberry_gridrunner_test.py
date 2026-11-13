@@ -1,4 +1,4 @@
-# @(#)roomberry_gridrunner_test.py 3.1.tiles.10 2026/11/06
+# @(#)roomberry_gridrunner_test.py 3.1.wall.1 2026/11/08 16:00:00
 """Grid wire contract, freshness, motion ownership, Clock and safety checks."""
 import csv
 import io
@@ -1090,9 +1090,9 @@ class GridDriveTest(unittest.TestCase):
                 self.refresh();self.g.tick(self.f.state)
                 self.assertEqual(self.m._mode,'idle')
 
-    def test_clock_grid_display_cancel_and_passive_restore(self):
+    def test_clock_wall_display_cancel_and_passive_restore(self):
         self.m.set_mode('idle');self.f.state['clock_button']=True
-        self.assertTrue(self.m._handle_clock(self.f.state));self.assertEqual(self.m._mode,'gridrunner')
+        self.assertTrue(self.m._handle_clock(self.f.state));self.assertEqual(self.m._mode,'wall')
         display=SimpleNamespace(_drive_display=None)
         RobotCommandArbiter.set_drive_display(display,'gridrunner',scanning=True)
         self.assertEqual(display._drive_display,'GRID')

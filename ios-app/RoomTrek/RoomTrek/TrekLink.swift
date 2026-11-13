@@ -1,4 +1,4 @@
-// @(#)TrekLink.swift 3.1.roomtrek.2 2026/11/08 12:00:00
+// @(#)TrekLink.swift 3.2.mothership.1 2026/11/12 11:51:06
 import Foundation
 import Network
 
@@ -15,21 +15,43 @@ final class TrekLink {
     private var attempt = -Double.infinity
     private var avahi = false
     private var sent = 0
-    var host: String = "pi"
+    private var host: String = "pi3.local"
     var port: UInt16 = 5010
+    var onReceive: ((Data) -> Void)?
+    var onHeartbeat: (() -> Void)?
+    private var heartbeatTimer: DispatchSourceTimer?
     var onStatus: ((String) -> Void)?
+
+    func configureHost(_ host: String) {
+        queue.async {
+            guard self.host != host else { return }
+            self.host = host
+            self.avahi = false
+            if self.connection != nil { self.connect() }
+        }
+    }
 
     func start(session: UInt64) {
         queue.async {
-            self.connection?.cancel(); self.connection = nil
             self.session = session
-            self.ready = false; self.inFlight = false; self.pending = [:]; self.sent = 0
-            self.connect()
+            self.pending = [:]
+            if self.connection == nil { self.connect() }
+            if self.heartbeatTimer == nil {
+                let timer = DispatchSource.makeTimerSource(queue: self.queue)
+                timer.schedule(deadline: .now(), repeating: 2)
+                timer.setEventHandler { [weak self] in
+                    guard let self = self else { return }
+                    if !self.ready && ProcessInfo.processInfo.systemUptime - self.attempt > 5 { self.connect() }
+                    DispatchQueue.main.async { self.onHeartbeat?() }
+                }
+                self.heartbeatTimer = timer; timer.resume()
+            }
         }
     }
 
     func stop() {
         queue.async {
+            self.heartbeatTimer?.cancel(); self.heartbeatTimer = nil
             self.session = 0; self.pending = [:]
             // Allow an already queued datagram to leave before closing.
             let old = self.connection; self.connection = nil; self.ready = false
@@ -66,6 +88,8 @@ final class TrekLink {
             case .ready:
                 self.ready = true
                 self.report("UDP ready (\(currentHost):\(self.port)) · Pi receipt unconfirmed")
+                self.receive(current)
+                DispatchQueue.main.async { self.onHeartbeat?() }
                 self.flush()
             case .failed(let e), .waiting(let e):
                 self.ready = false
@@ -74,6 +98,23 @@ final class TrekLink {
             }
         }
         current.start(queue: queue)
+    }
+
+    // Connected UDP filters inbound datagrams to the configured Pi endpoint.
+    func sendControl(_ data: Data) {
+        queue.async {
+            guard self.ready, let connection = self.connection else { return }
+            connection.send(content: data, completion: .contentProcessed { _ in })
+        }
+    }
+
+    private func receive(_ current: NWConnection) {
+        current.receiveMessage { [weak self, weak current] data, _, _, error in
+            guard let self = self, let current = current, self.connection === current else { return }
+            if let data = data { DispatchQueue.main.async { self.onReceive?(data) } }
+            if error == nil { self.receive(current) }
+            else { self.ready = false }
+        }
     }
 
     private func flush() {

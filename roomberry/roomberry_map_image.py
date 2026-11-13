@@ -1,5 +1,5 @@
 """On-demand PNG map rendering for Roomberry."""
-# @(#)roomberry_map_image.py 3.1.mapsplit.1 2026/11/02 17:40:00
+# @(#)roomberry_map_image.py 3.2.trails.1 2026/11/10 13:54:11
 from collections import deque
 from io import BytesIO
 from math import ceil, cos, hypot, sin
@@ -21,6 +21,7 @@ TRAIL_GAP_MM = 275.0
 TRAIL_OLDEST_COLOR = (220, 232, 246)
 TRAIL_NEWEST_COLOR = (25, 100, 210)
 TRAIL_RELOCATION_COLOR = (198, 52, 52)
+IPHONE_TRAIL_COLOR = (155, 45, 185)
 TAG_FACING_COLOR = (15, 50, 120)
 
 
@@ -30,6 +31,12 @@ def trail_segments_with_flags(trail, gap_mm=TRAIL_GAP_MM):
     current = []
     relocated = False
     for point in trail:
+        if point is None:
+            if len(current) > 1:
+                segments.append((current, relocated))
+            current = []
+            relocated = False
+            continue
         point = (float(point[0]), float(point[1]))
         if current and hypot(point[0] - current[-1][0],
                              point[1] - current[-1][1]) > gap_mm:
@@ -62,7 +69,7 @@ def render_map(state, tags=(), caption=None, include_old_trail=False):
     pitch = float(state['cell_size_mm'])
     ox, oy = float(state['origin_x']), float(state['origin_y'])
     scale = max(2, min(12, 720 // max(cols, rows)))
-    left, top, right_margin, bottom_margin = 56, 42, 20, 82
+    left, top, right_margin, bottom_margin = 56, 42, 20, 98
     plot_width, plot_height = cols * scale, rows * scale
     right, bottom = left + plot_width, top + plot_height
     width, height = right + right_margin, bottom + bottom_margin
@@ -120,10 +127,11 @@ def render_map(state, tags=(), caption=None, include_old_trail=False):
                            fill=color, outline=(220, 220, 215))
 
     draw.rectangle((left, top, right, bottom), outline=(25, 25, 25), width=3)
-    trail = state.get('trail', [])
+    run_trails = state.get('run_trails')
+    trail = state.get('trail', []) if run_trails is None else run_trails['wheel']
     # Legacy snapshots lack session metadata; show them fully rather than
     # guessing which points are old. Never bridge a process-session boundary.
-    session_start = max(0, min(len(trail), int(state.get('trail_session_start', 0))))
+    session_start = max(0, min(len(trail), int(state.get('trail_session_start', 0)) if run_trails is None else 0))
     old_segments = trail_segments(trail[:session_start])
     current_segments = trail_segments_with_flags(trail[session_start:])
     pair_count = sum(max(0, len(segment) - 1) for segment in old_segments)
@@ -148,7 +156,14 @@ def render_map(state, tags=(), caption=None, include_old_trail=False):
         trail_draw.line([xy(*point) for point in segment],
                         fill=color + (255,),
                         width=max(2, scale // 2))
-    im = Image.alpha_composite(im.convert('RGBA'), trail_layer).convert('RGB')
+    if run_trails is not None:
+        for segment in trail_segments(run_trails['iphone']):
+            trail_draw.line([xy(*point) for point in segment],
+                            fill=IPHONE_TRAIL_COLOR + (255,), width=max(2, scale // 2))
+    # Drift can leave the mapped room; keep traces clear of axes and captions.
+    clipped = Image.new('RGBA', im.size, (0, 0, 0, 0))
+    clipped.paste(trail_layer.crop((left, top, right + 1, bottom + 1)), (left, top))
+    im = Image.alpha_composite(im.convert('RGBA'), clipped).convert('RGB')
     draw = ImageDraw.Draw(im)
     for marker in tags:
         x, y, tag_id = marker[:3]
@@ -217,6 +232,9 @@ def render_map(state, tags=(), caption=None, include_old_trail=False):
               fill=(25, 25, 25))
     draw.text((left, bottom + 59), 'Tag arrows point out of the printed face into the room.',
               fill=TAG_FACING_COLOR)
+    if run_trails is not None:
+        draw.text((left, bottom + 85), 'Run: blue/red = wheels; purple = iPhone (tag16 aligned)',
+                  fill=(30, 30, 30))
     y_label = Image.new('RGBA', (48, 14), (255, 255, 255, 0))
     ImageDraw.Draw(y_label).text((0, 0), 'Y (mm)', fill=(25, 25, 25))
     y_label = y_label.rotate(90, expand=True)

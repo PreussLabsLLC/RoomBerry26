@@ -1,6 +1,6 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 3.1.grout.16 2026/11/05
+# @(#)roomberry.py 3.2.pulse.1 2026/11/12 16:09:50
 import xml.etree.ElementTree as ET
 import logging
 import traceback
@@ -23,8 +23,12 @@ from roomberry_mission import RoomberryMission
 from roomberry_navigation import NavigationCoordinator
 from roomberry_sensor_log import SensorCsvRecorder
 from roomberry_navlink import NavLinkReceiver
+from roomberry_speech import SpeechLogFilter, SpeechSender
+from roomberry_trek_survey import TrekSurveyController
+from roomberry_trek_maps import TrekMapManager
+from roomberry_speech import battery_announcement
 from roomberry_map_log import MapPngRecorder
-from roomberry_web import ASSET_ROOT, ASSETS, command_index, groundhog_snapshot
+from roomberry_web import ASSET_ROOT, ASSETS, command_index, groundhog_snapshot, speech_snapshot
 from irobot.openinterface.constants import MODES
 
 
@@ -105,6 +109,11 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                  autonomy_config=None):
         super().__init__(server_address, server_handler)
         self.logger = logging.getLogger('Roomberry')
+        self.speech_sender = None
+        self.trek_survey = None
+        self.trek_maps = None
+        self.speech_filter = SpeechLogFilter()
+        self.logger.addFilter(self.speech_filter)
         self.autonomy_config = autonomy_config
         camera_config = (autonomy_config or {}).get('camera', {})
         dock_waypoint = (autonomy_config or {}).get('dock_waypoint_mm')
@@ -246,6 +255,7 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
             scan_pause=scan_pause,
             scan_complete=scan_complete,
             scan_settle_seconds=camera_config.get('scan_settle_seconds', 1.0),
+            scan_cooloff_seconds=camera_config.get('scan_cooloff_seconds', 0.5),
             capture_resolution=camera_config.get('capture_resolution'),
         )
         if self.mission is not None:
@@ -257,8 +267,32 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         self.navlink = NavLinkReceiver.from_config(
             (autonomy_config or {}).get('navlink'), self.logger,
         )
+        if self.navlink is not None and self.navlink.trek_control is not None:
+            self.speech_sender = SpeechSender(self.navlink.trek_control.key, self.navlink.port, self.logger,
+                                              battery_status=lambda: battery_announcement(self.roomba_control, self.navlink), quiet_seconds=30,
+                                              scan_quality=dict(min_margin=(autonomy_config or {}).get('min_decision_margin', 10.0),
+                                                                max_pose_error=((autonomy_config or {}).get('tag_filter') or {}).get('max_reprojection_error', 10.0),
+                                                                mapped_tags=[(x.get('family', 'tag16h5'), x['id']) for x in (autonomy_config or {}).get('landmarks', [])] or None))
+            self.camera_service.scan_result = self.speech_sender.submit_scan_result
+            self.speech_filter.send = self.speech_sender.submit
+            survey_config = (autonomy_config or {}).get('roomtrek_survey', {})
+            if survey_config.get('enabled', False):
+                self.trek_survey = TrekSurveyController(self.navlink.trek_control.key, self.navlink.port,
+                                                       self.logger, map_prefix=survey_config.get('map_prefix', 'kitchen'),
+                                                       startup_warning=(lambda: self.mission._button_beep('unhappy')) if self.mission is not None else None,
+                                                       seed_map_id=survey_config.get('seed_map_id'),
+                                                       selection_path=survey_config.get('selection_path') or str(Path(__file__).with_name('logs')/'roomtrek-map-selection.json'))
+                self.trek_maps = TrekMapManager(self.trek_survey, self.mission)
+                if self.mission is not None:
+                    self.mission.on_mode_change = self.trek_survey.mode_changed
+                    self.mission.trek_survey_status = self.trek_survey.snapshot
+                    self.mission.before_mode_change = self.trek_maps.guard_mission
+        if self.speech_sender is None:
+            self.logger.info('Speech disabled: navlink.command_key_file is not configured; phone command authentication is required.',
+                             extra=dict(speech_announce=False))
         if self.mission is not None:
             self.mission.navlink = self.navlink
+            self.mission.trek_alignment_config = (autonomy_config or {}).get('roomtrek_alignment', {})
         phone_config = (autonomy_config or {}).get('phone_position', {})
         if self.mission is not None and self.navlink is not None and phone_config.get('enabled', False):
             from roomberry_phone_position import PhonePositionCorrection
@@ -271,6 +305,12 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
             self.map_log.start()
         if self.navlink is not None:
             self.navlink.start()
+            if getattr(self, 'speech_sender', None) is not None:
+                self.speech_sender.port = self.navlink.port
+                self.speech_sender.start()
+        if getattr(self, 'trek_survey', None) is not None:
+            self.trek_survey.port = self.navlink.port
+            self.trek_survey.start()
         self.roomba_control.start()
         self.camera_service.start()
         if self.mission is not None:
@@ -280,6 +320,8 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         self.serve_forever()
         
     def stop(self):
+        if getattr(self, 'speech_sender', None) is not None:
+            self.speech_filter.send = None
         self.logger.info('Roomberry Server correctly stopped.')
         try:
             self.server_close()
@@ -298,8 +340,22 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                     try:
                         self.roomba_control.close()
                     finally:
-                        if self.navlink is not None:
-                            self.navlink.close()
+                        try:
+                            if getattr(self, 'trek_maps', None) is not None:
+                                self.trek_maps.close()
+                            if getattr(self, 'trek_survey', None) is not None:
+                                self.trek_survey.close()
+                        finally:
+                            try:
+                                if getattr(self, 'speech_sender', None) is not None:
+                                    self.speech_sender.close()
+                            finally:
+                                try:
+                                    if self.navlink is not None:
+                                        self.navlink.close()
+                                finally:
+                                    if getattr(self, 'speech_filter', None) is not None:
+                                        self.logger.removeFilter(self.speech_filter)
 
     def handle_error(self, request, client_address):
         self.logger.info('Exception happened during processing of request from %s', client_address, exc_info=True)        
@@ -483,7 +539,7 @@ class RoomberryHandler(BaseHTTPRequestHandler):
             
     def _mission_operation(self, operation, kwargs):
         """Mission commands belong to the coordinator, not the serial driver."""
-        operations = ('restart_oi','step_left','step_right','step_forward','step_backward','step_forward_500','step_backward_500','clean','return_to_base','return_to_tag15','remote_control','gridrunner','grid','calibrate','cal','calibration','discovery','discover',
+        operations = ('wall','wall_capture_100mm','restart_oi','step_left','step_right','step_left_15','step_right_15','step_left_30','step_right_30','step_forward','step_backward','step_forward_500','step_backward_500','clean','return_to_base','return_to_tag15','remote_control','gridrunner','grid','calibrate','cal','calibration','discovery','discover',
                       'idle','cancel_calibration','stop','emergency_stop')
         if operation not in operations:
             return False
@@ -500,7 +556,11 @@ class RoomberryHandler(BaseHTTPRequestHandler):
             raise RuntimeError('Calibration unavailable: autonomy is not configured'
                                if operation in ('calibrate','cal','calibration') else
                                'Mission unavailable: autonomy is not configured')
-        if operation == 'restart_oi':
+        if operation == 'wall':
+            mission.start_wall()
+        elif operation == 'wall_capture_100mm':
+            mission.capture_wall_clearance()
+        elif operation == 'restart_oi':
             mission.restart_oi()
         elif operation.startswith('step_'):
             mission.manual_step(operation[5:])
@@ -532,13 +592,26 @@ class RoomberryHandler(BaseHTTPRequestHandler):
         elif parsed.path == '/commands.json':
             payload = json.dumps(command_index(),allow_nan=False).encode('utf-8')
             content_type = 'application/json'
+        elif parsed.path == '/roomtrek/maps.json':
+            manager = getattr(self.server, 'trek_maps', None)
+            payload = json.dumps(dict(enabled=False, detail='RoomTrek survey coordinator is disabled') if manager is None
+                                 else dict(enabled=True, **manager.snapshot()), allow_nan=False).encode('utf-8')
+            content_type = 'application/json'
+        elif parsed.path == '/speech.json':
+            sender = getattr(self.server, 'speech_sender', None)
+            state = speech_snapshot(getattr(self.server, 'navlink', None), sender)
+            command_id = parse_qs(parsed.query).get('id', [None])[0]
+            if command_id is not None:
+                state['job'] = None if sender is None else sender.job_snapshot(command_id)
+            payload = json.dumps(state, allow_nan=False).encode('utf-8')
+            content_type = 'application/json'
         elif parsed.path == '/groundhog.json':
             payload = json.dumps(groundhog_snapshot(getattr(self.server,'navlink',None)),
                                  allow_nan=False).encode('utf-8')
             content_type = 'application/json'
         elif parsed.path == '/status.json':
             state = self.server.roomba_control.snapshot()
-            keys = ('control_version', 'wheel_size_adjustment', 'firmware_version', 'firmware_release', 'age', 'ready', 'oi_stopped', 'sensor_fault', 'battery_status',
+            keys = ('control_version', 'minimum_wheel_speed_mm_s', 'pulse_active', 'wheel_size_adjustment', 'firmware_version', 'firmware_release', 'age', 'ready', 'oi_stopped', 'sensor_fault', 'battery_status',
                     'hard_hazard_reasons', 'button_diagnostics', 'reverse_current_monitor',
                     'applied_left_velocity_mm_s', 'applied_right_velocity_mm_s')
             status = {key: state.get(key) for key in keys}
@@ -547,6 +620,9 @@ class RoomberryHandler(BaseHTTPRequestHandler):
                 mission_status = mission.status_snapshot()
                 if isinstance(mission_status, dict):
                     status.update(mission_status)
+            survey = getattr(self.server, 'trek_survey', None)
+            if survey is not None:
+                status['roomtrek_survey'] = survey.snapshot()
             payload = json.dumps(status, allow_nan=False).encode('utf-8')
             content_type = 'application/json'
         elif parsed.path in ('/cam/tags.json', '/cam/scans.json'):
@@ -577,6 +653,60 @@ class RoomberryHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
         return True
+
+    def _speech_json(self, status, body):
+        payload = json.dumps(body, allow_nan=False).encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(payload)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _post_trek_maps(self):
+        if self.headers.get('Content-Type', '').split(';')[0].strip() != 'application/json':
+            self._speech_json(415, dict(status='failed', detail='Expected application/json')); return
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 4096: raise ValueError('Request body must contain 1–4096 bytes')
+            body = TrekMapManager.validate(json.loads(self.rfile.read(length)))
+        except (ValueError, UnicodeError) as error:
+            self._speech_json(400, dict(status='failed', detail=str(error))); return
+        manager = getattr(self.server, 'trek_maps', None)
+        if manager is None:
+            self._speech_json(503, dict(status='unavailable', detail='RoomTrek survey coordinator is disabled')); return
+        try: job = manager.submit(body)
+        except RuntimeError as error:
+            self._speech_json(409, dict(status='failed', detail=str(error))); return
+        self._speech_json(202, job)
+
+    def do_POST(self):
+        if urlparse(self.path).path == '/roomtrek/maps':
+            self._post_trek_maps(); return
+        if urlparse(self.path).path != '/speech':
+            self.send_error(404, 'Unknown POST route'); return
+        if self.headers.get('Content-Type', '').split(';')[0].strip() != 'application/json':
+            self._speech_json(415, dict(status='failed', detail='Expected application/json')); return
+        try:
+            length = int(self.headers.get('Content-Length', '0'))
+            if not 0 < length <= 4096:
+                raise ValueError('Request body must contain 1–4096 bytes')
+            body = json.loads(self.rfile.read(length))
+            text = body.get('text') if isinstance(body, dict) else None
+            if not isinstance(text, str) or not text.strip() or len(text) > 500:
+                raise ValueError('Speech text must contain 1–500 characters')
+        except (ValueError, UnicodeError) as error:
+            self._speech_json(400, dict(status='failed', detail=str(error))); return
+        sender = getattr(self.server, 'speech_sender', None)
+        state = speech_snapshot(getattr(self.server, 'navlink', None), sender)
+        if not state['ready']:
+            self.server.logger.info('Speech test unavailable: %s', state['detail'], extra=dict(speech_announce=False))
+            self._speech_json(503, dict(status='unavailable', detail=state['detail'])); return
+        command_id = sender.submit_text(text)
+        job = sender.job_snapshot(command_id)
+        self.server.logger.info('Free text speech test submitted id=%s characters=%d', command_id, len(text),
+                                extra=dict(speech_announce=False))
+        self._speech_json(429 if job['status'] == 'dropped' else 202, job)
 
     def do_GET(self):      
         try:

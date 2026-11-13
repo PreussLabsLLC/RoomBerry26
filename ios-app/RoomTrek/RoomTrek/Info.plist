@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- @(#)Info.plist 3.1.roomtrek.2 2026/11/08 12:00:00 -->
+<!-- @(#)Info.plist 3.2.imu.1 2026/11/12 15:12:06 -->
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
 <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
@@ -9,6 +9,7 @@
 <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
 <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
 <key>LSRequiresIPhoneOS</key><true/>
+<key>NSMotionUsageDescription</key><string>RoomTrek compares motion-sensor rotation with ARKit and robot wheel heading.</string>
 <key>NSCameraUsageDescription</key><string>RoomTrek surveys a room and localizes the robot with ARKit.</string>
 <key>NSLocalNetworkUsageDescription</key><string>RoomTrek sends optional NavLink localization telemetry to Roomberry on your local network.</string>
 <key>UIFileSharingEnabled</key><true/>

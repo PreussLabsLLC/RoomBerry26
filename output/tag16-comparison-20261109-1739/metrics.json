@@ -1,0 +1,43 @@
+{
+  "anchor": {
+    "camera_room_mm": [
+      3296.0679091941106,
+      1077.213384726875
+    ],
+    "frame_pair_delta_s": 0.023272364865988493,
+    "heading_basis": "optical_forward",
+    "lens_offset_mm": [
+      10.0,
+      180.0
+    ],
+    "map_uuid_hex": "00000000000000000000000000000000",
+    "mount_pitch_rad": 0.2617993877991494,
+    "mount_yaw_rad": -0.3490658503988659,
+    "odometry_epoch": 0,
+    "phone_frame_monotonic": 870558.6606462891,
+    "phone_frame_us": 146945987743,
+    "phone_origin_m": [
+      -0.0005033402121625841,
+      -0.0008234037086367607
+    ],
+    "rotation_rad": -3.068919930457277,
+    "scale": 1.0,
+    "session": 2030088733103653647,
+    "tag_captured_epoch": 1794274784.0273209,
+    "tag_robot_pose": {
+      "heading_rad": -1.8515745609310943,
+      "x_mm": 3125.887730081214,
+      "y_mm": 1136.7004138769546
+    },
+    "wheel_odometry_at_anchor": {
+      "angle_deg": 0.0,
+      "distance_mm": 0.0,
+      "sensor_monotonic": 870562.130629081
+    }
+  },
+  "frames": 2591,
+  "final_separation_mm": 1122.8405652063877,
+  "max_separation_mm": 1126.0820285466477,
+  "final_heading_delta_deg": -8.172704814563508,
+  "alignment": "Recorded tag16 capture and mount, fixed scale=1; no path fitting"
+}

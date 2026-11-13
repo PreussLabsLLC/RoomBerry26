@@ -1,0 +1,41 @@
+pi@pi:~/Projects/serial $ python version.py 
+Connecting to Roomba on /dev/serial0 at 115200 baud...
+Sending reset command (Opcode 7)...
+Listening for boot messages (waiting up to 5 seconds)...
+
+--- Captured Boot Stream ---
+bl-start
+STR730
+bootloader id: #x47175D61 6D396FFF
+bootloader info rev: #xF000
+bootloader rev: #x0001
+2007-05-14-1715-L   
+Roomba by iRobot!
+str730
+2012-03-22-1549-L   
+battery-current-zero 255
+
+2012-03-22-1549-L   
+r3_robot/tags/release-3.2.6:4975 CLEAN
+
+bootloader id: 4717 5D61 6D39 6FFF 
+assembly: 3.5-lite
+revision: 0
+flash version: 10
+flash info crc passed: 1
+
+
+processor-sleep
+charger-wakeup
+slept for 0 minutes 1 seconds
+start-charge: 2012-03-22-1549-L   
+do-charging-checking-fets @ minutes 0
+bat:   min 0  sec 1  mV 17228  mA -8  tenths-deg-C 380  mAH 2696  state 1  
+Charging FET test passed.
+do-charging-wait-initial @ minutes 0
+do-charging-on @ minutes 0
+bat:   min 0  sec 2  mV 18146  mA 867  tenths-deg-C 379  mAH 2696  state 5  
+
+----------------------------
+pi@pi:~/Projects/serial $ 
+

@@ -1,10 +1,15 @@
 """Measured, cancellable local steering-pad movements; never timer-only drives."""
-# @(#)roomberry_manual_step.py 3.1.grout.16 2026/11/05
+# @(#)roomberry_manual_step.py 3.2.pulse.1 2026/11/12 16:09:50
+from roomberry_wheel_speed import MIN_WHEEL_SPEED
 from math import isfinite, radians
 from time import monotonic
 
-STEPS = {'left': ('angle', 5., 30, -30),
-         'right': ('angle', -5., -30, 30),
+STEPS = {'left': ('angle', 5., MIN_WHEEL_SPEED, -MIN_WHEEL_SPEED),
+         'right': ('angle', -5., -MIN_WHEEL_SPEED, MIN_WHEEL_SPEED),
+         'left_15': ('angle', 15., MIN_WHEEL_SPEED, -MIN_WHEEL_SPEED),
+         'right_15': ('angle', -15., -MIN_WHEEL_SPEED, MIN_WHEEL_SPEED),
+         'left_30': ('angle', 30., MIN_WHEEL_SPEED, -MIN_WHEEL_SPEED),
+         'right_30': ('angle', -30., -MIN_WHEEL_SPEED, MIN_WHEEL_SPEED),
          'forward': ('distance', 50., 50, 50),
          'backward': ('distance', -50., -50, -50),
          'forward_500': ('distance', 500., 100, 100),
@@ -63,7 +68,7 @@ def run_step(mission, direction):
         _safe(mission, initial)
         retained = mission.gridrunner
         mission.set_mode('remote_control', wake_robot=False)
-        record = dict(direction=direction.replace('_500',''), status='moving', axis=axis, target=target,
+        record = dict(direction=direction.split('_', 1)[0], status='moving', axis=axis, target=target,
                       measured=0., reason=None)
         mission._manual_step = record
         mission._manual_step_status = record

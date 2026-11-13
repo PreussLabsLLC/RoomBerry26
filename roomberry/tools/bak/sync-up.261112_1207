@@ -1,0 +1,6 @@
+# @(#)sync-up 3.2 2026/11/09 18:19:21
+
+set -x
+
+cd ..
+rsync -Lave ssh navlink.key autonomy.json roomb*.py irobot web pi@pi3:~/Projects/Roomberry/roomberry
