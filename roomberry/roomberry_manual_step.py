@@ -1,5 +1,5 @@
 """Measured, cancellable local steering-pad movements; never timer-only drives."""
-# @(#)roomberry_manual_step.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_manual_step.py 3.2.return.4 2026/11/19 12:46:26
 from roomberry_wheel_speed import MIN_WHEEL_SPEED
 from math import isfinite, radians
 from time import monotonic
@@ -16,9 +16,9 @@ STEPS = {'left': ('angle', 5., MIN_WHEEL_SPEED, -MIN_WHEEL_SPEED),
          'backward_500': ('distance', -500., -100, -100)}  # right, left wheel speeds
 STEP_TIMEOUT = 6.
 LONG_STEP_TIMEOUT = 15.
-# Trial compensation from the Nov 4 measured pad overshoot. Final measured
-# results remain visible; this is not an assertion of physical precision.
-BRAKE_LEAD = {'distance': 12., 'angle': 3.}
+# Pad overshoot compensation includes encoder polling and coast. The
+# 50 mm/s turn floor needs a slightly earlier brake than the 42 mm/s floor.
+BRAKE_LEAD = {'distance': 12., 'angle': 3.5}
 
 
 def _safe(mission, state):

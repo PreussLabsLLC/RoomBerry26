@@ -1,4 +1,4 @@
-<!-- @(#) CAPTAINSLOG.md 3.2.return.3 2026/11/19 12:38:26 -->
+<!-- @(#) CAPTAINSLOG.md 3.2.return.4 2026/11/19 12:46:26 -->
 # Captains Log
 
 ### 2026-11-19 — Extend return localization and set a 50 mm/s speed floor
@@ -10,6 +10,8 @@
 - Raise the shared nonzero wheel floor to 50 mm/s for velocity commands.
   Use it for the slow grid, calibration, discovery, and wall command targets
   so planned and applied speeds agree. Stops and stationary wheels stay zero.
+- Advance the steering-pad pivot brake from 3 to 3.5 degrees of lead.
+  At 50 mm/s, the previous lead missed the 30-degree simulation tolerance.
 
 ### 2026-11-19 — Preserve survey localization and smooth distant tag return
 
