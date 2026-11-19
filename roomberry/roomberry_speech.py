@@ -1,5 +1,5 @@
 """Roomberry mnemonic speech catalogue and nonblocking RoomTrek speech delivery."""
-# @(#)roomberry_speech.py 3.2.speechlog.1 2026/11/12 16:13:04
+# @(#)roomberry_speech.py 3.2.gridauto.2 2026/11/14 09:38:25
 import json
 import logging
 from math import isfinite
@@ -79,9 +79,24 @@ def battery_announcement(robot, receiver, now=None):
     phone = relay.operation.get('battery_percent')
     if not isinstance(phone, (int, float)) or isinstance(phone, bool) or not 0 <= phone <= 100:
         phone = None
+    phone_state = relay.operation.get('battery_state')
+    # GridRunner build8 sends battery in type3 health but omitted it from its
+    # signed hello. Only use fresh health from the authenticated session.
+    if phone is None:
+        getter = getattr(receiver, 'latest_health_observation', None)
+        health = getter() if callable(getter) else None
+        session = relay.operation.get('session')
+        if (isinstance(health, dict) and session is not None
+                and str(health.get('session')) == str(session)
+                and isinstance(health.get('received_monotonic'), (int, float))
+                and 0 <= now-health['received_monotonic'] <= 2
+                and health.get('flags', 0) & 32):
+            value = health.get('battery_pct')
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 <= value <= 100:
+                phone, phone_state = value, health.get('battery_state')
     if roomba is None and phone is None: return None
     robot_text = 'Roomba battery reading unavailable' if roomba is None else 'Roomba battery {} percent{}'.format(roomba, ', charging' if state.get('charging') else '')
-    phone_text = 'iPhone battery reading unavailable' if phone is None else 'iPhone battery {} percent{}'.format(round(phone), ', charging' if relay.operation.get('battery_state') in (2, 3) else '')
+    phone_text = 'iPhone battery reading unavailable' if phone is None else 'iPhone battery {} percent{}'.format(round(phone), ', charging' if phone_state in (2, 3) else '')
     return 'Captain, '+robot_text+'. '+phone_text+'.'
 
 
@@ -151,6 +166,11 @@ class SpeechLogFilter(logging.Filter):
         if code not in PHRASES[self.language]:
             code = 'ERROR'
         text = phrase(code, self.language)
+        detail = getattr(record, 'speech_detail', None)
+        if detail is None and code == 'ERROR':
+            detail = 'Captain, ' + record.getMessage()
+        if isinstance(detail, str) and detail.strip():
+            text = ' '.join(detail.split())[:500]
         record.speech_code = code
         record.speech_text = text
         record.msg = '[%s] %s' % (code, record.msg)
@@ -159,10 +179,13 @@ class SpeechLogFilter(logging.Filter):
         if announce and self.send is not None:
             now = monotonic()
             with self._lock:
-                previous = self._last.get(code)
+                cooldown_key = (code, text) if detail else code
+                previous = self._last.get(cooldown_key)
                 if previous is not None and now-previous < self.cooldown:
                     return True
-                self._last[code] = now
+                self._last[cooldown_key] = now
+                if len(self._last) > 256:
+                    del self._last[next(iter(self._last))]
             # The sink must only enqueue; transport errors never affect motion.
             try:
                 self.send(code, text)
@@ -199,6 +222,13 @@ class SpeechSender:
     def submit(self, code, text):
         if text != phrase(code, self.language):
             raise ValueError('Speech text must match catalogue')
+        return self._enqueue(code, text)
+
+    def submit_event(self, code, text):
+        """Internal log events may carry a concrete stop reason with their priority."""
+        phrase(code, self.language)  # Reject unknown event codes.
+        if not isinstance(text, str) or not text.strip() or len(text) > 500:
+            raise ValueError('Speech event must contain 1–500 characters')
         return self._enqueue(code, text)
 
     def submit_text(self, text):

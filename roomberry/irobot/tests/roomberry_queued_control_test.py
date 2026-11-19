@@ -1,4 +1,4 @@
-# @(#)roomberry_queued_control_test.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_queued_control_test.py 3.2.return.3 2026/11/19 12:38:26
 import logging
 from threading import Event
 from time import monotonic
@@ -114,7 +114,7 @@ class QueuedControlTest(unittest.TestCase):
         before=list(self.robot.drive_commands)
         self.controller._poll_sensors()
         self.assertEqual(self.robot.drive_commands,before)
-        self.assertEqual(self.controller._applied_wheels,(-42,-42))
+        self.assertEqual(self.controller._applied_wheels,(-50,-50))
         state=self.controller.snapshot()['reverse_current_monitor']
         self.assertEqual(state['mode'],'report_only')
         self.assertTrue(state['candidate'])

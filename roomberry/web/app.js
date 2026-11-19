@@ -1,9 +1,20 @@
-// @(#)app.js 3.2.imu.1 2026/11/12 15:12:06
+// @(#)app.js 3.2.rollup.1 2026/11/13 19:43:59
 'use strict';
 const $ = id => document.getElementById(id);
 const node = (tag, text = '', cls = '') => { const n = document.createElement(tag); n.textContent = text; if (cls) n.className = cls; return n; };
 const fmt = (v, digits = 1) => typeof v === 'number' && Number.isFinite(v) ? v.toFixed(digits) : '—';
 const deg = v => typeof v === 'number' ? v * 180 / Math.PI : null;
+let distanceBusy = false, distanceState = null;
+function distanceControls(state = distanceState) {
+  if (state) distanceState = state;
+  const survey = distanceState?.gridrunner?.kind === 'tag15_distance' ? distanceState.gridrunner : null;
+  for (const button of document.querySelectorAll('[data-distance]')) {
+    const action = button.dataset.distance;
+    const stoppedTape = action === 'measure' && survey?.stage === 'stopped' && distanceState?.mission_mode === 'idle' && survey.checkpoints?.length && survey.checkpoints[survey.checkpoints.length-1].tape_mm == null;
+    button.disabled = distanceBusy || (!stoppedTape && action !== 'start' && (!survey || survey.result || survey.stage !== 'awaiting_measure' || (action === 'next' && (!survey.last?.measured || survey.last?.sensor_wait))));
+    button.setAttribute('aria-busy', String(distanceBusy));
+  }
+}
 const bit = (r, b) => r && (r.flags & b) !== 0;
 const age = r => r && typeof r.receive_age_s === 'number' ? `${fmt(r.receive_age_s)} s since receipt` : 'No packets received';
 function metric(label, value, sub) { const n = node('div', '', 'metric'); n.append(node('span', label, 'metric-label'), node('span', value, 'metric-value')); if (sub) n.append(node('span', sub, 'metric-sub')); return n; }
@@ -37,13 +48,31 @@ async function robot() {
     const w = s.wall;
     $('wall-status').textContent = w ? `WALL: ${w.stage || 'idle'} · ${w.result ? w.result.reason : `right light-bumper target ${fmt(w.target_signal, 0)} units · current ${fmt(w.last?.signal, 0)}`} · physical clearance unknown` : '';
     const g = s.gridrunner;
+    const survey = g?.kind === 'tag15_distance' ? g : null;
+    $('distance-status').textContent = survey ? `Distance survey: ${survey.stage}${survey.result ? ' · '+survey.result.reason+(survey.stage === 'stopped' ? ' · final tape entry remains available if Rosie has not moved' : '') : survey.last?.sensor_wait ? ' · parked; waiting for fresh Roomba sensors' : survey.stage === 'awaiting_measure' ? ' · enter tape distance, record it, then choose next tile' : ' · robot remains stopped while scanning'}` : 'No distance survey loaded. Enter the initial tape distance and grout pitch, then press Start. Start checks live sensors on the Pi.';
+    const distanceRows = survey?.checkpoints || [];
+    const resultBox = $('distance-results'); resultBox.replaceChildren();
+    if (distanceRows.length) {
+      const table = node('table'), head = node('tr');
+      for (const text of ['Station', 'Clear', 'Expected mm', 'Camera raw mm', 'Camera corrected mm', 'Scale', 'Tape mm', 'Error %', 'Wheel travel mm']) head.append(node('th', text));
+      table.append(head);
+      for (const row of distanceRows) {
+        const tr = node('tr');
+        for (const value of [row.station, row.clear ? 'yes':'no', fmt(row.expected_mm), fmt(row.raw_camera_distance_mm ?? row.camera_distance_mm), fmt(row.camera_distance_mm), fmt(row.pose_translation_scale ?? 1, 3), fmt(row.tape_mm), fmt(row.error_pct, 2), fmt(row.wheel_distance_mm)]) tr.append(node('td', String(value)));
+        table.append(tr);
+      }
+      resultBox.append(table);
+    }
+    distanceControls(s);
     if (g) {
       const homing = g.kind === 'return_to_tag15';
       const label = homing ? 'Return to tag 15' : 'Grout run';
       const detail = g.result ? g.result.reason : g.last
         ? `${g.last.tracking || 'tracking'}${g.last.steering_mode === 'pivot' ? ' · aligning heading' : ''} · speed ${fmt(g.last.velocity_mm_s, 0)} mm/s · camera-line error ${fmt(g.last.tracking_error_mm ?? g.last.offset_mm)} mm`
         : homing ? 'acquiring mapped-tag pose' : 'waiting for line';
-      $('grid-status').textContent = `${label}: ${g.stage} · ${detail}${g.next_checkpoint_mm != null ? ` · next scan ${fmt(g.next_checkpoint_mm / 1000, 2)} m` : ''}`;
+      const nudge = homing ? g.last?.imu_heading_nudge : null;
+      const assist = nudge ? ` · IMU heading ${nudge.state} (${fmt(nudge.correction_total_deg, 2)}° correction)` : '';
+      $('grid-status').textContent = `${label}: ${g.stage} · ${detail}${assist}${g.next_checkpoint_mm != null ? ` · next scan ${fmt(g.next_checkpoint_mm / 1000, 2)} m` : ''}`;
     } else $('grid-status').textContent = '';
     const c = s.calibration; const box = $('calibration'); box.replaceChildren();
     if (c) {
@@ -151,3 +180,32 @@ $('refresh-all').addEventListener('click', refreshAll);
 refreshAll();
 
 $('version-check').addEventListener('click', robot);
+
+$('distance-refresh').addEventListener('click', robot);
+for (const button of document.querySelectorAll('[data-distance]')) button.addEventListener('click', async () => {
+  if (distanceBusy) return;
+  const action = button.dataset.distance;
+  const params = new URLSearchParams({op:`grid_distance_${action}`});
+  if (action === 'start') { params.set('start_mm', $('distance-start').value); params.set('tile_mm', $('distance-tile').value); }
+  if (action === 'measure') params.set('tape_mm', $('distance-tape').value);
+  distanceBusy = true;
+  distanceControls();
+  const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(`/roomba/?${params}`, {cache:'no-store', signal:controller.signal});
+    if (!response.ok) throw Error((await response.text()).replace(/<[^>]*>/g, ' ').slice(0, 240));
+    if (action === 'start') $('distance-tape').value = $('distance-start').value;
+    $('action-status').textContent = `${button.textContent}: accepted.`;
+    // Only explicitly requested scans/steps poll to completion; global refresh
+    // stays manual, and editable tape fields are never disabled or overwritten.
+    if (['start', 'next', 'rescan'].includes(action)) {
+      const deadline = Date.now()+25000;
+      while (Date.now() < deadline) {
+        const state = await robot(), survey = state?.gridrunner;
+        if (!state || state.mission_mode !== 'gridrunner' || survey?.kind !== 'tag15_distance' || survey.result || survey.stage === 'awaiting_measure') break;
+        await new Promise(resolve => setTimeout(resolve, 750));
+      }
+    }
+  } catch (error) { $('action-status').textContent = `Distance command failed: ${error.message}. Refresh distance status before retrying.`; }
+  finally { clearTimeout(timer); distanceBusy = false; distanceControls(); await robot(); }
+});

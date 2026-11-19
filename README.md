@@ -1,3 +1,4 @@
+<!-- @(#) README.md 3.2.flat.1 2026/11/19 11:56:56 -->
 # Roomberry
 
 **Roomberry 26** follows the original roomberry project (Pi Zero W with picam riding on
@@ -43,21 +44,20 @@ To build this project you will need:
 
 `Roomberry.py` creates a **multithreading python web server** that interacts with Roomba and the camera module installed. This code is intended to run as a daemon and handles the HTTP GET Requests performed against the Raspberry Pi.
 
-To install it just download the last release and configure it as a service:
+Copy the Python runtime from the current checkout with `roomberry/roomberry*.py`.
+Keep those files together. Install Python dependencies such as Picamera2,
+pyserial, and VL53L1X in the interpreter used to launch Roomberry.
+
+For a system service, run these commands from the checkout root:
+
 ```bash
-wget https://github.com/danimaciasperea/Roomberry/archive/1.0.0.tar.gz -P /tmp/
-tar -xvf /tmp/1.0.0.tar.gz -C /tmp/
-
-# Before doing next step, adapt the code to your environment (serial port used, IFTTT Key, etc.)
-sudo cp /tmp/Roomberry-1.0.0/roomberry/roomberry.py /usr/local/bin/
-sudo cp /tmp/Roomberry-1.0.0/roomberry/roomberry_camera.py /usr/local/bin/
-sudo cp /tmp/Roomberry-1.0.0/roomberry/roomberry_control.py /usr/local/bin/
-sudo cp /tmp/Roomberry-1.0.0/roomberry/roomberry.service /lib/systemd/system/
-
-sudo systemctl enable roomberry.service
-sudo system roomberry start
-
+sudo cp roomberry/roomberry*.py /usr/local/bin/
+sudo cp roomberry/roomberry.service /lib/systemd/system/
 ```
+
+Place your `autonomy.json` and the `roomberry/web/` assets alongside
+the Python files. Check the service's Python path and robot configuration
+before starting it with `sudo systemctl enable --now roomberry.service`.
 
 The commands sent to the robot are encoded in the **request's  URL query string**. The URL path should start with `cam` or `roomba` depending on the device that will execute the operation. If the command needs one or more parameters, they should be just passed as a field-value pair in the query string.
 

@@ -1,4 +1,4 @@
-// @(#)HealthPacket.swift 3.1.health.1 2026/10/31 12:00:00
+// @(#)HealthPacket.swift 3.2.tof.2 2026/11/19 11:48:07
 import Foundation
 import simd
 
@@ -23,13 +23,13 @@ struct BumpDetector {
         }
         if began == nil { began = old.time }
         let jerk = simd_length(a-old.acceleration)/(time-old.time)
-        if magnitude < 0.15 {
+        if magnitude < 0.075 {
             if quietSince == nil { quietSince = time }
             if time-(quietSince ?? time) >= 0.08, time-lastTime >= 0.3 { armed = true }
         } else { quietSince = nil }
         guard time-(began ?? time) >= 0.3, armed else { return false }
-        let impulse = (magnitude >= 0.6 && jerk >= 15) || magnitude >= 1.2
-            || (magnitude >= 0.25 && jerk >= 40)
+        let impulse = (magnitude >= 0.3 && jerk >= 7.5) || magnitude >= 0.6
+            || (magnitude >= 0.125 && jerk >= 20)
         guard impulse else { return false }
         count = count == .max ? .max : count+1
         lastTime = time; lastPeakG = magnitude; armed = false; quietSince = nil

@@ -1,4 +1,4 @@
-<!-- @(#)README.md 3.1.tiles.2 2026/11/05 17:30:00 -->
+<!-- @(#)README.md 3.2.gridauto.1 2026/11/14 09:15:00 -->
 # GridRunner
 
 Independent iOS 15+ app for following one straight dark grout line. GroundHog's
@@ -136,7 +136,8 @@ CSV export includes their fields.
 
 ## NavLink type 5
 
-Existing UDP destination and logging remain unchanged (`pi`/`pi.local`:5010).
+UDP uses the saved Mothership host (default `pi3.local`) on port5010;
+a bare hostname also tries its `.local` alternative. Logging is unchanged.
 Every packet is 128 bytes, little endian, Python layout
 `<4sBBHQQIHbBQQ12fHHBBHIQfff`:
 
@@ -209,3 +210,161 @@ at tag 15 and verifies the final approach. If position is unknown it searches
 stationary views using bounded in-place turns, without translating blindly.
 Safety stops remain explicit: put the robot down and press **Restart OI** after
 wheel drop, then wait for Sensors Ready. No new iOS installation is needed.
+
+
+## Stepped tag-15 distance survey (3.2.grid.1 / app build 8)
+
+Use the current Python dashboard's **Tag 15 · stepped distance calibration**
+panel. Clock starts WALL when idle on current Pi builds; it cancels a survey
+rather than advancing it. The older continuous grout run remains a separate
+button. This mode never returns automatically or changes camera calibration.
+
+1. Install GridRunner build 8 and update the Pi service with this checkout.
+   Place the shared NavLink key in GridRunner's own Documents/NavLink.key
+   through Finder file sharing, then relaunch GridRunner (RoomTrek's app container is separate). The
+   existing Pi authenticated relay/key configuration must be enabled. Keep
+   other phone telemetry apps stopped during this run.
+2. Set Mothership to `pi3.local` (or the Pi hostname/IP), mount/align as usual,
+   face tag 15, and start the stream in Reverse. Verify
+   line lock, fresh IMU and **authenticated Pi reply received**. Acceleration
+   (mm/s²), gyro XYZ (rad/s), gravity and impact counts are sent at 10 Hz in
+   existing type-3 health packets; compass type 4 is now also forwarded.
+   These are phone-frame readings; gyro is not absolute heading. No ARKit
+   motion/position is fabricated. Existing type-5 line/crossing data is unchanged.
+3. Start about one measured grout pitch from tag 15. Enter the initial tape
+   distance and actual grout pitch in mm, then **Start tag-15 distance run**.
+   It settles for one second and scans in place. Wait for scan completion and
+   refresh status. Camera range is lens-to-tag-centre straight-line range:
+   measure the same endpoints, not bumper/axle clearance. If measuring floor
+   distance instead, preserve that distinction when analyzing the raw depth
+   and translation vector; range and optical-axis depth are different quantities.
+4. At each stopped station enter the tape measurement and press **Record tape
+   measurement (no motion)**. The table shows camera-minus-tape error, including
+   percentage. Then press **Reverse to next grout / one tile**. It follows the
+   line at 70 mm/s and brakes on the next counted transverse band, or one pitch
+   of wheel travel if no crossing is seen. After settling it scans again. The
+   crossing reference is under the phone, not the Pi lens; tape every station.
+5. A missing/non-clear tag ends further stepping, after the final tape entry.
+   Clear means tag16h5 ID15, zero hamming, margin ≥20, pose error ≤5 and finite
+   positive range. **Rescan this station** allows a stationary retry and keeps
+   earlier evidence. No navigation distance gate or pose fusion affects these
+   raw distance observations. There is a 5 m wheel/tape bound, a 20 s step/scan
+   timeout and one-hour session timeout. The next step is refused if the last
+   tape distance plus one pitch would exceed 5 m. **Stop distance run** ends it.
+
+Station scans and tape entries are JSON records in the normal Pi log, and all
+scan images/reports continue through the existing camera archive. The dashboard
+status includes the station records. Phone stop/background, stale telemetry,
+configuration/session changes, impacts, contact, hazards, odometry reset,
+heading deviation >10° or line loss while stepping abort. Physical stopping
+precision and the complete floor run still require validation.
+
+GridRunner reuses RoomTrek's signed challenge/response, replay cache and speech
+engine. STATUS, SPEAK and SESSION_STOP are supported, with operation results;
+other RoomTrek commands fail explicitly. Existing Pi speech and voice-test
+controls can address GridRunner while its stream is active. Commands do not
+start robot motion. Speech cancels on stop/background/audio interruption.
+The control heartbeat is independent of camera packets. Its authenticated
+reply indicator expires after six seconds; UDP send counts alone do not prove
+Pi receipt. Signing uses the existing NavLink.key and ±30 s clock window.
+
+
+## Trial fixes (build 9 / Pi 3.2.grid.2)
+
+Build9 includes phone battery percentage/state in signed control heartbeats.
+The Pi also accepts valid, fresh, matching-session health battery data from
+build8. The web survey route now accepts fractional-mm inputs such as304.8;
+the first trial's Start request failed before reaching the coordinator.
+Unavailable buttons no longer show the busy cursor. Start checks live Pi state;
+Refresh distance status is always available; explicitly requested scans/steps
+update their controls until stopped or25s. Tape entry stays editable. Global
+refresh remains manual, and no next tile starts automatically.
+
+For close scans, keep glossy tape and reflections off the tag's black border
+and white quiet zone. The trial's native detector found4 of11 clear tag15 reads;
+an independent offline decoder found the visible tag in all11. This is not a
+universal one-tile minimum-range limit. Do not lower quality checks: the6.2m
+weak detection in that trial was an unrelated image-edge false positive.
+Full evidence: [trial investigation](../../output/grid-distance-investigation-20261113/README.md).
+
+
+## Tag15 range check correction
+
+The user-selected Pi setting is now1.10× native tag15 metric translation, with
+raw pose/range retained. The calibration panel shows raw and corrected camera
+ranges and the applied factor. Other tags, phone geometry and steering gains
+are unchanged. This is a Pi Python/configuration update; no phone reinstall is
+needed. See [ten-percent correction](../../roomberry/docs/tag-range-correction.md)
+for deployment and archive field details.
+
+
+## Final range setting and controlled homing rollup (build10)
+
+The current Pi configuration applies a global1.12× native translation correction
+to every tag/family, replacing the earlier tag15-only1.10 setting. Raw and
+corrected values remain available. See the current
+[range and navigation rollup](../../roomberry/docs/tag-range-correction.md).
+
+Build10 sends type7 attitude/gyro telemetry using the existing Core Motion
+stream. The packet and integrator are shared with RoomTrek; rates are100Hz at
+source and10Hz on the link. The Pi can therefore use its existing gyro-heading
+comparison and guarded heading-nudge path without requiring ARKit. Type3 health
+still carries acceleration/gyro/gravity and battery; no position is fabricated.
+
+With the matching Pi update, optional grout guidance stays inside standalone
+homing, which continues stopped rescans and slow, validated arrival. It no
+longer switches a standalone return into the cruise-speed bumper-ended grout
+mission. Brief parked sensor glitches wait up to1s; moving faults still stop.
+The survey's first tape entry corrects restart station labels, and Next remains
+an explicit operator action. Existing earlier sections describe historical
+versions; this rollup governs the new return behavior and global scale.
+
+
+## Autonomous crossing survey (build 11 / Pi 3.2.gridauto.1)
+
+The distance-run Start command now defaults to autonomous operation. Place Rosie
+facing tag 15 and aligned with the longitudinal grout, start GridRunner in Reverse,
+and enter the starting lens-to-tag range as a conservative estimate for the 5 m
+travel bound. A stationary baseline scan is followed by reverse travel to the next
+observed crossing. Each crossing stops the robot, settles for one second and scans
+tag 15, then advances without waiting for tape entry. Camera results remain raw
+observations and do not change navigation or calibration. Missing/unclear tag 15
+ends the survey. Other safety and telemetry guards remain active.
+
+For 304.8 mm tiles and 0.4–0.9 mm grout, use nominal centre-to-centre crossing
+pitch **305.45 mm** (range 305.2–305.7 mm). Enter 305.45 in the existing tile-pitch
+field, which may still display its historical 304.8 default. The first crossing
+can occur anywhere within a pitch; the survey does not label the starting
+position as a known crossing or invent absolute tag distances from tile counts.
+Records include relative crossing distance only while no crossing has been skipped.
+Thin grout detection still requires physical validation; dimensions alone do not
+establish the camera's pixel width or detection reliability.
+
+If no crossing is seen by one pitch plus 30 mm of wheel travel, Rosie stops,
+moves **forward 50 mm** (back over the area just traversed), then searches again
+in reverse at 40 mm/s. Forward-leg counts do not create stations. After two
+retries she logs a skipped crossing and continues toward the next crossing;
+a missed crossing alone does not terminate the run. The 5 m estimated-range
+bound, hazards, stale streams, line loss and motion timeouts still stop motion.
+Skipped-crossing counts are search-window estimates, not measured positions.
+
+Remote light control uses the existing authenticated Pi relay, with idempotent
+commands and hardware-application acknowledgment:
+
+```sh
+python3 roomberry/roomberry_trek_control.py LED_OFF --key-file /path/to/navlink.key
+python3 roomberry/roomberry_trek_control.py LED_ON --key-file /path/to/navlink.key
+```
+
+GridRunner must be streaming and have its Documents/NavLink.key installed.
+STATUS includes `led_requested`; command completion confirms torch mode was
+applied. LED failure is reported explicitly. Stop/background still switches it
+off. To compare detection, set LED_OFF and run the survey, reposition Rosie at
+the same starting view, then set LED_ON and repeat. LED switching is remote;
+the survey does not automatically restart or reposition Rosie for a second pass.
+Use the same pitch and lighting otherwise and compare crossing skips and scans.
+
+For the historical operator-paced flow send `autonomous=false` on
+`grid_distance_start`; tape entry and explicit Next retain their previous behavior.
+Pi service update and GridRunner rebuild/install are required. This change does
+not deploy either device or start a live robot run.

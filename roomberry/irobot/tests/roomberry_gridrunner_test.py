@@ -1,4 +1,4 @@
-# @(#)roomberry_gridrunner_test.py 3.1.wall.1 2026/11/08 16:00:00
+# @(#)roomberry_gridrunner_test.py 3.2.return.3 2026/11/19 12:38:26
 """Grid wire contract, freshness, motion ownership, Clock and safety checks."""
 import csv
 import io
@@ -542,7 +542,7 @@ class GridDriveTest(unittest.TestCase):
                            y_mm=self.g.tag['y']-26, heading_rad=0)
         self.tick(delta=5)
         self.assertAlmostEqual(self.g.last['tag_correction'], 0)
-        self.assertEqual(self.g.last['velocity_mm_s'], 40)
+        self.assertEqual(self.g.last['velocity_mm_s'], 50)
 
     def test_launch_bump_is_logged_consumed_and_not_replayed(self):
         self.tick()
@@ -694,8 +694,8 @@ class GridDriveTest(unittest.TestCase):
             self.row['seq'] += 1
             self.tick(delta=10)
             self.assertEqual(self.g.stage, 'threshold_clearance')
-            self.assertEqual(self.g.last['left_velocity_mm_s'], 40)
-            self.assertEqual(self.g.last['right_velocity_mm_s'], 40)
+            self.assertEqual(self.g.last['left_velocity_mm_s'], 50)
+            self.assertEqual(self.g.last['right_velocity_mm_s'], 50)
         self.row.update(flags=3, reason=0, confidence=1)
         self.row['seq'] += 1
         self.tick(delta=10)

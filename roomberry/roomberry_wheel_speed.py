@@ -1,8 +1,8 @@
 """Representable wheel-speed targets; preserve signs and zero wheels."""
-# @(#)roomberry_wheel_speed.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_wheel_speed.py 3.2.return.3 2026/11/19 12:38:26
 from math import ceil, isfinite
 
-MIN_WHEEL_SPEED = 42
+MIN_WHEEL_SPEED = 50
 
 
 def wheel_speeds(values):

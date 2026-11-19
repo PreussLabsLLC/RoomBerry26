@@ -1,4 +1,4 @@
-// @(#)TrekControl.swift 3.2.maps.1 2026/11/10 10:15:00
+// @(#)TrekControl.swift 3.2.gridauto.1 2026/11/14 09:15:00
 import Foundation
 import CryptoKit
 
@@ -76,7 +76,7 @@ final class TrekControl {
             self.replies[id] = reply; self.transmit(reply)
         }
         finish("accepted", "Command authenticated")
-        guard ["STATUS", "SURVEY_START", "SURVEY_SAVE", "NAV_START", "NAV_RETRY", "SESSION_STOP", "SPEAK", "MAP_LIST", "MAP_RENAME", "MAP_DELETE"].contains(command) else {
+        guard ["LED_ON", "LED_OFF", "STATUS", "SURVEY_START", "SURVEY_SAVE", "NAV_START", "NAV_RETRY", "SESSION_STOP", "SPEAK", "MAP_LIST", "MAP_RENAME", "MAP_DELETE"].contains(command) else {
             finish("failed", "Unknown command"); return
         }
         guard let execute = execute else { finish("failed", "Controller unavailable"); return }

@@ -1,6 +1,6 @@
 __author__ = 'Daniel Macías Perea (dani.macias.perea@gmail.com)'
 
-# @(#)roomberry.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#) roomberry.py 3.2.flat.1 2026/11/19 11:56:56
 import xml.etree.ElementTree as ET
 import logging
 import traceback
@@ -14,8 +14,8 @@ from urllib.parse import parse_qs, urlparse, quote
 from os import remove, path, makedirs, stat, walk
 from os.path import join, isdir, islink
 from time import time, strftime, localtime
-from roomberry_camera import CameraService
-from roomberry_camera import AprilTagDetector
+from roomberry_camera import AprilTagDetector, CameraService
+from roomberry_tof import ForwardTofReader
 from roomberry_control import RobotCommandArbiter
 from roomberry_localization import AprilTagLocalizer
 from roomberry_mapper import RoomberryMapper
@@ -29,7 +29,7 @@ from roomberry_trek_maps import TrekMapManager
 from roomberry_speech import battery_announcement
 from roomberry_map_log import MapPngRecorder
 from roomberry_web import ASSET_ROOT, ASSETS, command_index, groundhog_snapshot, speech_snapshot
-from irobot.openinterface.constants import MODES
+from roomberry_oi_constants import MODES
 
 
 def map_tag_markers(landmarks):
@@ -240,6 +240,8 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                 max_dimension=camera_config.get('max_dimension', 0),
                 tag_size_m=camera_config['tag_size_m'],
                 camera_intrinsics=camera_intrinsics, logger=self.logger,
+                pose_translation_scales=camera_config.get('pose_translation_scales'),
+                pose_translation_scale=camera_config.get('pose_translation_scale', 1.0),
                 isolate_process=True,
             )
             if camera_config.get('pause_for_detection', False):
@@ -257,6 +259,8 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
             scan_settle_seconds=camera_config.get('scan_settle_seconds', 1.0),
             scan_cooloff_seconds=camera_config.get('scan_cooloff_seconds', 0.5),
             capture_resolution=camera_config.get('capture_resolution'),
+            forward_tof_reader=(ForwardTofReader(self.logger)
+                                if scan_pause and camera_config.get('tof_forward', True) else None),
         )
         if self.mission is not None:
             self.mission.camera = self.camera_service
@@ -274,7 +278,7 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
                                                                 max_pose_error=((autonomy_config or {}).get('tag_filter') or {}).get('max_reprojection_error', 10.0),
                                                                 mapped_tags=[(x.get('family', 'tag16h5'), x['id']) for x in (autonomy_config or {}).get('landmarks', [])] or None))
             self.camera_service.scan_result = self.speech_sender.submit_scan_result
-            self.speech_filter.send = self.speech_sender.submit
+            self.speech_filter.send = self.speech_sender.submit_event
             survey_config = (autonomy_config or {}).get('roomtrek_survey', {})
             if survey_config.get('enabled', False):
                 self.trek_survey = TrekSurveyController(self.navlink.trek_control.key, self.navlink.port,
@@ -293,6 +297,7 @@ class RoomberryServer(ThreadingMixIn, HTTPServer):
         if self.mission is not None:
             self.mission.navlink = self.navlink
             self.mission.trek_alignment_config = (autonomy_config or {}).get('roomtrek_alignment', {})
+            self.mission.imu_heading_nudge_config = (autonomy_config or {}).get('imu_heading_nudge', {})
         phone_config = (autonomy_config or {}).get('phone_position', {})
         if self.mission is not None and self.navlink is not None and phone_config.get('enabled', False):
             from roomberry_phone_position import PhonePositionCorrection
@@ -539,6 +544,12 @@ class RoomberryHandler(BaseHTTPRequestHandler):
             
     def _mission_operation(self, operation, kwargs):
         """Mission commands belong to the coordinator, not the serial driver."""
+        if operation in ('grid_distance_start', 'grid_distance_measure', 'grid_distance_next', 'grid_distance_rescan'):
+            mission = getattr(self.server, 'mission', None)
+            if mission is None:
+                raise RuntimeError('Mission unavailable')
+            mission.grid_distance_operation(operation, kwargs)
+            return True
         operations = ('wall','wall_capture_100mm','restart_oi','step_left','step_right','step_left_15','step_right_15','step_left_30','step_right_30','step_forward','step_backward','step_forward_500','step_backward_500','clean','return_to_base','return_to_tag15','remote_control','gridrunner','grid','calibrate','cal','calibration','discovery','discover',
                       'idle','cancel_calibration','stop','emergency_stop')
         if operation not in operations:
@@ -774,7 +785,12 @@ class RoomberryHandler(BaseHTTPRequestHandler):
                 else:               
                     dict_qs = parse_qs(urlparse(self.path).query)
                     operation = dict_qs['op'][0]
-                    dict_qs = dict([key, self._dictionary_Parser(key,value[0])] for key, value in dict_qs.items() if key!='op')
+                    # Survey distances may contain fractions of a millimetre.
+                    # Preserve their text for the coordinator's finite/range checks;
+                    # legacy motor operations retain their integer-only parser.
+                    dict_qs = {key: (value[0] if operation.startswith('grid_distance_')
+                                     else self._dictionary_Parser(key, value[0]))
+                               for key, value in dict_qs.items() if key != 'op'}
                     
                     if self._mission_operation(operation, dict_qs):
                         pass

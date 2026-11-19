@@ -1,5 +1,5 @@
 """Single-owner Roomba command and sensor-polling service."""
-# @(#)roomberry_control.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_control.py 3.2.return.3 2026/11/19 12:38:26
 
 from roomberry_wheel_speed import MIN_WHEEL_SPEED, wheel_speeds
 from math import isfinite
@@ -11,7 +11,7 @@ from queue import Empty, Queue
 from threading import Event, Lock, Thread
 from time import monotonic, sleep
 
-from irobot.openinterface.constants import DRIVE, MODES, ROBOT
+from roomberry_oi_constants import DRIVE, MODES, ROBOT
 
 
 SENSOR_POLL_INTERVAL = 0.1
@@ -151,7 +151,7 @@ class RobotCommandArbiter:
         self._poll_perf_failures = 0
 
     def _connect_robot(self, serial_port, brc_pin):
-        from irobot.robots.create2 import Create2
+        from roomberry_create2 import Create2
 
         delay = ROBOT_CONNECT_RETRY_INITIAL_SECONDS
         attempt = 0
@@ -1253,7 +1253,7 @@ class RobotCommandArbiter:
             self._apply_speed_step(monotonic())
 
     def _apply_speed_step(self, now):
-        # Lowest nonzero serial velocity is42; discrete steps go42 ->70 ->target.
+        # Discrete steps start at the wheel-speed floor, then go to 70 and the target.
         current, target = self._applied_wheels, self._step_target
         reverse = any(a*b < 0 for a,b in zip(current, target))
         fast_current = max(abs(v) for v in current) > MIN_WHEEL_SPEED

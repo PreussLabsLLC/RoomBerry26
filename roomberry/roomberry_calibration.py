@@ -1,20 +1,20 @@
 """Scan-free threshold out-and-back following the initial GroundHog line."""
-# @(#)roomberry_calibration.py 3.1.line.1 2026/11/03 14:30:00
+# @(#)roomberry_calibration.py 3.2.return.3 2026/11/19 12:38:26
 
 import json
 import os
 from math import atan2, cos, sin, hypot, isfinite, pi
 from time import monotonic, time
+from roomberry_wheel_speed import MIN_WHEEL_SPEED
 
 
 MODE_CALIBRATION = 'calibration'
 # Reverse until a new phone bump detects the threshold, or this travel limit.
 DEFAULT_DISTANCE_MM = 5000.0
-MAX_MOVE_SPEED_MM_S = 50
 DEFAULT_TURNAROUND_HOLD_S = 1.0
 PHONE_BUMP_RECORD_ONLY_MAX_MM_S2 = 0.5 * 9806.65
 ENDPOINT_TOLERANCE_MM = 15.0
-MIN_MOVE_SPEED_MM_S = 25
+MOVE_TIMEOUT_SPEED_MM_S = 25
 HEADING_LIMIT_RAD = 0.30
 HEADING_GAIN = 4.0
 MAX_STEERING = 0.35
@@ -261,7 +261,7 @@ class CalibrationDrive:
         self.stage = stage
         self.progress = float(state['distance'])
         self.progress_at = monotonic()
-        self.deadline = monotonic() + self.distance_mm / MIN_MOVE_SPEED_MM_S + 15
+        self.deadline = monotonic() + self.distance_mm / MOVE_TIMEOUT_SPEED_MM_S + 15
 
     def _turnaround(self, state, reason):
         self.mission._send_stop('calibration turnaround')
@@ -320,9 +320,7 @@ class CalibrationDrive:
             else:
                 self._turnaround(state, 'distance limit')
             return
-        speed = min(MAX_MOVE_SPEED_MM_S, max(MIN_MOVE_SPEED_MM_S, int(remaining/2)))
-        if self.stage == 'reverse':
-            speed = -speed
+        speed = -MIN_WHEEL_SPEED if self.stage == 'reverse' else MIN_WHEEL_SPEED
         if abs(distance-self.progress) >= 3:
             if (distance-self.progress)*speed < 0:
                 self.abort('wheel movement opposite to commanded direction')

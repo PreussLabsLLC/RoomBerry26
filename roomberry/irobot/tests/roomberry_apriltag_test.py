@@ -1,4 +1,4 @@
-# @(#)roomberry_apriltag_test.py 2.3.3 2026/10/27 18:40:00
+# @(#)roomberry_apriltag_test.py 3.2.rollup.1 2026/11/13 19:43:59
 import unittest
 from unittest.mock import Mock, patch
 from types import SimpleNamespace
@@ -29,6 +29,15 @@ class GILHoldingDetector:
         import ctypes
         ctypes.PyDLL(None).usleep(800000)
         return []
+
+
+class FixedMetricDetector:
+    """Picklable native-binding stand-in for the real isolated worker."""
+    def detect(self, gray):
+        return [dict(id=15, center=(10, 10), corners=((0,0),(20,0),(20,20),(0,20)), margin=40)]
+
+    def estimate_tag_pose(self, detection, size, fx, fy, cx, cy):
+        return dict(R=np.eye(3), t=(.3, 0, .4), error=.1)
 
 
 class AprilTagProcessTest(unittest.TestCase):
@@ -94,6 +103,73 @@ class AprilTagPoseFallbackTest(unittest.TestCase):
         with patch.dict('sys.modules', {'apriltag': SimpleNamespace(apriltag=constructor)}):
             AprilTagDetector()._load_detector()
         constructor.assert_called_once_with('tag16h5', decimate=1.0)
+
+    def test_tag15_ten_percent_translation_preserves_raw_and_other_tags(self):
+        native = FixedMetricDetector()
+        native.detect = lambda image: [dict(id=i, family=family, center=(10,10),
+            corners=((0,0),(20,0),(20,20),(0,20)), margin=40)
+            for family,i in [('tag16h5',15),('tag16h5',16),('tag25h9',15)]]
+        detector = AprilTagDetector(detector=native, tag_size_m=.0575,
+            camera_intrinsics=(100,100,10,10), pose_translation_scales={'tag16h5:15':1.10})
+        for _ in range(2):
+            corrected, other, other_family = detector.detect(np.zeros((30,30,3),dtype=np.uint8))
+            self.assertAlmostEqual(corrected['distance_mm'],550)
+            self.assertAlmostEqual(corrected['depth_mm'],440)
+            self.assertEqual(corrected['raw_tag_pose_camera']['translation_m'],(.3,0,.4))
+            self.assertEqual(corrected['raw_distance_mm'],500)
+            self.assertEqual(corrected['raw_depth_mm'],400)
+            self.assertEqual(corrected['pose_translation_scale'],1.10)
+            np.testing.assert_allclose(corrected['tag_pose_camera']['translation_m'],(.33,0,.44))
+            self.assertEqual(corrected['tag_pose_camera']['rotation'],corrected['raw_tag_pose_camera']['rotation'])
+            self.assertEqual(corrected['tag_pose_camera']['error'],.1)
+            for row in (other,other_family):
+                self.assertEqual(row['distance_mm'],500)
+                self.assertNotIn('pose_translation_scale',row)
+
+    def test_global_twelve_percent_scales_every_tag_without_pilot_compounding(self):
+        native=FixedMetricDetector()
+        native.detect=lambda image:[dict(id=i,family=family,center=(10,10),
+            corners=((0,0),(20,0),(20,20),(0,20)),margin=40)
+            for family,i in [('tag16h5',15),('tag16h5',16),('tag25h9',1)]]
+        detector=AprilTagDetector(detector=native,tag_size_m=.0575,
+            camera_intrinsics=(100,100,10,10),pose_translation_scale=1.12)
+        for _ in range(2):
+            for row in detector.detect(np.zeros((30,30,3),dtype=np.uint8)):
+                self.assertAlmostEqual(row['distance_mm'],560)
+                self.assertAlmostEqual(row['depth_mm'],448)
+                self.assertEqual(row['raw_distance_mm'],500)
+                self.assertEqual(row['pose_translation_scale'],1.12)
+
+    def test_global_factor_reaches_isolated_worker(self):
+        detector=AprilTagDetector(detector=FixedMetricDetector(),tag_size_m=.0575,
+            camera_intrinsics=(100,100,10,10),pose_translation_scale=1.12,isolate_process=True)
+        self.addCleanup(detector.close)
+        for _ in range(2):
+            row,=detector.detect(np.zeros((30,30,3),dtype=np.uint8))
+            self.assertAlmostEqual(row['distance_mm'],560)
+            self.assertEqual(row['raw_distance_mm'],500)
+
+    def test_global_factor_configuration_is_validated(self):
+        for value in (True,0,float('nan'),float('inf'),3,'1.12'):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                AprilTagDetector(pose_translation_scale=value)
+
+    def test_translation_scale_rejects_invalid_configuration(self):
+        for scales in ([], {'tag16h5:15':True}, {'tag16h5:15':float('nan')},
+                       {'tag16h5:15':float('inf')}, {'tag16h5:15':0},
+                       {'tag16h5:15':3}, {'15':1.1}):
+            with self.subTest(scales=scales), self.assertRaises(ValueError):
+                AprilTagDetector(pose_translation_scales=scales)
+
+    def test_isolated_worker_applies_translation_scale_once(self):
+        detector = AprilTagDetector(detector=FixedMetricDetector(), tag_size_m=.0575,
+            camera_intrinsics=(100,100,10,10), isolate_process=True,
+            pose_translation_scales={'tag16h5:15':1.10})
+        self.addCleanup(detector.close)
+        for _ in range(2):
+            row, = detector.detect(np.zeros((30,30,3),dtype=np.uint8))
+            self.assertAlmostEqual(row['distance_mm'],550)
+            self.assertEqual(row['raw_distance_mm'],500)
 
     def test_full_resolution_grayscale_and_distance_telemetry(self):
         native = Mock()

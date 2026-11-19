@@ -1,10 +1,10 @@
 """Camera ownership, explicit scan requests, and AprilTag 3 detection."""
-# @(#)roomberry_camera.py 3.2.trails.1 2026/11/10 13:54:11
+# @(#)roomberry_camera.py 3.2.retrace.1 2026/11/19 12:18:44
 
 from threading import Event, Lock, Thread
 import json
 import re
-from math import sqrt
+from math import hypot, isfinite, sqrt
 from pathlib import Path
 from time import localtime, monotonic, sleep, strftime, time
 
@@ -24,6 +24,9 @@ DETECTION_MAX_DIMENSION = 0
 SCAN_SETTLE_SECONDS = 1.0
 SCAN_COOLOFF_SECONDS = 0.5
 DETECTOR_TIMEOUT_SECONDS = 10.0
+SCAN_TOF_WAIT_SECONDS = 1.5
+# Approximately five degrees from the camera axis, pending mount calibration.
+TOF_MAX_OFF_AXIS_RATIO = 0.0875
 ANNOTATION_SETTINGS = frozenset((
     'annotate_background', 'annotate_foreground', 'annotate_text_size',
 ))
@@ -64,7 +67,7 @@ class AprilTagDetector:
     def __init__(self, family=APRILTAG_FAMILY,
                  max_dimension=DETECTION_MAX_DIMENSION, detector=None,
                  tag_size_m=None, camera_intrinsics=None, logger=None,
-                 isolate_process=False):
+                 isolate_process=False, pose_translation_scales=None, pose_translation_scale=1.0):
         self.logger = logger
         self.last_timings_ms = {}
         self.family = family
@@ -73,6 +76,20 @@ class AprilTagDetector:
             raise ValueError('Detection image dimension must be nonnegative (0 means full resolution)')
         self.tag_size_m = None if tag_size_m is None else float(tag_size_m)
         self.camera_intrinsics = camera_intrinsics
+        if pose_translation_scales is not None and not isinstance(pose_translation_scales, dict):
+            raise ValueError('Pose translation scales must map family:id to a positive number')
+        if (isinstance(pose_translation_scale, bool)
+                or not isinstance(pose_translation_scale, (int, float))
+                or not isfinite(pose_translation_scale) or not .5 <= pose_translation_scale <= 2):
+            raise ValueError('Invalid global pose translation scale (finite 0.5–2 required)')
+        self.pose_translation_scale = float(pose_translation_scale)
+        self.pose_translation_scales = {}
+        for key, value in (pose_translation_scales or {}).items():
+            if (not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_]+:[0-9]+', key)
+                    or isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not isfinite(value) or not .5 <= value <= 2):
+                raise ValueError('Invalid pose translation scale (family:id, finite 0.5–2 required)')
+            self.pose_translation_scales[key] = float(value)
         if self.tag_size_m is not None and self.tag_size_m <= 0:
             raise ValueError('Tag size must be positive')
         if camera_intrinsics is not None:
@@ -104,7 +121,9 @@ class AprilTagDetector:
             context = get_context('spawn')  # Never inherit camera or serial owners.
             parent, child = context.Pipe()
             settings = dict(family=self.family, max_dimension=self.max_dimension,
-                            tag_size_m=self.tag_size_m, detector=self._detector)
+                            tag_size_m=self.tag_size_m, detector=self._detector,
+                            pose_translation_scales=self.pose_translation_scales,
+                            pose_translation_scale=self.pose_translation_scale)
             process = context.Process(target=_detector_process, args=(child, settings),
                                       name='apriltag-detector', daemon=True)
             try:
@@ -306,6 +325,19 @@ class AprilTagDetector:
                 translation = observation['tag_pose_camera']['translation_m']
                 observation['distance_mm'] = sqrt(sum(value * value for value in translation)) * 1000.0
                 observation['depth_mm'] = translation[2] * 1000.0
+                factor = self.pose_translation_scales.get(
+                    observation['family']+':'+str(observation['id']), self.pose_translation_scale)
+                if factor != 1.0:
+                    # Calibrate camera-frame metric translation once, before any
+                    # camera-to-robot transform. Native rotation/quality stay native.
+                    observation['raw_tag_pose_camera'] = dict(observation['tag_pose_camera'])
+                    observation['raw_distance_mm'] = observation['distance_mm']
+                    observation['raw_depth_mm'] = observation['depth_mm']
+                    observation['pose_translation_scale'] = factor
+                    translation = tuple(value*factor for value in translation)
+                    observation['tag_pose_camera'] = dict(observation['tag_pose_camera'], translation_m=translation)
+                    observation['distance_mm'] = sqrt(sum(value*value for value in translation))*1000.0
+                    observation['depth_mm'] = translation[2]*1000.0
                 observation['pose_ms'] = (monotonic() - pose_started) * 1000.0
                 pose_ms += observation['pose_ms']
             observations.append(observation)
@@ -319,12 +351,39 @@ class AprilTagDetector:
         return observations
 
 
+def apply_forward_tof(detections, distance_mm):
+    candidates = []
+    for item in detections:
+        pose = item.get('tag_pose_camera') or {}
+        translation = pose.get('translation_m', ())
+        if len(translation) != 3 or not all(isfinite(value) for value in translation):
+            continue
+        x, y, z = translation
+        if z > 0 and hypot(x, y) <= z * TOF_MAX_OFF_AXIS_RATIO:
+            candidates.append((item, pose, translation))
+    if len(candidates) != 1:
+        return
+    item, pose, translation = candidates[0]
+    camera_depth_mm = translation[2] * 1000.0
+    # A closer object or another surface may be the laser's actual target.
+    if abs(distance_mm - camera_depth_mm) > max(50.0, camera_depth_mm * 0.10):
+        return
+    scaled = tuple(value * (distance_mm / camera_depth_mm) for value in translation)
+    item.update(camera_only_distance_mm=item['distance_mm'],
+                camera_only_depth_mm=camera_depth_mm, camera_only_tag_pose=pose,
+                tag_pose_camera=dict(pose, translation_m=scaled),
+                distance_mm=sqrt(sum(value * value for value in scaled)) * 1000.0,
+                depth_mm=distance_mm,
+                range_source='tof')
+
+
 class CameraService:
     def __init__(self, logger, camera=None, detector=None,
                  snapshot_interval=SNAPSHOT_INTERVAL, snapshot_root=None,
                  pause_for_detection=False, scan_pause=None, scan_complete=None,
                  scan_settle_seconds=SCAN_SETTLE_SECONDS, capture_resolution=None,
-                 scan_cooloff_seconds=SCAN_COOLOFF_SECONDS, scan_result=None):
+                 scan_cooloff_seconds=SCAN_COOLOFF_SECONDS, scan_result=None,
+                 forward_tof_reader=None):
         self.logger = logger
         self._camera = camera
         self.detector = detector if detector is not None else AprilTagDetector(isolate_process=True)
@@ -339,6 +398,7 @@ class CameraService:
         self.scan_settle_seconds = max(0.0, float(scan_settle_seconds))
         self.scan_cooloff_seconds = max(0.0, float(scan_cooloff_seconds))
         self.scan_result = scan_result
+        self.forward_tof_reader = forward_tof_reader
         if self.pause_for_detection and (
                 self.scan_pause is None or self.scan_complete is None):
             raise ValueError(
@@ -427,6 +487,8 @@ class CameraService:
         self.logger.info("Vision capture configured: resolution=%s format=BGR888 (RGB array) detection_max_dimension=%s",
                          self.resolution, getattr(self.detector, "max_dimension", None))
         self._shutdown.clear()
+        if self.forward_tof_reader is not None:
+            self.forward_tof_reader.start()
         self._worker = Thread(target=self._periodic_capture, name='camera-capture', daemon=True)
         self._worker.start()
 
@@ -439,6 +501,8 @@ class CameraService:
     def close(self):
         self._shutdown.set()
         self._scan_requested.set()
+        if self.forward_tof_reader is not None:
+            self.forward_tof_reader.close()
         if self._worker is not None:
             self._worker.join(timeout=DETECTOR_TIMEOUT_SECONDS+2)
         close_detector = getattr(self.detector, 'close', None)
@@ -527,6 +591,16 @@ class CameraService:
                           name, self.scan_cooloff_seconds, timings[name], interrupted)
         return interrupted
 
+    def _wait_for_scan_tof(self, frame_time, paused_at):
+        deadline = frame_time + SCAN_TOF_WAIT_SECONDS
+        while not self._shutdown.is_set():
+            now = monotonic()
+            sample = self.forward_tof_reader.sample_at(frame_time, paused_at, min(now, deadline))
+            if sample is not None or now >= deadline:
+                return sample
+            self._shutdown.wait(min(0.05, deadline - now))
+        return None
+
     def _capture_scan(self, requested=False):
         """Archive every frame; only run stationary detection when pause permits."""
         started = monotonic()
@@ -537,11 +611,13 @@ class CameraService:
         image = None
         detections = ()
         error_text = None
+        tof_sample = None
         try:
             stage = monotonic()
             if self.pause_for_detection:
                 paused = self.scan_pause() is not False
                 detect_allowed = paused
+            paused_at = monotonic()
             timings['pause'] = (monotonic() - stage) * 1000.0
             stage = monotonic()
             if paused and self._shutdown.wait(self.scan_settle_seconds):
@@ -552,9 +628,16 @@ class CameraService:
                 timings['camera_lock'] = (monotonic() - stage) * 1000.0
                 stage = monotonic()
                 image = self._camera.capture_array()
+                frame_time = monotonic()
                 captured_at = time()
                 self.last_capture_time = captured_at
             timings['capture'] = (monotonic() - stage) * 1000.0
+            if paused and self.forward_tof_reader is not None:
+                stage = monotonic()
+                tof_sample = self._wait_for_scan_tof(frame_time, paused_at)
+                timings['tof_wait'] = (monotonic() - stage) * 1000.0
+                if self._shutdown.is_set():
+                    return
             if self._scan_cooloff(timings, 'cooloff_after_capture', paused):
                 return
             if detect_allowed:
@@ -562,6 +645,8 @@ class CameraService:
                 try:
                     detections = tuple(dict(item, captured_at=captured_at)
                                        for item in self.detector.detect(image))
+                    if tof_sample is not None:
+                        apply_forward_tof(detections, tof_sample.distance_mm)
                     timings['detector_stages'] = dict(getattr(self.detector, 'last_timings_ms', {}))
                     with self._detection_lock:
                         self._detector_error = None
@@ -588,6 +673,13 @@ class CameraService:
                 'tags': list(detections), 'timings_ms': timings,
                 'scan_cooloff_seconds': self.scan_cooloff_seconds if paused else 0.0,
             }
+            if paused and self.forward_tof_reader is not None:
+                report['forward_tof_mm'] = tof_sample.distance_mm if tof_sample is not None else None
+                if tof_sample is not None:
+                    offset_ms = (tof_sample.completed_at - frame_time) * 1000.0
+                    report['forward_tof_age_ms'] = max(0.0, -offset_ms)
+                    report['forward_tof_frame_offset_ms'] = offset_ms
+                    report['forward_tof_read_ms'] = (tof_sample.completed_at - tof_sample.started_at) * 1000.0
             if self.snapshot_root is not None:
                 try:
                     self._save_periodic_snapshot(image, captured_at, report)
@@ -604,8 +696,11 @@ class CameraService:
                     self._last_detection_time = captured_at
                     self._last_detection_ready_time = time()
                     self._last_detection_duration = timings['detect'] / 1000.0
-            self.logger.debug('Vision scan: tags=%d paused=%s skipped=%s image=%s timings_ms=%s',
-                              len(detections), paused, not detect_allowed, image.shape, timings)
+            self.logger.debug('Vision scan: tags=%d paused=%s skipped=%s image=%s '
+                              'forward_tof_mm=%s forward_tof_frame_offset_ms=%s forward_tof_read_ms=%s timings_ms=%s',
+                              len(detections), paused, not detect_allowed, image.shape,
+                              report.get('forward_tof_mm'), report.get('forward_tof_frame_offset_ms'),
+                              report.get('forward_tof_read_ms'), timings)
             if self.scan_result is not None:
                 try:
                     self.scan_result(report)  # Queue speech only; no network I/O here.
@@ -644,7 +739,7 @@ class CameraService:
             report['timings_ms']['image_save'] = (monotonic() - started) * 1000.0
             report['timings_ms']['through_image_save'] = sum(
                 report['timings_ms'].get(key, 0.0)
-                for key in ('pause', 'settle', 'camera_lock', 'capture', 'cooloff_after_capture',
+                for key in ('pause', 'settle', 'camera_lock', 'capture', 'tof_wait', 'cooloff_after_capture',
                             'detect', 'cooloff_after_detect', 'image_save')
             )
             report_path = filepath.with_suffix('.json')

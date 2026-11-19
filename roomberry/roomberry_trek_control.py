@@ -1,5 +1,5 @@
 """Authenticated RoomTrek control relay and loopback CLI; shares NavLink UDP port."""
-# @(#)roomberry_trek_control.py 3.2.maps.1 2026/11/10 10:15:00
+# @(#)roomberry_trek_control.py 3.2.gridauto.1 2026/11/14 09:15:00
 import argparse
 import base64
 import hashlib
@@ -12,7 +12,7 @@ import socket
 import time
 import uuid
 
-COMMANDS = ('STATUS', 'SURVEY_START', 'SURVEY_SAVE', 'NAV_START', 'NAV_RETRY', 'SESSION_STOP', 'SPEAK', 'MAP_LIST', 'MAP_RENAME', 'MAP_DELETE')
+COMMANDS = ('LED_ON', 'LED_OFF', 'STATUS', 'SURVEY_START', 'SURVEY_SAVE', 'NAV_START', 'NAV_RETRY', 'SESSION_STOP', 'SPEAK', 'MAP_LIST', 'MAP_RENAME', 'MAP_DELETE')
 MAX_DATAGRAM = 8192
 
 

@@ -1,4 +1,4 @@
-# @(#)roomberry_control_test.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_control_test.py 3.2.return.3 2026/11/19 12:38:26
 import csv
 import logging
 import unittest
@@ -584,7 +584,7 @@ class WheelRampTest(unittest.TestCase):
             self.now += dt
             self.controller._advance_ramp(self.now)
 
-    def test_all_serial_ramp_writes_are_zero_or_at_least_42(self):
+    def test_all_serial_ramp_writes_are_zero_or_at_least_50(self):
         self.command('drive_direct', left_velocity=20, right_velocity=40)
         self.tick(12)
         self.command('soft_stop')
@@ -592,7 +592,7 @@ class WheelRampTest(unittest.TestCase):
         writes = [r for r in self.robot.drive_commands if r[0] == 'drive_direct']
         self.assertTrue(writes)
         for _,left,right in writes:
-            self.assertTrue(all(v == 0 or abs(v) >= 42 for v in (left,right)))
+            self.assertTrue(all(v == 0 or abs(v) >= 50 for v in (left,right)))
 
     def test_io_pulse_brakes_without_mission_ticks_and_cancels_deadline(self):
         now = monotonic()
@@ -601,7 +601,7 @@ class WheelRampTest(unittest.TestCase):
         with patch('roomberry_control.monotonic', return_value=now):
             self.controller._run_command(command)
         self.assertEqual(len(command['result']),1)
-        self.assertEqual(self.robot.drive_commands[-1],('drive_direct',42,42))
+        self.assertEqual(self.robot.drive_commands[-1],('drive_direct',50,50))
         self.assertFalse(self.controller._check_pulse(now+.099))
         self.assertTrue(self.controller._check_pulse(now+.101))
         self.assertEqual(self.controller._applied_wheels,(0,0))
@@ -610,27 +610,27 @@ class WheelRampTest(unittest.TestCase):
 
     def test_stop_preempts_pulse_and_invalid_durations_do_not_queue(self):
         now=monotonic()
-        command=dict(operation='drive_direct',kwargs=dict(left_velocity=-42,right_velocity=42),
+        command=dict(operation='drive_direct',kwargs=dict(left_velocity=-50,right_velocity=50),
             pulse_s=.1,ramp=False,result=[],done=Event(),expires_at=now+5)
         self.controller._run_command(command)
         self.command('stop')
         self.assertIsNone(self.controller._pulse_deadline)
         for duration in (0,-.1,1,float('nan')):
             with self.assertRaises(ValueError):
-                self.controller.execute('drive_direct',left_velocity=42,right_velocity=42,pulse_s=duration)
+                self.controller.execute('drive_direct',left_velocity=50,right_velocity=50,pulse_s=duration)
 
     def test_grout_discrete_start_and_normal_stop(self):
         with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
             self.command('drive_direct', left_velocity=150, right_velocity=150, steps=True)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',42,42))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',50,50))
             self.tick(3)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',42,42))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',50,50))
             self.tick(2)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',70,70))
             self.tick(5)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',150,150))
             stop = self.command('soft_stop')
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',42,42))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',50,50))
             self.assertFalse(stop['done'].is_set())
             self.tick(3)
             self.assertFalse(stop['done'].is_set())
@@ -641,7 +641,7 @@ class WheelRampTest(unittest.TestCase):
     def test_grout_pending_step_retunes_without_extending_dwell(self):
         with patch('roomberry_control.monotonic', side_effect=lambda:self.now):
             self.command('drive_direct', left_velocity=-150, right_velocity=-150, steps=True)
-            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-42,-42))
+            self.assertEqual(self.robot.drive_commands[-1], ('drive_direct',-50,-50))
             deadline = self.controller._step_until
             self.tick(2)
             self.command('drive_direct', left_velocity=-160, right_velocity=-140, steps=True)
@@ -765,7 +765,7 @@ class WheelRampTest(unittest.TestCase):
                            ramp=False, result=[], done=Event(), expires_at=monotonic()+5)
             self.controller._run_command(command)
             self.assertEqual(len(command['result']), 1)
-            actual = max(42, speed)
+            actual = max(50, speed)
             self.assertEqual(self.robot.drive_commands[-1], ('drive_direct', actual, actual))
             self.assertEqual(self.controller._ramp_current, (actual, actual))
             count = len(self.robot.drive_commands)
@@ -790,10 +790,10 @@ class WheelRampTest(unittest.TestCase):
         self.assertEqual(self.robot.drive_commands[-1], ('drive_direct', 0, 0))
 
     def test_reversal_reaches_zero_before_opposite_motion(self):
-        self.command('drive_direct', left_velocity=84, right_velocity=42)
+        self.command('drive_direct', left_velocity=100, right_velocity=50)
         self.tick(20)
-        self.assertEqual(self.controller._ramp_current, (84, 42))
-        self.command('drive_direct', left_velocity=-84, right_velocity=-42)
+        self.assertEqual(self.controller._ramp_current, (100, 50))
+        self.command('drive_direct', left_velocity=-100, right_velocity=-50)
         points=[]
         for _ in range(40):
             self.tick()

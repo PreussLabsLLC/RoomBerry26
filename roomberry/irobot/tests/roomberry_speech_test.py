@@ -1,5 +1,5 @@
 """Catalogue, log tagging and speech delivery without a robot or speech audio."""
-# @(#)roomberry_speech_test.py 3.2.speechlog.1 2026/11/12 16:13:04
+# @(#)roomberry_speech_test.py 3.2.gridauto.2 2026/11/14 09:38:25
 import logging
 import json
 import io
@@ -53,6 +53,31 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(send.call_count, 2)
         send.side_effect = OSError('unavailable')
         self.assertTrue(filter_.filter(self.record(speech_code='SAFETY', speech_announce=True)))
+
+    def test_specific_stop_survives_filter_and_sender_with_priority(self):
+        sender = SpeechSender(b'key', 5010, Mock())
+        filter_ = SpeechLogFilter(sender.submit_event)
+        text = 'Captain, grid run stopped. Grout line confidence 0.640 is below required 0.650.'
+        record = self.record(logging.WARNING, speech_code='RUN_STOPPED', speech_detail=text)
+        filter_.filter(record)
+        queued = sender._queue.get_nowait()
+        self.assertEqual(queued[:2], ('RUN_STOPPED', text))
+        self.assertEqual(record.speech_text, text)
+        self.assertEqual(sender.job_snapshot(queued[3])['text'], text)
+
+    def test_different_stop_reasons_are_not_hidden_by_shared_cooldown(self):
+        send = Mock(); filter_ = SpeechLogFilter(send)
+        with patch('roomberry_speech.monotonic', side_effect=[0, 1, 2]):
+            for reason in ('Left bumper pressed', 'Motor lease expired', 'Motor lease expired'):
+                filter_.filter(self.record(logging.WARNING, speech_code='RUN_STOPPED', speech_detail=reason))
+        self.assertEqual(send.call_count, 2)
+        self.assertEqual(send.call_args.args, ('RUN_STOPPED', 'Motor lease expired'))
+
+    def test_error_speaks_formatted_log_detail_instead_of_generic_phrase(self):
+        send = Mock(); filter_ = SpeechLogFilter(send)
+        record = self.record(logging.ERROR)
+        filter_.filter(record)
+        send.assert_called_once_with('ERROR', 'Captain, Battery low')
 
     def test_queue_bounded_and_catalogue_validation(self):
         sender = SpeechSender(b'A'*32, 5010, Mock())

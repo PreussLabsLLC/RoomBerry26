@@ -1,6 +1,6 @@
 {
-  "_sccsid": "@(#)autonomy.json 3.2.tag15.1 2026/11/12 15:23:38",
-  "_note": "Room dimensions and tag positions are surveyed. Intrinsics remain illustrative placeholders. Camera mount remeasured 2026/11/12: Pi lens 148 mm forward, centred laterally, 137 mm high; forward-facing orientation retained. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. Tag 15 moved 2026/11/12 to y=1.225 m on the centre grout line for measured camera/wheel alignment; x, height and orientation are unchanged. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. Keep start_mode idle until calibration is verified.",
+  "_sccsid": "@(#)autonomy.json 3.2.rollup.1 2026/11/13 19:43:59",
+  "_note": "Room dimensions and tag positions are surveyed. Intrinsics measured from the 2026/11/12 tile-board calibration with retakes; using the distortion-free pinhole fit compatible with the current pose estimator (0.561 px RMS). Stored at the 1296x972 reference resolution and scaled at capture; source: output/camera-calibration-20261112-retakes/models.json, pinhole. The separate radial2 fit requires distortion correction and is not installed. Printed-board geometry remains nominal. Camera mount remeasured 2026/11/12: Pi lens 148 mm forward, centred laterally, 137 mm high; forward-facing orientation retained. Tag 1 orientation was corrected from a stationary dock scan. Tag 2 orientation assumes it is mounted on the x=0 wall, facing room +X, with tag x aligned to room +Y. Tag 16 faces +Y like tag 1; robot viewing heading is -Y and approach is from higher Y. Tag 15 faces -X; robot viewing heading is +X and approach is from lower X. Both facing directions were confirmed by the user. Tag 15 moved 2026/11/12 to y=1.225 m on the centre grout line for measured camera/wheel alignment; x, height and orientation are unchanged. The optional surface field records the floor covering under each landmark for discovery comparison, and the configured tag size is the measured 57.5 mm black square on the printed sheet; tags1-8.pdf nominally draws a 60 mm black square inside an 80 mm white quiet zone. User-selected final 12% empirical translation correction for every detected tag/family (multiply native camera translation by 1.12 once before mount transform), following the 2026/11/13 tape checks; replaces the tag15-only 1.10 pilot. Raw native pose/range preserved. This is a metric scale adjustment, not a new intrinsic fit. Keep start_mode idle until calibration is verified.",
   "start_mode": "idle",
   "motion_ramp": {
     "enabled": true,
@@ -44,6 +44,14 @@
     "lens_x_mm": -66.0,
     "lens_y_mm": -58.0
   },
+  "imu_heading_nudge": {
+    "enabled": true,
+    "gain": 0.2,
+    "max_rate_deg_s": 1.0,
+    "max_step_deg": 0.25,
+    "max_total_deg": 5.0,
+    "max_innovation_deg": 10.0
+  },
   "roomtrek_survey": {
     "enabled": true,
     "map_prefix": "kitchen",
@@ -73,7 +81,8 @@
   "camera": {
     "family": "tag16h5",
     "tag_size_m": 0.0575,
-    "intrinsics": { "fx": 1000, "fy": 1000, "cx": 648, "cy": 486 },
+    "pose_translation_scale": 1.12,
+    "intrinsics": { "fx": 1131.535227344, "fy": 1122.403778267, "cx": 656.831313071, "cy": 465.391849947 },
     "max_dimension": 820,
     "highest_resolution": false,
     "capture_resolution": [820, 616],

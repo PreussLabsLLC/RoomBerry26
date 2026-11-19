@@ -1,5 +1,640 @@
-<!-- @(#)CAPTAINSLOG.md 3.2.pulse.1 2026/11/12 16:24:51 -->
+<!-- @(#) CAPTAINSLOG.md 3.2.return.3 2026/11/19 12:38:26 -->
 # Captains Log
+
+### 2026-11-19 — Extend return localization and set a 50 mm/s speed floor
+
+- Accept surveyed tags up to 5 m in return position acquisition. Keep the
+  existing quality, room bounds, and two-scan agreement checks. The uploaded
+  survey detections at 2.75, 3.45, 3.91, and 4.11 m each solve as a room
+  position with the extended gate.
+- Raise the shared nonzero wheel floor to 50 mm/s for velocity commands.
+  Use it for the slow grid, calibration, discovery, and wall command targets
+  so planned and applied speeds agree. Stops and stationary wheels stay zero.
+
+### 2026-11-19 — Preserve survey localization and smooth distant tag return
+
+- Tag 15 was about 3.9 m away at the start of return, beyond the 2.5 m
+  position-fix gate. The distance survey previously produced no pose for
+  the return to inherit. Seed its map trail from a valid stationary fix,
+  carry it forward with wheel odometry, and preserve the trail at handoff.
+  The first uploaded station replays as a valid position fix.
+- For bearing-only legs, use 70 mm/s continuous steering between stationary
+  checks, retaining the 150 mm rescan interval. Stop if a confirmed bearing
+  worsens substantially after a turn toward it. The logs do not establish a
+  camera or wheel polarity fault.
+
+### 2026-11-19 — Review ToF after adding scan wait
+
+- The 1.5 s wait produced a valid raw range on 17 of 33 paused scans.
+  Median read duration was 991 ms. No logged tag depth used ToF.
+- The first five survey stations agreed to within 3–45 mm in forward
+  depth. Their tag centers were 11.7–14.8 degrees off the camera axis,
+  outside the 5-degree gate. Later returns near 0.4–0.5 m while visible
+  tags were meters away show why a range alone cannot identify a target.
+
+### 2026-11-19 — Retrace to recover grout and wait for stationary ToF
+
+- After an autonomous distance survey loses its grout line, hold for fresh
+  frames, then retrace the reverse tile path in up to two 50 mm steps at
+  40 mm/s. Stop and recheck after each step. Bound retrace to the current
+  tile, and require two distinct clear frames before resuming.
+- Let paused AprilTag scans wait up to 1.5 seconds after capture for ToF.
+  Accept reads that started after the pause and completed within the frame
+  window. Log the signed offset to frame capture, read duration, and wait.
+
+### 2026-11-19 — Retry a confirmed tag 15 validation near miss
+
+- A final stationary fix can revise the estimated robot-center range above
+  300 mm after the approach has stopped. For a confirmed fix up to 325 mm
+  inside the final approach corridor, allow one slow correction toward
+  290 mm, with a 50 mm odometry cutoff and the existing safety checks.
+  Require two new stationary fixes and keep the 300 mm success threshold.
+  All 39 targeted tag-return tests passed locally.
+
+### 2026-11-19 — Analyze longer grid survey and return
+
+- Six survey stops followed phone bumps. Five peaked below 0.6 g and four
+  followed accepted wheel writes within 150 ms. Use the existing impact
+  policy in the distance survey. Brake on autonomous line loss, wait up to
+  three seconds, and require two distinct clear frames before resuming.
+- Returns without a mapped fix used 100 ms bearing pulses at 42 mm/s.
+  One stopped after a serial write timeout. The final confirmed robot-center
+  range was about 310 mm, outside the 300 mm validation limit.
+- ToF initialized in 351 ms. Of 565 logged slow reads, 369 were positive.
+  Median read time was 991 ms, and the final parked readings were 180–187 mm.
+  All 45 scans lacked a fresh ToF sample under the 250 ms limit.
+
+### 2026-11-19 — Deploy Roomberry Python modules as one file set
+
+- Move the Create 2 driver, Open Interface constants, commands, and response
+  parsers beside `roomberry.py`. Update runtime imports and web command
+  discovery. Keep the old iRobot import paths as compatibility aliases.
+- Document copying `roomberry/roomberry*.py` together and installing Python
+  dependencies in the launch interpreter.
+
+### 2026-11-19 — Make the persistent ToF reader self-contained
+
+- The Pi started the persistent reader with an older diagnostic script that
+  rejected `--stream`. Launch the streaming subprocess from the same
+  `roomberry_tof.py` module as its parent so the protocol ships together.
+  Log the subprocess exit status. Keep the standalone distance probe.
+
+### 2026-11-19 — Keep ToF ranging across scans and increase iPhone bump sensitivity
+
+- The Pi run logged 16 one-shot timeouts at 750 ms. Subsequent standalone
+  reads returned 916–917 mm in 389–430 ms. Keep one helper open and read in
+  the background. Match a sample that began after the scan pause and within
+  250 ms of frame capture. Log initialization and include sample age and read
+  duration in scan logs and archives. A stalled helper restarts independently.
+- Halve the acceleration and jerk trigger thresholds in the iPhone bump
+  detector shared by GridRunner and GroundHog. Halve the quiet acceleration
+  threshold to preserve the rearm margin. Keep the Pi's reaction threshold.
+- Passed 94 targeted Python tests and a persistent-helper check with a simulated
+  driver. Hardware timing and iPhone behavior require on-device verification.
+
+### 2026-11-19 — Use forward ToF in stationary AprilTag scans
+
+- Take one VL53L1X reading immediately after the paused camera capture.
+  Archive the reading and use it as forward depth when exactly one tag is
+  within about five degrees of the camera axis and agrees within 50 mm or
+  10% of camera depth, whichever is larger. Preserve the camera estimate and
+  bearing. Invalid readings, driver failures, and timeouts use camera range.
+- Set `camera.tof_forward` to false in the autonomy config if the sensor is
+  turned away from the camera. Continuous ranging and wall detection remain
+  future work. The camera, AprilTag, tag return, and grid distance suites
+  passed 93 tests locally. Pi scan accuracy and timing still need field checks.
+
+### 2026-11-18 — Add a CJMCU-531 distance reader
+
+- Add `roomberry/tools/tof-distance.py` for the VL53L1X on Raspberry Pi
+  I2C bus 1 at address `0x29`. Print millimeters once a second and stop
+  ranging on Ctrl+C.
+
+### 2026-11-14 — Attribute the first return's veer
+
+- Follow-up read-only command/sample review:09:44:52.143–09:45:04.754 commands
+  remain left=right42mm/s, yet wheel heading changes+5.25deg over149.4mm.
+ 09:45:15.500–27.512 adds+5.80deg over144.2mm, again equal42/42 targets.
+  Gyro agreement establishes real yaw, not merely erroneous encoder heading.
+  Physical pulse/coast/wheel asymmetry cause is not uniquely identified.
+- Bearing mode uses straight equal-wheel pulses below5deg error, with no
+  continuous heading correction/grout guidance/IMU anchor. It therefore allows
+  yaw to accumulate, and only rescans after150mm. Recorded positive bearings
+  then demand left pivots: first measured~1.75deg, later~9.74deg. This explains
+  much of commanded veer in addition to straight-pulse yaw.
+- Visual bearing grows1.94→3.42→5.46→13.76deg while heading turns positive;
+  camera/robot bearing polarity remains suspect. Heading agreement alone does
+  not validate target bearing; do not claim a confirmed sign bug without the
+  stationary turn/image check. No source/controller changes or live commands.
+
+
+### 2026-11-14 — Add paired iPhone/odometry headings to impact figures
+
+- User requests heading comparisons. Regenerate all three impact/bumpy PNG/PDF
+  figures with fifth shared-time panel: type7 gyro-integrated iPhone yaw and
+  wheel-encoder heading, zeroed together at first paired sample per window.
+  Interpolate wheel angle to phone receipt only across sensor intervals<=0.5s;
+  break plotting on gaps, preserve baseline unless sensor identity resets.
+  No compass/absolute-heading claim, sign reversal or calibration modification.
+- First-return overview: phone+27.59deg, odometry+25.16deg, final difference
+ +2.43deg. Both record same-direction veer. Export paired-heading CSVs and
+  extend summary JSON/report. Reproduction succeeds; overview visually checked;
+  SCCS/whitespace checks pass. No controller changes, deployment or robot action.
+
+
+### 2026-11-14 — Acceleration/current/command plots for impact and bumpy return
+
+- User requests aligned plots. Export three four-panel PNG/PDF figures: survey
+  impact09:43:08–15, bumpy-start09:44:13–25, return overview09:44:13–09:45:28.
+  Show phone XYZ user acceleration, latest magnitude/interval peak, left/right
+  wheel currents and intended command/brake timeline, with phone impact markers.
+- Survey window peak4.49m/s², current maxima0.258/0.235A; one impact. Bumpy
+  close-up peak7.87m/s², currents0.347/0.323A; five impacts ignored after speed
+  changes. Full overview has21ignored impacts, current maxima0.403/0.363A.
+  Repeated current/acceleration spikes align approximately with100ms drive/
+  brake pulses. No sustained sampled current surge at survey impact; limited
+  polling cannot rule out brief spikes or establish physical shock cause.
+- Important: sensor requested-speed registers latch42mm/s between pulses;
+  plot intended pulse/brake steps from actuator/deadline/stop logs separately,
+  do not confuse latched registers with actual speed. Phone~10Hz/current~8Hz,
+  Pi receipt/log clock alignment retains network/sample-age/polling uncertainty.
+- Source script, CSV extracts, summary JSON and explanations saved alongside
+  prior report in output/calibration-return-20261114-0941/impact-plots.md.
+  Figures generated and visually checked; SCCS/whitespace checks pass. No robot
+  commands, deployment or controller changes.
+
+
+### 2026-11-14 — 09:41 calibration and divergent/closer homing report
+
+- Read latest copied mission/sensor/NavLink evidence through09:47. Ten clear
+  station scans, nine crossings. Eight full intervals: corrected camera mean
+ 306.34mm (+0.29% vs305.45 pitch), wheels310.93mm (+1.80%). No tape entries;
+  retain1.12 camera factor, do not infer new absolute/wheel calibration.
+- Crossing6 recovered after two retries; actual forward wheel excursions~64/
+ 80mm vs requested50mm, including coast. No skips/low-confidence retry recorded.
+  Survey stops09:43:12 on phone impact count0→1, no Roomba bumper/hard hazard.
+  No established LED-state/on-off comparison.
+- First return09:44 starts~3.06m, uses bearing-only42mm/s100ms pulses;75forward
+  pulses,21speed-change phone impacts ignored, no bumper/hard hazard. No pose,
+  grout guidance or IMU anchor. Bearing error grows1.94→13.76deg, heading~25deg
+  over626mm net travel; no tag in final scan, abort09:45:31. Frame/polarity and
+  pulse/coast yaw require validation; logs alone do not prove a steering sign bug.
+- Operator right turns and two500mm advances precede second request09:46 at
+ 1.48m. Confirmed poses, grout-guided transit and IMU nudge enable~1.38m approach.
+  Two final camera ranges157.327/157.333mm; confirmed centre-to-tag305.86mm,
+  just5.86mm outside300mm. Physically close but software aborts09:47:19 instead
+  of recording successful arrival.148mm forward lens mount explains range
+  reference difference. Recommend bounded final recheck/correction/margin design.
+- Detailed report, station CSV, metrics JSON, reproducible extraction and PNG
+  plot saved output/calibration-return-20261114-0941/. Analysis only: no source/
+  configuration control changes, deployment, camera fetch or live movement.
+
+
+### 2026-11-14 — Explain stop, confidence retrace and specific speech
+
+- Latest copied09:31 run already has autonomous=true. At09:31:32.546 phone
+  confidence0.640475869 falls below0.650; next tick aborts after~110mm reverse.
+  Tag15 clear at107.3mm corrected range; sensors ready, no bumper/hazard, battery
+  normal, stream continues. Combined timeout/direction/lock warning hid the
+  actual confidence check. Separate map-inventory warning did not cause stop.
+- User requests50mm retry also for low confidence. Autonomous weak-confidence
+  step now stops, forward50mm, reverse slowly to recheck (up to two attempts).
+  Do not steer from weak visual measurements; short retrace uses zero steering
+  with heading/sensor/contact/lease/range/time guards. Persistent weak confidence
+  holds position with run active, then resumes when confidence recovers. Missing
+  crossings retain retry/skip/continue. Forward recovery counts ignored.
+- Grid aborts speak concrete reasons via priority RUN_STOPPED; split compound
+  checks into bumper sides, sensor age/readiness, OI/latch/battery/lease, phone
+  receipt/frame/health ages, timeout, direction, validity and confidence. Internal
+  event submission supports bounded reason text, preserving strict public
+  catalogue submission. Different reasons have separate bounded cooldowns.
+  Retry/skip/hold/resume speech carries actual text through log filter.
+-48speech/battery/distance tests and88grid/web integration tests pass. Report and
+  automatic-start instructions: output/grid-distance-stop-20261114/README.md.
+  No iPhone reinstall needed; user-owned Pi upload/restart needs roomberry.py,
+  roomberry_speech.py, roomberry_gridrunner.py and roomberry_grid_distance.py.
+  No deployment/live motion or front-end asset changes in this work.
+
+
+### 2026-11-14 — GridRunner 11 installed on Peters 10
+
+- User requests deployment to connected iPhone10. Identify Peters10 as USB
+  iPhone X ab151810c534a3ffe07756d271a25095fe25e5d2, iOS16.7.16;
+  exclude the separately detected iPhone11Pro Sputnik.
+- Signed Release build11 succeeds with existing development team/provisioning.
+  USB ios-deploy confirms InstallComplete for com.preusslabs.GridRunner.
+  Install over existing app without uninstall/data removal; no key changes.
+  App not launched and no robot motion commanded. Pi service update remains
+  separate and user-owned; autonomous survey requires that matching Pi code.
+- Build/install logs: /tmp/GridRunner-iPhoneX-signed11.log and
+  /tmp/GridRunner-iPhoneX-install11.log. Product remains under
+  /tmp/GridRunner-iPhoneX-signed11/Build/Products/Release-iphoneos/GridRunner.app.
+
+
+### 2026-11-14 — Autonomous crossing survey and remote GridRunner LED (build 11)
+
+- Distance start defaults to autonomous: baseline stationary tag15 scan, reverse
+  to a detected crossing, stop/settle/scan and continue without tape gates.
+  Explicit autonomous=false retains operator-paced behavior. Tile size304.8mm
+  plus0.4–0.9mm grout gives nominal pitch305.45mm (305.2–305.7mm); existing
+  dashboard pitch input may override this and should be set to305.45.
+- At one pitch+30mm without a crossing, stop and move forward50mm, then retry
+  reverse at40mm/s. After two retries log a skipped crossing and continue to
+  the next search window, as requested; missing crossings alone do not abort.
+  Ignore forward-recovery counts as stations. Keep safety/line/session/lease,
+  heading/odometry/time guards and5m estimated range bound. Do not invent
+  absolute positions from initial placement or relative tile positions after
+  skips; preserve station observations and skipped-search estimates in logs.
+- Add authenticated LED_ON/LED_OFF to shared control vocabulary and Pi CLI.
+  GridRunner applies hardware torch setting asynchronously and reports success
+  or explicit failure, updates local LED button and exposes requested state in
+  STATUS. Existing manual switch and stop/background torch-off retained.
+  Separate off/on surveys can be compared after operator repositioning;
+  no automatic second-pass repositioning or LED experiment was commanded.
+- Validation:103 focused distance/grid/control tests pass (33.4s), including
+  automatic scan/advance,50mm retry, skip/continue and forward-count rejection.
+  Unsigned Release iPhone build11 succeeds; whitespace/SCCS checks pass, exactly
+  one identification in each of11 edited source/project/document files.
+- GridRunner build11 and Pi update needed. No deployment, live robot movement,
+  remote Git operation or changes to front-end assets performed. Physical thin
+  grout detection, stopping precision and50mm recovery remain to be validated.
+
+
+### 2026-11-13 — Global12percent correction, controlled homing rollup and GridRunner10 deployed
+
+- User selects final1.12metric translation factor for all tag IDs/families,
+  replacing tag15-only1.10. Global default is applied once in native/isolated
+  detection before mount transform; raw pose/range retained. Active config has
+  no per-tag override. Physical size/intrinsics/mount/wheel/steering gains retained.
+- Standalone homing never transfers into scan-free bumper-ended GridDrive.
+  Three fresh confident aligned grout frames on a direct mapped route qualify
+  optional70mm/s differential guidance inside Tag15Return.400mm rescan cadence,
+  final confirmation, slow pulses and two-scan≤300mm validation remain active;
+  bumper contact stops instead of reporting contact success.
+- Strong visible tag15 bearings accepted through5m corrected range with150mm
+  stopped rescans,20s per-view age and3000mm total bearing travel bound. Full
+  pose gates stay2.5m. Regression covers4.2m target and distant5.1m refusal.
+- Parked sensor readiness/age faults can wait up to1s with lease ended; no
+  moving-fault grace and no auto next-step restart. Contact/hazards still stop;
+  changed position/epoch during wait rejects recovery. First tape entry anchors
+  restarted expected distances and absolute wheel cap, retaining configured start.
+  Browser shows sensor hold and blocks Next, preserving raw/corrected values.
+- GridRunner10 shares RoomTrek's type7 packet/integrator, sending attitude,
+  gravity, acceleration, rates and integrated yaw from existing100Hz Core Motion
+  at10Hz over Navlink. Generation resets on gaps; stale samples invalid. This
+  supplies the existing guarded heading-nudge path without ARKit. Battery/speech
+  and all preceding decimal/stopped-entry/raw-logging fixes included.
+- Full795test suite passes; after final bounded-wait refinements70focused tests
+  pass. Signed Release build10 passes; shared Swift integration/type7 checks and
+  actual Python binary decode pass. Mocked real Chrome verifies1.12columns,
+  sensor hold, stopped tape entry, explicit next gating and network recovery.
+- User then connects iPhone X Peters10 and explicitly requests deploy. USB
+  install reports InstallComplete for com.preusslabs.GridRunner build10, no
+  uninstall or app-data removal. Existing Documents/NavLink.key readback matches
+  ignored local key without exposing it. App not launched; user opens/streams.
+- Pi uploads remain user-owned: global correction and navigation changes need
+  normal sync/service restart. No Pi deployment, robot motion, live scan or map
+  rewrite this turn. Current deployment/settings guide updated; SCCS/whitespace
+  clean. Original historical evidence/reports retained.
+
+
+### 2026-11-13 — Second distance check: correction active; return handoff bypasses final validation
+
+- Report/evidence under output/grid-distance-check-20261113-183642/: log,
+  sensor CSV, phone binary, separated homing/survey events, tables and figures.
+  43distinct clear scans,45tape events(two repeat clicks),14physical positions.
+  All corrected/native ratios exactly1.10. Same-data station RMS316.0→91.7mm;
+  at4305mm tape mean4089.4mm (−215.6mm/−5.01%). Factor retained1.10.
+  Native diagnostic fit1.1374 is not applied. Five14positions meet20mm/2%check.
+- First homing sees clear tag15at4067.6mm: exceeds2.5m pose and4.0m bearing
+  gates, triggering search. Reads tag2, confirms tag16; wheel heading searches
+  to225deg then aligns to~332deg. First/second grout handoffs abort on20deg
+  heading envelope after~22/~17mm forward travel and line loss.
+- Third return accepts tag15pose at~2.2m, hands to scan-free grout18:40:15.850,
+  travels at100mm/s until right-bumper sample18:40:36.724 (preceding requests
+  103/96mm/s; phone~.94g). Safety stops; no successful final validation. Standalone
+  handoff has no full outbound leg, so its scan-free branch bypasses approach
+  transition/checkpoint scans and slow terminal logic. Report recommends
+  separate handoff/final-validation fix; no control code changed this turn.
+- Early calibration stop18:47:12 is serial sensor-write timeout during parked
+  rescan at1214mm. Camera still scans clear afterward; sensors recover and
+  restart works. Later3962mm step abort is phone impact.370g; final4305mm abort
+  follows explicit phone flags0/reason3stop packet, not future-timestamp race.
+- Wheels3711.6mm/tape3659.5mm=+1.42%; main segment median line error4.2mm,
+  p955.6mm; wheel/gyro max1.34deg. Three crossing misses use wheel fallback.
+  Tag yaw stationary span max6.85deg. Compass allunreliable; no ARKit/type7,
+  so automatic homing IMU nudge unavailable despite health gyro telemetry.
+- Preserve all restart records; planned expected_mm labels reset erroneously
+  because start_mm remained304.8 at1214/4305, but actual tape/raw data intact.
+  Numeric factor/dedup checks, source SCCS, figure and whitespace checks pass.
+  Analysis only: no parameter/control/map edits, deployment, scans or robot motion.
+
+
+### 2026-11-13 — Apply user-selected10percent tag15 translation correction
+
+- User selects10percent rather than fitted12.9percent. Local camera config now
+  pose_translation_scales={"tag16h5:15":1.10}; other IDs/families default1.0.
+  Validate finite numeric0.5–2 factors and family:id keys, fail bad config.
+- Detector scales camera-frame translation before mount/localization, recomputes
+  range/depth and retains native raw_tag_pose_camera/raw_distance_mm/raw_depth_mm
+  plus applied factor. Rotation, native quality, corners, physical57.5mm tag,
+  intrinsics,148mm mount offset, wheel calibration and steering gains retained.
+  Isolated worker receives mapping and applies it once; repeated frames verified.
+- Survey logs raw/corrected ranges and scale. Web calibration table exposes all
+  three. Existing archives are not rewritten. Added tag-range-correction guide
+  and GridRunner README deployment/check notes. No phone update required.
+-199AprilTag/camera/web/survey/localization/mission tests pass, including native
+  and isolated process scaling, no compounding, non-target tags unchanged, raw
+  preservation, invalid config rejection and survey field propagation. Actual
+  mocked Chrome workflow passes. JSON/mount assertions, SCCS and whitespace pass.
+- Local implementation/config only: Pi sync/service restart remains user-owned.
+  No Pi upload/restart, robot motion, scans or iPhone installation this turn.
+
+
+### 2026-11-13 — Station-weighted tag15 scale proposal and disagreement report
+
+- User ends outbound work before carpet and requests correction proposal plus
+  usual comparisons. Analyze preserved25accepted entries as13physical station
+  means, retaining duplicates/spread separately; exclude rejected4255mm attempt.
+  Reproducible report/CSV/JSON/PNG/PDF under
+  output/grid-distance-calibration-20261113/; preserved sensor CSV with recovery.
+- Empirical range fit1.128937125; propose rounded1.129 tag15 translation factor.
+  Station RMS277.0→19.6mm; leave-one-station-out23.2mm; max mean error50.7mm.
+  Free offset−4.1mm barely improves fit. Training≤3m gives1.12270 and39.9mm
+  RMS on farther holdouts. No claim of universal calibration or20mm future accuracy.
+- Proposal only: per-tag metric translation multiplier before mount transform,
+  raw/corrected archive, native rotation/corners/quality and148mm mount retained.
+  No intrinsics/tag-size/wheel/steering/config implementation or deployment.
+  One frontal tag does not resolve focal versus printed-geometry scale cause.
+- Completed within-run intervals:3096.0mm wheels vs3039.0mm tape,+1.88%.
+  Two station steps have no new transverse count; wheel fallback completed them.
+  Mainrun camera-line median6.1mm/p9514.8mm; finalrun median7.1mm/p958.4mm.
+  Relative wheel/gyro max1.38deg(main)/.92deg(final); keep steering gains.
+- Stationary tag-plane yaw pairs vary up16.13deg with zero wheel turn; raw
+  range pairs spread up81.0mm at3955mm tape, tag ~12pixels wide. Scale does
+  not cure long-range pose noise. Gyro from10Hz health, not onboard integration;
+  one292ms gap excluded. All1233compass headings unreliable; no ARKit/type7 data.
+- No bump/wheel-drop samples; no hard-hazard/latched samples in active survey
+  windows;4marked samples after final stop. Phone impact.254g corresponds to
+  second abort. No poll failure logged. Phone100→93%, Roomba99.9→94.5%.
+- Recommend nextcheck three scans per tape station to4m, before carpet, with
+  timing/stopped-entry fixes first; assess raw/corrected and station spread.
+  Numeric sanity checks and figure inspection pass; SCCS/whitespace clean.
+  No scans, robot movement, phone changes, Pi upload/restart or live calibration
+  change in this analysis turn.
+
+
+### 2026-11-13 — Recover all survey restarts; fix false staleness and stopped tape entry
+
+- Preserved17:38run evidence under output/grid-distance-run-20261113-1738/:
+  complete log, phone binary,28original camera/report pairs,26survey scan events,
+  25accepted tape entries across3starts. Repeated scans/entries retained without
+  deduplication. Restart resets visible table, not append-only log history.
+- Recovered rejected4255mm HTTP request separately and marked unaccepted. Last
+  clear tag15 camera range3701.956mm, margin95.4/hamming0, captured17:57:29.
+  Survey abort17:57:36 precedes tape400 at17:58:03; not tag quality or5m cap.
+  Earlier stops: grout-step guard17:39:47 and phone impact17:53:01.
+- Phone packets remain healthy around final stop: valid type5 at17:57:36.436,
+  ~90ms corrected frame age; no sustained outage. Guard samples now before
+  asynchronous snapshot reads, allowing a just-arrived packet to fail negative
+  age check. Fix by sampling after both reads; reproducible race regression.
+  Original interleaving not recorded; exact historical trigger remains inferred.
+- Allow data-only final tape entry after stop if idle and fresh wheel evidence
+  confirms same epoch and scan position within10mm/1deg. Keep stopped result,
+  motor lease and Next disabled; reject moved/rotated/reset/stale positions.
+-162distance/web/mission tests pass plus real mocked Chrome stopped-entry check.
+  SCCS/whitespace checked. No Pi upload/restart, phone changes, scans, robot
+  motion or calibration edits. Resume start must use actual4255mm, not old335mm.
+
+
+### 2026-11-13 — Investigate blocked distance form, missing battery and close scans
+
+- Uploaded15:22run confirms Start HTTP400 at15:26:23: legacy int parser rejects
+  default304.8mm. No successful distance survey or tape records. Fix actual GET
+  path to preserve decimal survey values for coordinator checks; test do_GET.
+- Disabled controls wrongly used wait cursor; stale manual snapshots could keep
+  Start/Record/Next disabled. Add explicit distance refresh, live server checks
+  for Start, request timeout, busy recovery even on failed status refresh and
+  bounded polling only after operator requests a scan/step. Inputs stay editable;
+  no global auto refresh or automatic next move. Real mocked Chrome workflow
+  passes, including decimal values and request/status network-failure recovery.
+- All5167health packets contain valid phone battery84→80%, unplugged. Build8
+  omits battery from signed snapshot used by speech. Build9 supplies both
+  fields; Pi fallback uses only fresh matching-authenticated-session health.
+  Stale/wrong-session/missing-validity tests reject inappropriate readings.
+- Archived11image/report pairs and offline analysis under
+  output/grid-distance-investigation-20261113/. Native:4clear/6empty/1weak false;
+  OpenCV tag16h5 decoder recovers visible tag15 in11/11. Near native successes
+  288.3/334.6/293.0mm; no universal one-tile focus cutoff. Glossy lower-border
+  reflection is a likely contributor, not proven sole cause; recommend matte
+  mounting outside black border/white quiet zone. No live decoder/gate changes.
+- Reported6201.6mm is an image-edge patch at802/338px, margin.86/hamming1,
+  not the central visible tag. Existing gates reject it. Without tape stations,
+  this run cannot establish or explain the reported10% metric scale difference.
+-175distance/web/mission/battery/speech tests pass; signed Release build9 passes.
+  First browser test now covers behavior missed by earlier syntax/coordinator
+  checks. SCCS and whitespace pass. Read-only Pi archive copies only; no upload,
+  service restart, phone installation, camera calibration change or robot motion.
+
+
+### 2026-11-13 — GridRunner build8 installed on USB iPhone X
+
+- User requests connected-iPhone deployment. Signed Release build succeeds
+  after automatic provisioning refresh; ios-deploy reports InstallComplete on
+  Peters10 iPhone X. No uninstall or app-data removal.
+- Provisioned GridRunner's own Documents/NavLink.key; downloaded readback
+  matches ignored local shared key byte-for-byte without printing credentials.
+- Fixed legacy pi destination: added saved Mothership hostname/IPv4 field,
+  default pi3.local; immutable while streaming. Bare hosts try .local too.
+  Updated README; signed build validates the new controls. SCCS/whitespace pass.
+- macOS standalone codesign trust verification reports CSSMERR_TP_NOT_TRUSTED;
+  Xcode signing and the iPhone's installation both succeed. App has not been
+  launched or exercised on the floor. Open GridRunner, check Mothership and
+  start Reverse streaming; wait for authenticated Pi reply before the run.
+- Pi uploads remain user-owned per earlier explicit instruction. No Pi upload,
+  service restart, robot motion or calibration run performed.
+
+
+### 2026-11-13 — GridRunner bidirectional link and stepped tag-15 distance survey
+
+- Added GridRunner build8 receive/control heartbeat using existing RoomTrek
+  signed challenge/response, replay protection and speech engine. STATUS,
+  SPEAK and SESSION_STOP supported; final stop response queued before closing
+  transport. File sharing enables its own Documents/NavLink.key provisioning.
+- Existing type3 health already carries acceleration, gyro XYZ and gravity;
+  display fresh/stale IMU and rates, forward type4 compass too. Type5 line and
+  crossing contract remains intact. Authenticated reply status expires after6s.
+- New Pi tag15_distance mode starts with a stationary scan. Operator records
+  each tape measurement before an explicit reverse step. Stop on next crossing
+  or one measured tile pitch by wheels; settle1s and rescan. No automatic return
+  or changes to intrinsics/pose fusion. Clear raw tag15 quality is assessed
+  separately from navigation range gates; default304.8mm pitch is editable.
+- Python web dashboard adds start, record tape, rescan, next tile and stop
+  controls plus station comparison table. Records retain raw range/depth/pose,
+  tape, wheel travel, count and quality in status and Pi logs. Documented lens
+  to tag-centre measurement reference, app key setup and physical validation.
+- Refuse another tile beyond5m tape estimate; wheel/tape cap also ends stepping.
+  Stale data, lost moving line, impacts, hazards, session/config/epoch changes,
+  >10deg heading drift and timeouts stop. Clock cancels; idle Clock remains WALL.
+- Validation: unsigned Release iOS build passes; JavaScriptCore syntax passes;
+  158 distance/web/mission tests and7 authenticated UDP tests pass. Earlier
+  targeted101-test pass had one sandbox socket-bind failure; unrestricted
+  control rerun passes. Existing GridRunner wire/controller tests otherwise pass.
+  No Pi deployment, phone installation or physical robot motion this session.
+
+
+### 2026-11-12 — Post-calibration homing is clean but remains54mm outside arrival
+
+- Analyzed uploaded21:22:31 session; evidence/script/report in
+  output/calibrated-run-20261112-212231/. Direct tag15 confirmation at2.308m;
+  no broad search. Homing2.412m wheels in121.4s including scans; final363.2mm
+  approach in31.23s. No poll failures, contacts, wheel drops or hard hazards.
+- Final two lens ranges204.098/204.118mm; confirmed robot centre354.318mm
+  from tag,54.318mm outside300mm. Only warning is validation rejection.
+  Spoken20cm lens range differs from axle range. Final pose repeatability0.086mm
+  does not establish absolute accuracy; accepted odometry corrections still
+  reach451.8mm farther out and55.8mm at final validation.
+- Logged heading nudges max0.203deg step/1.711deg total per anchor. Later
+  remote-control movements are manual; final tag16 scan408.9mm camera range.
+-820x616 confirmed; actual intrinsics are not logged, so deployed values cannot
+  be proven from archive alone. No code/configuration change or deployment.
+
+### 2026-11-12 — Replace placeholder camera intrinsics with measured pinhole fit
+
+- User requests using the calibration run for active intrinsics. Updated local
+  autonomy.json from the retake run's pinhole fit, matching the runtime pose
+  estimator's zero-distortion model. At820x616: fx715.940499/fy711.317621,
+  cx415.587714/cy294.939691;0.561px RMS. Stored scaled to1296x972 reference.
+- Updated provenance note and tile calibration guide. Radial2 remains offline
+  because runtime distortion correction is not implemented. No tag-size,
+  mount, landmark, capture-mode or navigation-control edits. No Pi deployment.
+- All19 AprilTag/camera tests pass; measured-value check exercises actual camera
+  startup twice at820x616 and confirms scaling without compounding. JSON,
+  SCCS counts and whitespace checks pass.
+
+### 2026-11-12 — Ten calibration retakes confirm lens estimate
+
+- Analyzed50 uploaded captures including10 new takes. All10 new images yield
+  board poses; total37 primary poses,13 old exclusions. Left tile2 now gives
+  yaw+12.3deg versus entered+10deg. Stool retakes add useful vertical/tilt views.
+- Revised candidate fx719.937/fy714.979/cx412.022/cy306.167 at820x616;
+  k1.137667/k2-.372903. Fit RMS.514px; held-out fold RMS.524/.513/.525px.
+  Seventeen first-of-pair training views; fold fx range715.8–721.2px.
+- Added retake report and evidence output/camera-calibration-20261112-retakes/.
+  Independent subpixel method confirms focal scale. Near floor survey error
+  remains23.1mm RMS; tilted stool coordinates flagged as needing remeasurement.
+- Analyzer now fills cache entries for added filenames, keeps identical survey
+  stations in one fold and excludes stool training views from distant validation.
+  Originals and earlier analysis preserved. No runtime change or deployment.
+
+### 2026-11-12 — Offline lens fit and image-derived yaw from tile survey
+
+- User supplied 40 calibration PNG/JSON pairs and CSV, confirms coordinates
+  measure camera lens in mm, negative y left. Original x_tiles/y_tiles entries
+  interpreted as mm; inflated derived fields ignored and source preserved.
+- Added tools/analyze_camera_calibration.py and report/artifacts under
+  output/camera-calibration-20261112/. AprilTag corner method: 27 usable poses,
+  13 excluded. Left tile2 shows ceiling; most stool views clip board. Possible
+  892-to-92 typo flagged. No guessed yaw used in intrinsic/pose fitting.
+- Candidate 820x616 fx720.48/fy715.27/cx412.21/cy305.09; two radial terms;
+  0.523px RMS and station-held-out fold RMS0.531/0.548/0.521px. Twelve near
+  first-of-pair images fit; distant images held out. Subpixel-method sensitivity
+  checked. Near survey disagreement22.4mm RMS; long-range poses unreliable.
+- Corrected-poses.csv preserves measurements beside recovered optical yaw
+  and position with quality flags. Synthetic projection/sign checks pass;
+  print scale still nominal, extra full-board tilt captures recommended.
+- Dependencies installed locally for analysis. No configuration update,
+  service restart, deployment, robot motion, commit or remote git operation.
+
+### 2026-11-12 — Tile-grid camera calibration capture procedure
+
+- Inspected user-supplied Letter landscape calibration PDF: tag16h5 IDs0–11,
+  nominal 41.91mm black squares, 66.801/67.31mm horizontal/vertical pitches.
+  Board covers tag15 and overlaps mapped IDs; capture with navigation stopped.
+- Added roomberry/docs/tile-camera-calibration.md: measured grout pitch, lens
+  coordinate frame, 2–4 tile fitting views, optional 1.5 tile closest view,
+  6–10 tile validation and necessary height/tilt diversity. No calibration fit.
+- Added standalone tools/capture_camera_calibration.py using navigation's
+  820x616 still BGR888 mode; interactive or CSV-plan coordinates, lossless PNG,
+  embedded JSON text, JSON sidecars, CSV index and optional derived grayscale.
+- Help and simulated capture checks pass: size, embedded metadata, sidecars,
+  CSV append, grayscale and invalid coordinates. Pi hardware capture pending.
+  No deployment, robot movement, service restart or configuration changes.
+
+### 2026-11-12 — Bearing run confirms progress but overly cautious pulse pacing
+
+- Analyzed uploaded 19:23:34 run; report/evidence/script in
+  output/bearing-run-20261112-192334/. Bearing-guided approach avoided broad
+  search; 458.3 mm wheel-centre travel in 64.75 seconds including scans.
+- Latest bearing segment expired its 20-second freshness limit at 148.5 mm,
+  just before the 150 mm rescan threshold; not a total-travel limit stop.
+  Recommend stop/rescan on expiry and 200 ms straight pulses, retaining
+  100 ms pivots and measured settling. No controller changes in this analysis.
+- Final approach: 352.8 mm wheels in 35.69 seconds (9.89 mm/s). Telemetry
+  bursts median 132 ms, 750 ms cycle, about 18 percent commanded moving time.
+- Second homing request failed stationary pose consistency; third reached
+  validation but confirmed centre range 386.6 mm exceeded 300 mm. About
+  94.7 mm final pose correction; repeated stand-off remains unresolved.
+- No timestamped ERROR/poll failure entries. 381 gyro nudge updates bounded
+  to max 0.201 degree step and 1.746 degree total per anchor. No deployment.
+
+### 2026-11-12 — Approach a visible distant tag using its bearing
+
+- User authorizes recording and approaching by bearing. Tag15Return now records
+  calibrated robot-frame tag 15 direction separately from metric localization.
+  Clear zero-Hamming reads at 2.5–4 m, within 35 degrees forward, require two
+  stationary bearings agreeing within 3 degrees before motion.
+- Uses existing 42 mm/s, 100 ms pivot/forward pulses and measured settling;
+  rescan after 150 mm, stop on target loss or bearing age over 20 seconds,
+  bound bearing travel to 1.2 m per task. Confirmed position fixes resume normal
+  routing. Existing safety checks and available-pose mapped checks retained.
+- Added geometry, eligibility, pulse/rescan, loss, freshness, safety, travel
+  budget and localization-transition regression coverage. Documentation:
+  roomberry/docs/tag-bearing-approach.md. All 767 tests pass (100.8 seconds);
+  36 focused homing tests pass. SCCS counts and whitespace checks pass.
+  Full suite required unrestricted local test sockets after sandbox denial.
+  Local changes; no Pi deployment.
+
+### 2026-11-12 — Long-range tag 15 decode triggers search instead of approach
+
+- Analyzed uploaded 18:48:42 run; report and reproducible plots in
+  output/nudge-run-20261112-184842/. Initial clear tag 15 decode was 2.80 m,
+  beyond homing's 2.5 m localization cap. No usable homing pose caused four
+  search turns: 180.04 degrees wheel yaw and 121.6 mm centre creep. Tag 16
+  then localized Rosie facing west, requiring a turn back toward the east goal.
+- First gyro anchor came after this search. 671 nudge records, max individual
+  0.2454 degrees, max accumulated per anchor 2.1961 degrees: no runaway.
+- First approach stopped at 18:52:44 on a sensor-poll serial write timeout.
+  Second attempt ended at 18:55:10 with confirmed centre range 395.3 mm,
+  outside the 300 mm arrival criterion. Tag 15 relocation earlier corrected
+  about 595 mm and 10.6 degrees; confident decode is not metric-pose accuracy.
+- Recommend retaining visible-target bearing before broad search and speech
+  distinguishing decoded tags from accepted navigation fixes. Analysis only;
+  no control change, deployment, commit or remote operation.
+
+### 2026-11-12 — Bounded gyro nudge of homing heading estimate
+
+- User requests corrective IMUnudge and clarifies estimate correction. Added
+  GyroHeadingNudge toTag15Return only. Accepted stationary tagfix anchors room
+  heading to actualcapture-time IMUhistory, not detectorcompletion. Receiver
+  retains600samegenerationmotionrows; within150ms capturepair,>=2samples/
+ 80msspan/<=1degreemotion required. Unavailablehistory useswheelestimate.
+- Fresh validIMU<=250ms,readywheels<=150ms and<=150mspair offset required.
+  Gain.2,maxstep.25deg,maxrate1deg/s,maxtotal5deg pertag,maxinnovation10deg.
+  Ratebudgetcapped250ms,no duplicate-sequence nudge. Session/generation/wheel
+  reset requires newacceptedtag. Stalegyro keepswheelpropagation from current
+  correctedpose without jumpback. Errors resetanchor and preservecontrol.
+- Updateslocalhomingheading only; subsequentdistanceintegration uses it.
+  Rawencoderodometry,AR,independenttrails and threewaycomparison unchanged.
+  No parkedmoves/newtask started; existing homing pulses/safety/validation kept.
+- Enabled inautonomy.json; homingstatus/log showstate,innovation,step,total.
+  Docsroomberry/docs/imu-heading-nudge.md; phoneprotocolREADMEclarified active
+  assist versusdiagnosticcomparison. Installedtype7phone build unchanged.
+-763fulltests pass(98.1s),180focusedmission/motion/homing pass. Testscover
+  captured-timebinding,moving/stale/reorderedidentity,gap/rate/totalbounds,
+  wrapsign,disable,badlimits,confirmed-tag-onlyanchor andfaultfallback/rawwheel
+  preservation. JSON,JSsyntax,SCCS/whitespacepass. Physicalverificationpending.
+  Pi sync/restart required; no deployment,phonebuild or remoteGit operations.
 
 ### 2026-11-12 — Local and GitHub check-in preparation
 

@@ -1,11 +1,12 @@
 """Bounded right-wall survey drive; regulate right light-bumper intensity in a 20-30 band."""
-# @(#)roomberry_wall.py 3.2 2026/11/09 18:53:01
+# @(#)roomberry_wall.py 3.2.return.3 2026/11/19 12:38:26
 import json
 import uuid
 from math import isfinite, hypot, cos, sin, radians, atan2, pi
 from time import monotonic, time
 from types import SimpleNamespace
 from roomberry_turn_guard import SettledTurn
+from roomberry_wheel_speed import MIN_WHEEL_SPEED
 from roomberry_control import WallContactStop
 from roomberry_trek_anchor import TrekTagAnchor
 
@@ -23,7 +24,7 @@ WALL_REAPPROACH_MM = 50.
 WALL_REJOIN_MAX_RIGHT_DEG = 30.
 WALL_WALL_LOSS_MAX_RIGHT_DEG = 60.
 WALL_WALL_LOSS_TURN_STEP_DEG = 10.
-WALL_MIN_WHEEL_SPEED = 50
+WALL_MIN_WHEEL_SPEED = MIN_WHEEL_SPEED
 WALL_CRUISE_SPEED = 80
 WALL_TAG15_RADIUS_MM = 300.
 WALL_TAG15_ACQUIRE_MAX_MM = 2500.

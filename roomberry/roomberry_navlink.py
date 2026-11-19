@@ -1,5 +1,5 @@
 """NavLink v1 UDP recorder for pose, relative motion and phone health observations."""
-# @(#)roomberry_navlink.py 3.2.imu.1 2026/11/12 15:12:06
+# @(#)roomberry_navlink.py 3.2.nudge.1 2026/11/12 18:01:48
 
 from roomberry_motion import MOTION_FIELDS, decode_motion_packet
 
@@ -256,6 +256,7 @@ class NavLinkReceiver:
         self._motion_seq = None
         self._motion_retired = []
         self._motion_clock_offset = None
+        self._motion_history = deque(maxlen=600)
         self._trek = None
         self._trek_session = None
         self._trek_seq = None
@@ -351,12 +352,19 @@ class NavLinkReceiver:
                 self._motion_identity = identity
                 self._motion_seq = None
                 self._motion_clock_offset = None
+                self._motion_history.clear()
             if self._motion_seq is not None and not 0 < (row['seq']-self._motion_seq)&0xffffffff < 0x80000000:
                 return
             self._motion_seq = row['seq']
             offset = received_at-row['send_us']/1e6
             self._motion_clock_offset = offset if self._motion_clock_offset is None else min(offset,self._motion_clock_offset)
             self._motion = row
+            self._motion_history.append(row)
+
+    def motion_history(self):
+        with self._observation_lock:
+            return [dict(row,frame_monotonic=row['sample_us']/1e6+self._motion_clock_offset)
+                    for row in self._motion_history]
 
     def latest_motion_observation(self):
         with self._observation_lock:

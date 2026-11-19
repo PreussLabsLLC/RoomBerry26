@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# @(#)roomberry_pitstop.py 3.1.pit.3 2026/11/04
+# @(#) roomberry_pitstop.py 3.2.flat.1 2026/11/19 11:56:56
 """Serial-exclusive, explicitly armed suspended-wheel test. Default: dry-run."""
 import argparse
 import csv
@@ -17,9 +17,9 @@ import tempfile
 import threading
 import time
 
-from irobot.openinterface import commands as oi
-from irobot.openinterface.constants import ROBOT
-from irobot.openinterface.response_parsers import SensorGroup100
+import roomberry_oi_commands as oi
+from roomberry_oi_constants import ROBOT
+from roomberry_oi_responses import SensorGroup100
 
 VERSION = '3.1.pit.3'
 PERIOD = .05

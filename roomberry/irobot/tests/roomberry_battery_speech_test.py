@@ -1,5 +1,5 @@
 """Thirty-second quiet announcements and freshness of both battery readings."""
-# @(#)roomberry_battery_speech_test.py 3.2.maps.1 2026/11/10 10:15:00
+# @(#)roomberry_battery_speech_test.py 3.2.grid.2 2026/11/13 16:00:00
 from types import SimpleNamespace
 from unittest.mock import Mock
 import unittest
@@ -22,6 +22,21 @@ class BatterySpeechTests(unittest.TestCase):
         relay.operation['battery_percent'] = -1
         self.assertIsNone(battery_announcement(robot, receiver, now=101))
         self.assertIsNone(battery_announcement(robot, receiver, now=111))
+
+    def test_gridrunner_build8_health_battery_fallback_matches_session_and_age(self):
+        robot = Mock()
+        robot.snapshot.return_value = dict(age=.1, sensors=SimpleNamespace(battery_charge=1, battery_capacity=2))
+        relay = SimpleNamespace(peer=('phone', 1), last_peer=100, operation=dict(app='GridRunner', session='123'))
+        health = dict(session=123, received_monotonic=100, flags=32, battery_pct=42, battery_state=2)
+        receiver = SimpleNamespace(trek_control=relay, latest_health_observation=lambda:health)
+        self.assertIn('iPhone battery 42 percent, charging', battery_announcement(robot, receiver, now=101))
+        health['session'] = 456
+        self.assertIn('iPhone battery reading unavailable', battery_announcement(robot, receiver, now=101))
+        health['session'] = 123
+        self.assertIn('iPhone battery reading unavailable', battery_announcement(robot, receiver, now=103))
+        health['received_monotonic'] = 103
+        health['flags'] = 0
+        self.assertIn('iPhone battery reading unavailable', battery_announcement(robot, receiver, now=103))
 
     def test_quiet_timer_uses_speech_ack_and_finish_and_never_cuts_queue(self):
         sender=SpeechSender(b'key', 5010, Mock(), battery_status=Mock(return_value='Both batteries healthy'))

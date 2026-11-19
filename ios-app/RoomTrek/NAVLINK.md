@@ -1,4 +1,4 @@
-<!-- @(#)NAVLINK.md 3.2.imu.1 2026/11/12 15:16:02 -->
+<!-- @(#)NAVLINK.md 3.2.nudge.1 2026/11/12 18:01:48 -->
 # Experimental RoomTrek NavLink extension
 
 Supported by the RoomTrek sender and Pi recorder. Existing types
@@ -357,7 +357,8 @@ three-way comparison. Stale/unavailable readings are hidden by the web panel.
 
 The Pi log contains `RoomTrek motion comparison:` JSON, `/status.json` exposes
 `motion_comparison`, and the local console shows Turn comparison. iPhone events
-include `motion_sample` at2Hz. The feature never changes pose, navigation,
-steering, scan quality or safety. Sync the new Pi modules/web assets and restart
+include `motion_sample` at2Hz. The comparison remains diagnostic. The Pi can additionally use type7for a
+[bounded tag-homing heading nudge](../../roomberry/docs/imu-heading-nudge.md),
+anchored only by accepted stationary tag fixes; raw measurements stay unchanged. Sync the new Pi modules/web assets and restart
 Roomberry, and install the updated iPhone app. On first use allow motion access
 if requested. Keep the phone rigidly mounted for meaningful comparisons.

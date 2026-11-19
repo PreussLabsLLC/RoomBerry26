@@ -1,4 +1,4 @@
-# @(#)roomberry_motion_test.py 3.2.imu.1 2026/11/12 15:05:56
+# @(#)roomberry_motion_test.py 3.2.nudge.1 2026/11/12 18:01:48
 import csv
 import io
 import math
@@ -99,3 +99,84 @@ class MotionComparisonTest(unittest.TestCase):
             self.compare.update(self.receiver,self.w,10)
             self.assertEqual(self.compare.last['gyro_turn_deg'],0)
             self.assertEqual(self.compare.last['wheel_turn_deg'],0)
+
+
+class GyroNudgeTest(unittest.TestCase):
+    def setUp(self):
+        from roomberry_motion import GyroHeadingNudge
+        self.nudge=GyroHeadingNudge(Mock())
+        self.pose=dict(x_mm=100,y_mm=200,heading_rad=0.)
+        self.w=dict(ready=True,age=0.,sensor_monotonic_s=10.,angle=0.,odometry_epoch=1)
+        self.row=dict(session=42,motion_generation=1,flags=1,motion_state=2,seq=2,
+                      sample_us=1000000,integrated_yaw_rad=.4,frame_monotonic=10.)
+        self.history=[dict(self.row,frame_monotonic=t) for t in (9.9,10.)]
+        self.receiver=Mock()
+        self.receiver.latest_motion_observation.side_effect=lambda:dict(self.row)
+        self.receiver.motion_history.side_effect=lambda:[dict(r) for r in self.history]
+        self.assertTrue(self.nudge.bind(self.pose,self.w,self.receiver,1000.,now=10.,now_epoch=1000.))
+
+    def advance(self, delta=.2):
+        self.row['seq']+=1
+        self.row['frame_monotonic']+=delta
+        self.w['sensor_monotonic_s']=self.row['frame_monotonic']
+        return self.row['frame_monotonic']
+
+    def test_small_nudge_is_rate_limited_and_changes_only_local_heading(self):
+        self.row['integrated_yaw_rad']+=math.radians(4)
+        now=self.advance()
+        step=self.nudge.update(self.pose,self.w,self.receiver,now)
+        self.assertAlmostEqual(math.degrees(step),.2)
+        self.assertEqual((self.pose['x_mm'],self.pose['y_mm'],self.w['angle']),(100,200,0))
+        self.assertEqual(self.nudge.update(self.pose,self.w,self.receiver,now+.1),0)
+
+    def test_total_budget_and_long_gap_never_accumulate_rate_budget(self):
+        self.row['integrated_yaw_rad']+=math.radians(8)
+        now=self.advance(10)
+        self.assertLessEqual(abs(math.degrees(self.nudge.update(self.pose,self.w,self.receiver,now))),.250001)
+        for _ in range(100):
+            self.nudge.update(self.pose,self.w,self.receiver,self.advance())
+        self.assertAlmostEqual(math.degrees(self.nudge.total),5)
+        self.assertAlmostEqual(math.degrees(self.pose['heading_rad']),5)
+
+    def test_stale_pair_and_large_innovation_do_not_nudge(self):
+        self.row['integrated_yaw_rad']+=math.radians(4)
+        self.assertEqual(self.nudge.update(self.pose,self.w,self.receiver,11),0)
+        now=self.advance();self.w['sensor_monotonic_s']=now-.2
+        self.assertEqual(self.nudge.update(self.pose,self.w,self.receiver,now),0)
+        self.w['sensor_monotonic_s']=now;self.row['integrated_yaw_rad']+=math.radians(20)
+        self.assertEqual(self.nudge.update(self.pose,self.w,self.receiver,now),0)
+        self.assertEqual(self.nudge.state,'innovation_rejected')
+        self.assertEqual(self.pose['heading_rad'],0)
+
+    def test_session_generation_or_wheel_epoch_requires_a_new_tag(self):
+        for target,key in [(self.row,'session'),(self.row,'motion_generation'),(self.w,'odometry_epoch')]:
+            self.assertTrue(self.nudge.bind(self.pose,self.w,self.receiver,1000.,now=10.,now_epoch=1000.))
+            target[key]+=1
+            self.assertEqual(self.nudge.update(self.pose,self.w,self.receiver,10.),0)
+            self.assertIsNone(self.nudge.anchor)
+            self.assertEqual(self.nudge.state,'new_tag_fix_required')
+            target[key]-=1
+
+    def test_capture_pairing_and_moving_capture_rejection(self):
+        self.row['integrated_yaw_rad']=1.
+        self.assertTrue(self.nudge.bind(self.pose,self.w,self.receiver,1000.,now=10.,now_epoch=1000.))
+        self.assertEqual(self.nudge.anchor['gyro'],.4) # Capture history, not delayed latest value.
+        self.history[0]['integrated_yaw_rad']+=.1
+        self.assertFalse(self.nudge.bind(self.pose,self.w,self.receiver,1000.,now=10.,now_epoch=1000.))
+        self.assertEqual(self.nudge.state,'moving_during_tag_capture')
+
+    def test_disable_and_invalid_limits(self):
+        from roomberry_motion import GyroHeadingNudge
+        disabled=GyroHeadingNudge(Mock(),dict(enabled=False))
+        self.assertFalse(disabled.bind(self.pose,self.w,self.receiver,1000.,now=10.,now_epoch=1000.))
+        self.assertEqual(disabled.update(self.pose,self.w,self.receiver,10.),0)
+        for config in [dict(gain=2),dict(max_total_deg=90),dict(max_rate_deg_s=float('nan'))]:
+            with self.assertRaises(ValueError):GyroHeadingNudge(Mock(),config)
+
+    def test_wrap_boundary_takes_small_correction(self):
+        self.nudge.anchor['heading']=math.pi-.01
+        self.pose['heading_rad']=-math.pi+.01
+        self.row['integrated_yaw_rad']+=.03
+        step=self.nudge.update(self.pose,self.w,self.receiver,self.advance())
+        self.assertGreater(step,0)
+        self.assertLess(step,math.radians(.25))

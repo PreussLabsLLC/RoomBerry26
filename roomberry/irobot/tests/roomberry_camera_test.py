@@ -1,8 +1,9 @@
-# @(#)roomberry_camera_test.py 3.2.trails.1 2026/11/10 13:54:11
+# @(#)roomberry_camera_test.py 3.2.retrace.1 2026/11/19 12:18:44
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from time import monotonic
+from unittest.mock import Mock, patch
 import numpy as np
 import logging
 import unittest
@@ -10,6 +11,7 @@ import unittest
 from PIL import Image
 
 from roomberry_camera import CameraService
+from roomberry_tof import ForwardTofReader
 
 
 class FakeCamera:
@@ -53,6 +55,79 @@ class CameraServiceTest(unittest.TestCase):
 
 
 class VisionArchiveTest(unittest.TestCase):
+    def test_forward_range_is_paired_with_stationary_capture(self):
+        centered = dict(id=1, distance_mm=1000.0, depth_mm=1000.0,
+                        tag_pose_camera={'translation_m': (0.02, 0.0, 1.0)})
+        off_axis = dict(centered, id=2, tag_pose_camera={'translation_m': (0.2, 0.0, 1.0)})
+        for reading, tags, accept in (
+                (950, [centered, off_axis], True),
+                (400, [centered], False),
+                (950, [off_axis], False),
+                (950, [centered, dict(centered, id=3)], False),
+                (-1, [centered], False),
+                (None, [centered], False)):
+            with self.subTest(reading=reading, tags=tags):
+                trace = Mock()
+                reader = ForwardTofReader(Mock())
+                def capture():
+                    if reading is not None:
+                        now = monotonic()
+                        reader._handle_line(f'TOF_SAMPLE {reading} {now} {now}'.encode(), now)
+                    return np.zeros((8, 8, 3), dtype=np.uint8)
+                trace.camera.capture_array.side_effect = capture
+                trace.detector.last_timings_ms = {}
+                trace.detector.detect.return_value = tags
+                trace.tof.sample_at.side_effect = reader.sample_at
+                service = CameraService(Mock(), camera=trace.camera, detector=trace.detector,
+                                        pause_for_detection=True, scan_pause=trace.pause,
+                                        scan_complete=trace.complete, scan_settle_seconds=0,
+                                        scan_cooloff_seconds=0, scan_result=trace.result,
+                                        forward_tof_reader=trace.tof)
+                with patch('roomberry_camera.SCAN_TOF_WAIT_SECONDS', 0):
+                    service._capture_scan(True)
+                self.assertEqual([call[0] for call in trace.mock_calls],
+                                 ['pause', 'camera.capture_array', 'tof.sample_at', 'detector.detect',
+                                  'result', 'complete'])
+                result = service.latest_detections[0]
+                if accept:
+                    self.assertEqual(result['range_source'], 'tof')
+                    self.assertEqual(result['depth_mm'], 950)
+                    self.assertAlmostEqual(result['tag_pose_camera']['translation_m'][0], 0.019)
+                    self.assertEqual(result['camera_only_depth_mm'], 1000)
+                    self.assertEqual(service.latest_detections[1]['depth_mm'], 1000)
+                else:
+                    self.assertNotIn('range_source', result)
+                    self.assertEqual(result['depth_mm'], 1000)
+                report = trace.result.call_args.args[0]
+                expected = reading if isinstance(reading, int) and reading > 0 else None
+                self.assertEqual(report['forward_tof_mm'], expected)
+
+    def test_cached_range_rejects_stale_or_pre_pause_samples(self):
+        reader = ForwardTofReader(Mock())
+        reader._handle_line(b'TOF_SAMPLE 900 10.0 10.05', 9.0)
+        self.assertIsNone(reader.sample_at(10.1, 10.01))
+        self.assertIsNone(reader.sample_at(10.31, 9.0))
+        reader._handle_line(b'TOF_SAMPLE 800 10.06 10.12', 9.0)
+        self.assertEqual(reader.sample_at(10.1, 9.0).distance_mm, 900)
+        reader._handle_line(b'TOF_SAMPLE -1 10.13 10.14', 9.0)
+        self.assertIsNone(reader.sample_at(10.15, 9.0))
+
+    def test_scan_wait_accepts_slow_read_completed_after_frame(self):
+        reader = ForwardTofReader(Mock())
+        service = CameraService(Mock(), forward_tof_reader=reader)
+        clock = [10.0]
+
+        def wait(seconds):
+            clock[0] += seconds
+            if clock[0] >= 10.5:
+                reader._handle_line(b'TOF_SAMPLE 917 9.51 10.5', 9.0)
+
+        with patch('roomberry_camera.monotonic', side_effect=lambda: clock[0]), \
+                patch.object(service._shutdown, 'wait', side_effect=wait):
+            self.assertEqual(service._wait_for_scan_tof(10.0, 9.5).distance_mm, 917)
+            self.assertIsNone(service._wait_for_scan_tof(10.0, 9.52))
+            self.assertAlmostEqual(clock[0], 11.5)
+
     def test_cooloffs_keep_pause_and_free_locks_until_result_publication(self):
         trace = []
         held = [False]

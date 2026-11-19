@@ -1,5 +1,5 @@
 """Standalone homing across mission states, localization search and safe routing."""
-# @(#)roomberry_tag_return_test.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_tag_return_test.py 3.2.return.3 2026/11/19 12:38:26
 import math
 import unittest
 from types import SimpleNamespace
@@ -38,6 +38,113 @@ class TagReturnTest(unittest.TestCase):
         self.run = self.m.gridrunner
         self.assertIsInstance(self.run, Tag15Return)
         return self.run
+
+    def bearing_detection(self, x=-.3, z=2.8):
+        return dict(family='tag16h5',id=15,hamming=0,decision_margin=80,
+                    tag_pose_camera=dict(translation_m=[x,0,z],error=0.001))
+
+    def bearing_scan(self, detections):
+        self.m.camera.latest_detections = detections
+        self.m.camera.last_detection_time = self.run.scan_wall+.01
+        self.tick()
+
+    def test_visible_bearing_uses_camera_mount_and_rejects_weak_or_near(self):
+        self.start()
+        self.m.localizer.camera_from_robot = [[0,-1,0,0],[0,0,-1,.137],
+                                               [1,0,0,-.148],[0,0,0,1]]
+        self.m.localizer.min_decision_margin = 10
+        self.m.localizer.max_reprojection_error = 10
+        self.m.camera.last_detection_time = self.run.scan_wall+.01
+        row = self.bearing_detection()
+        bearing = self.run._visible_bearing([row],self.state)
+        self.assertAlmostEqual(bearing['bearing_deg'],math.degrees(math.atan2(.3,2.948)))
+        for change in [dict(hamming=1),dict(decision_margin=15),dict(id=16)]:
+            self.assertIsNone(self.run._visible_bearing([dict(row,**change)],self.state))
+        self.assertIsNone(self.run._visible_bearing([self.bearing_detection(z=2)],self.state))
+        self.assertIsNone(self.run._visible_bearing([self.bearing_detection(z=5)],self.state))
+
+    def test_two_scans_approach_without_fake_pose_then_rescan_and_stop_on_loss(self):
+        self.start()
+        self.m.localizer.camera_from_robot = [[0,-1,0,0],[0,0,-1,.137],
+                                               [1,0,0,-.148],[0,0,0,1]]
+        self.m.localizer.min_decision_margin = 10
+        self.m.localizer.max_reprojection_error = 10
+        self.run._fix = lambda detections: None
+        self.bearing_scan([self.bearing_detection(x=0)])
+        self.assertEqual(self.run.stage,'scanning')
+        self.bearing_scan([self.bearing_detection(x=0)])
+        self.assertEqual(self.run.stage,'bearing')
+        self.assertIsNone(self.run.pose)
+        self.assertEqual(self.run.search_index,0)
+        self.tick()
+        self.assertEqual(self.run.last['velocity_mm_s'],70)
+        self.assertIsNone(self.run.last['pulse_seconds'])
+        self.assertIsNone(self.run.approach_pulse_until)
+        for _ in range(2):
+            self.state['distance'] += 75
+            self.tick()
+        self.assertEqual(self.run.stage,'scanning')
+        self.bearing_scan([])
+        self.assertIn('target lost',self.run.result['reason'])
+
+    def test_turning_away_from_visible_tag_stops_at_next_confirmation(self):
+        self.start()
+        self.m.localizer.camera_from_robot = [[0,-1,0,0],[0,0,-1,.137],
+                                               [1,0,0,-.148],[0,0,0,1]]
+        self.m.localizer.min_decision_margin = 10
+        self.m.localizer.max_reprojection_error = 10
+        self.run._fix = lambda detections: None
+        for _ in range(2):
+            self.bearing_scan([self.bearing_detection(x=.25)])
+        self.assertEqual(self.run.stage, 'bearing')
+        self.state['angle'] -= 8
+        self.run._request_fix('localize')
+        for _ in range(2):
+            self.bearing_scan([self.bearing_detection(x=.7)])
+        self.assertIn('bearing moved away', self.run.result['reason'])
+
+    def test_return_preserves_trail_and_reuses_continuous_prior_pose(self):
+        self.start()
+        pose = self.fixed_pose(gap=3000)
+        self.run.pose = {key: pose[key] for key in ('x_mm', 'y_mm', 'heading_rad')}
+        self.m.set_mode('idle')
+        self.m.mapper.clear_coverage.reset_mock()
+        self.start()
+        self.m.mapper.clear_coverage.assert_not_called()
+        self.assertTrue(self.run.prior_valid)
+        self.run._fix = lambda detections: None
+        self.bearing_scan([self.bearing_detection(z=3.5)])
+        self.assertEqual(self.run.stage, 'return')
+        self.assertIsNotNone(self.run.pose)
+
+    def test_bearing_budget_and_position_fix_transition(self):
+        self.start()
+        self.run.stage = 'bearing'
+        self.run.target_bearing = dict(heading_deg=self.state['angle'],
+            captured_at=1700000000+self.f.now,distance_mm=self.state['distance'])
+        self.run.bearing_travel = 3000
+        self.tick()
+        self.assertIn('travel limit',self.run.result['reason'])
+        self.start()
+        self.run.bearing_active = True
+        self.confirm(self.fixed_pose())
+        self.assertEqual(self.run.stage,'return')
+        self.assertFalse(self.run.bearing_active)
+        self.assertTrue(self.run.tag_fix_applied)
+
+    def test_bearing_stops_on_stale_direction_and_retains_hazard_checks(self):
+        for stale in (True,False):
+            self.start()
+            self.run.stage = 'bearing'
+            self.run.target_bearing = dict(heading_deg=self.state['angle'],
+                captured_at=1700000000+self.f.now-(21 if stale else 0),
+                distance_mm=self.state['distance'])
+            if not stale:
+                self.state['safety_latched'] = True
+            self.tick()
+            self.assertIsNotNone(self.run.result)
+            self.assertIn('freshness' if stale else 'safety',self.run.result['reason'])
+            self.state['safety_latched'] = False
 
     def test_speed_change_bump_is_consumed_during_homing(self):
         self.start()
@@ -90,15 +197,14 @@ class TagReturnTest(unittest.TestCase):
         self.assertTrue(survey._queue.empty())
         self.assertFalse(survey._active)
 
-    def test_explicit_homing_prefers_stable_homeward_grout(self):
-        from roomberry_gridrunner import GridDrive
+    def test_grout_guidance_retains_tag_controller_and_scan_checkpoints(self):
         self.start()
         self.run.pose=self.fixed_pose()
-        self.run.tag_fix_applied=True
-        self.run.stage='return'
-        self.run.route=[(self.run.pose['x_mm']+500,self.run.pose['y_mm']+500)]
+        self.run.tag_fix_applied=True;self.run.stage='return'
+        self.run.route=[self.run._target(self.run.tag['radius']+400)]
         row=dict(session=1,calibration=1,seq=1,flags=3,confidence=1,direction=-1,
-                 gain=2,correction_limit=.25,lens_left_mm=26,height_mm=85)
+                 gain=2,correction_limit=.25,lens_left_mm=26,offset_mm=30,
+                 line_angle_rad=.01,height_mm=85)
         health=dict(session=1,calibration=1,bump_count=0)
         self.m.navlink=SimpleNamespace(
             latest_grid_observation=lambda:dict(row,received_monotonic=self.f.now,frame_monotonic=self.f.now),
@@ -106,23 +212,33 @@ class TagReturnTest(unittest.TestCase):
         for seq in (1,2):
             row['seq']=seq;self.tick()
             self.assertIs(self.m.gridrunner,self.run)
-            self.assertIsNone(self.run.last)  # Qualification holds zero, no map turn.
+            self.assertIsNone(self.run.last)
         row['seq']=3;self.tick()
-        self.assertIsInstance(self.m.gridrunner,GridDrive)
-        self.assertNotIsInstance(self.m.gridrunner,Tag15Return)
-        self.assertEqual(self.m.gridrunner.stage,'return')
-        # Real-run regression: completion after explicit homing has no outbound
-        # metadata, but bumper arrival must still report success rather than crash.
-        grid=self.m.gridrunner
-        grid.stage='approach';grid.final_fix=True
-        grid.pose.update(x_mm=grid.tag['x']-grid.tag['radius'],
-                         y_mm=grid.tag['y']-26,heading_rad=0)
-        self.state['sensors'].bumps_and_wheel_drops.bump_left=True
+        self.assertIs(self.m.gridrunner,self.run)
+        self.assertTrue(self.run.last['line_guidance'])
+        self.assertEqual(self.run.last['velocity_mm_s'],70)
+        self.assertLess(max(self.run.last['left_velocity_mm_s'],self.run.last['right_velocity_mm_s']),100)
+        for seq in range(4,9):
+            self.state['distance'] += 81;row['seq']=seq;self.tick()
+        self.assertEqual(self.run.stage,'scanning')
+        self.assertEqual(self.run.scan_purpose,'localize')
+        self.assertIs(self.m.gridrunner,self.run)
+
+    def test_homing_contact_cannot_replace_stationary_validation(self):
+        self.start();self.run.pose=self.fixed_pose(gap=self.run.tag['radius'])
+        self.run.stage='approach';self.run.final_fix=True
         self.state['sensors'].bumps_and_wheel_drops.bump_right=True
-        grid.tick(self.state)
-        self.assertEqual(grid.result['status'],'complete')
-        self.assertIsNone(grid.result['outbound_mm'])
-        self.assertEqual(self.m._mode,'idle')
+        self.tick()
+        self.assertEqual(self.run.result['status'],'stopped')
+        self.assertIn('bumper',self.run.result['reason'])
+
+    def test_far_visible_tag_after_global_scale_does_not_trigger_search(self):
+        self.start()
+        self.m.localizer.camera_from_robot = [[0,-1,0,0],[0,0,-1,.137],[1,0,0,-.148],[0,0,0,1]]
+        self.m.localizer.min_decision_margin=10;self.m.localizer.max_reprojection_error=10
+        self.m.camera.last_detection_time=self.run.scan_wall+.01
+        self.assertIsNotNone(self.run._visible_bearing([self.bearing_detection(z=4.2)],self.state))
+        self.assertIsNone(self.run._visible_bearing([self.bearing_detection(z=5.1)],self.state))
 
     def test_original_homeward_heading_can_qualify_line_despite_tag_yaw_bias(self):
         from roomberry_gridrunner import GridDrive
@@ -131,7 +247,9 @@ class TagReturnTest(unittest.TestCase):
         self.run.tag_fix_applied=True;self.run.stage='return'
         source=GridDrive(self.m);source.initial_heading=self.state['angle']
         self.run.grout_source=source
+        self.run.route=[self.run._target(self.run.tag['radius']+400)]
         row=dict(session=1,calibration=1,seq=1,flags=3,confidence=1,direction=-1,
+                 line_angle_rad=0,offset_mm=0,lens_left_mm=0,
                  received_monotonic=self.f.now,frame_monotonic=self.f.now)
         self.m.navlink=SimpleNamespace(latest_grid_observation=lambda:row)
         self.assertTrue(self.run._resume_visible_line(self.state,dict(session=1,calibration=1),False))
@@ -281,7 +399,7 @@ class TagReturnTest(unittest.TestCase):
         self.assertEqual(self.run.last['velocity_mm_s'], 0)
         self.assertEqual(self.run.last['left_velocity_mm_s'], -self.run.last['right_velocity_mm_s'])
         self.assertIsNone(self.run.pose)
-        for _ in range(350):
+        for _ in range(500):
             if self.run.result is not None:break
             if self.run.stage == 'scanning':
                 self.tick(capture=True)
@@ -289,7 +407,8 @@ class TagReturnTest(unittest.TestCase):
                 self.tick()
                 if self.run.stage == 'searching':
                     left, right = self.run.last['left_velocity_mm_s'], self.run.last['right_velocity_mm_s']
-                    self.state['angle'] += math.degrees((right-left)/235*.2)
+                    duration = self.run.last['pulse_seconds'] or .2
+                    self.state['angle'] += math.degrees((right-left)/235*duration)
         self.assertEqual(self.state['distance'], 0)
         self.assertIn('no mapped tag', self.run.result['reason'])
 
@@ -311,7 +430,7 @@ class TagReturnTest(unittest.TestCase):
         self.assertFalse(self.run.final_fix)
         self.assertIn('no consistent', self.run.result['reason'])
 
-    def test_final_approach_uses_42mm_pulse_and_waits_for_fresh_quiet(self):
+    def test_final_approach_uses_50mm_pulse_and_waits_for_fresh_quiet(self):
         self.start();self.confirm(self.fixed_pose(gap=400))
         self.run.stage='approach';self.run.final_fix=True
         self.run.last_tag_distance=self.state['distance']
@@ -319,7 +438,7 @@ class TagReturnTest(unittest.TestCase):
         self.tick()
         calls=lambda:[c for c in self.f.robot.execute.call_args_list if c.args and c.args[0]=='drive_direct']
         self.assertEqual(len(calls()),1)
-        self.assertEqual(calls()[0].kwargs,dict(ramp=False,pulse_s=.1,right_velocity=42,left_velocity=42))
+        self.assertEqual(calls()[0].kwargs,dict(ramp=False,pulse_s=.1,right_velocity=50,left_velocity=50))
         self.tick()  # I/O pulse has ended; begin measured settle.
         self.tick()  # First post-stop sensor sample.
         self.assertEqual(len(calls()),1)
@@ -344,6 +463,25 @@ class TagReturnTest(unittest.TestCase):
         self.tick()
         self.assertFalse(self.run.turning)
         self.assertEqual(self.run.last['steering_mode'],'straight')
+
+    def test_imu_fault_falls_back_without_modifying_raw_wheel_state(self):
+        self.start();self.confirm(self.fixed_pose(gap=600))
+        original=dict(self.state)
+        with patch.object(self.run.imu_heading,'update',side_effect=RuntimeError('motion unavailable')):
+            self.tick()
+        self.assertIsNone(self.run.result)
+        self.assertEqual(self.state['angle'],original['angle'])
+        self.assertEqual(self.state['distance'],original['distance'])
+        self.assertIsNone(self.run.imu_heading.anchor)
+
+    def test_only_a_confirmed_tag_fix_binds_imu_heading(self):
+        self.start()
+        self.run._fix=lambda detections:self.fixed_pose(gap=600)
+        with patch.object(self.run.imu_heading,'bind',return_value=False) as bound:
+            self.tick(capture=True)
+            bound.assert_not_called()
+            self.tick(capture=True)
+            bound.assert_called_once()
 
     def test_near_target_requests_stopped_validation_and_two_fresh_fixes(self):
         self.start();self.confirm(self.fixed_pose(gap=280))
@@ -373,6 +511,28 @@ class TagReturnTest(unittest.TestCase):
                 if self.run.result:break
             self.assertEqual(self.m._mode,'idle')
             self.assertNotEqual(self.run.result['status'],'complete')
+
+    def test_confirmed_near_miss_reapproaches_once_and_validates_again(self):
+        self.start()
+        self.confirm(self.fixed_pose(gap=280))
+        self.run.stage = 'approach'
+        self.run.final_fix = True
+        self.run.last_tag_distance = self.state['distance']
+        self.tick()
+        self.confirm(self.fixed_pose(gap=310))
+        self.assertEqual(self.run.stage, 'approach')
+        self.assertEqual(self.run.validation_retry_origin, self.state['distance'])
+        self.assertIsNone(self.run.result)
+        self.state['distance'] += 10
+        self.tick()
+        self.assertEqual(self.run.stage, 'approach')
+        self.run.approach_pulse_until = None  # Model the next settled odometry sample.
+        self.state['distance'] += 12
+        self.tick()
+        self.assertEqual(self.run.stage, 'scanning')
+        self.assertEqual(self.run.scan_purpose, 'validate')
+        self.confirm(self.fixed_pose(gap=310))
+        self.assertIn('outside 300mm', self.run.result['reason'])
 
     def test_blocked_map_aborts_before_drive(self):
         self.start()
@@ -423,8 +583,9 @@ class TagReturnTest(unittest.TestCase):
             if self.run.stage == 'scanning' or self.run.last is None or self.run.last is previous:continue
             row = self.run.last
             left, right = row['left_velocity_mm_s'], row['right_velocity_mm_s']
-            delta = (left+right)/2*.2
-            yaw = (right-left)/235*.2
+            duration = row['pulse_seconds'] or .2
+            delta = (left+right)/2*duration
+            yaw = (right-left)/235*duration
             actual['x_mm'] += delta*math.cos(actual['heading_rad']+yaw/2)
             actual['y_mm'] += delta*math.sin(actual['heading_rad']+yaw/2)
             actual['heading_rad'] = self.run._wrap(actual['heading_rad']+yaw)
@@ -448,13 +609,21 @@ class TagReturnTest(unittest.TestCase):
         self.m.localizer = L({('tag16h5',15):tag}, config['camera_from_robot'])
         self.start()
         heading = -.45
-        world_robot = [[math.cos(heading),-math.sin(heading),0,tag[0][3]-1],
-                       [math.sin(heading),math.cos(heading),0,tag[1][3]],
-                       [0,0,1,0],[0,0,0,1]]
-        camera_tag = L._multiply(config['camera_from_robot'], L._multiply(L._inverse(world_robot),tag))
-        detection = dict(family='tag16h5',id=15,hamming=0,decision_margin=100,
-            tag_pose_camera=dict(rotation=[r[:3] for r in camera_tag[:3]],
-                translation_m=[r[3] for r in camera_tag[:3]],error=0))
-        fix = self.run._fix([detection])
-        self.assertAlmostEqual(fix['heading_rad'], heading)
-        self.assertAlmostEqual(fix['x_mm'], (tag[0][3]-1)*1000)
+        for gap, accepted in ((1.0, True), (4.2, True), (5.3, False)):
+            with self.subTest(gap=gap):
+                world_robot = [[math.cos(heading),-math.sin(heading),0,tag[0][3]-gap],
+                               [math.sin(heading),math.cos(heading),0,tag[1][3]],
+                               [0,0,1,0],[0,0,0,1]]
+                camera_tag = L._multiply(config['camera_from_robot'], L._multiply(L._inverse(world_robot),tag))
+                detection = dict(family='tag16h5',id=15,hamming=0,decision_margin=100,
+                    tag_pose_camera=dict(rotation=[r[:3] for r in camera_tag[:3]],
+                        translation_m=[r[3] for r in camera_tag[:3]],error=0))
+                fix = self.run._fix([detection])
+                if accepted:
+                    self.assertAlmostEqual(fix['heading_rad'], heading)
+                    self.assertAlmostEqual(fix['x_mm'], (tag[0][3]-gap)*1000)
+                    detection['decision_margin'] = 0
+                    self.assertIsNone(self.run._fix([detection]))
+                else:
+                    self.assertIsNone(fix)
+                    self.assertIn('implausible range', self.run.all_tag_localizer.last_rejected[0][1])

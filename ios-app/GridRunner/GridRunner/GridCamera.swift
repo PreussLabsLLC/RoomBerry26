@@ -1,4 +1,4 @@
-// @(#)GridCamera.swift 3.1.tiles.1 2026/11/05 16:00:00
+// @(#)GridCamera.swift 3.2.gridauto.1 2026/11/14 09:15:00
 import AVFoundation
 import CoreMotion
 import simd
@@ -14,6 +14,9 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private var activeSession: UInt64 = 0
     private var packet = GridPacket()
     private var sequence: UInt32 = 0
+    private var motionSequence: UInt32 = 0
+    private var motionPacket = TrekMotionPacket()
+    private var gyroIntegrator = TrekGyroIntegrator()
     private var gravity = SIMD3<Double>(0,0,-1)
     private var gravityTime = 0.0
     private var config = GridConfiguration()
@@ -25,6 +28,7 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private var captureSession: UInt64 = 0 // capture queue only
     private var focusReadyAt = 0.0
     private var torch = false
+    var onMotionPacket: ((TrekMotionPacket)->Void)?
     var onPacket: ((GridPacket)->Void)?
     var onOverlay: ((GridPacket)->Void)? // main queue, <=10 Hz
     var onError: ((String)->Void)? // main queue
@@ -41,8 +45,12 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
     private func isActive(_ session: UInt64) -> Bool {
         lock.lock(); defer { lock.unlock() }; return activeSession == session && session != 0
     }
-    func setTorch(_ enabled: Bool) {
-        queue.async { self.torch = enabled; self.applyTorch() }
+    func setTorch(_ enabled: Bool, completion: ((Bool) -> Void)? = nil) {
+        queue.async {
+            self.torch = enabled; self.applyTorch()
+            let applied = self.camera.map { $0.hasTorch && ($0.torchMode == (enabled ? .on : .off)) } ?? false
+            DispatchQueue.main.async { completion?(applied) }
+        }
     }
     private func applyTorch() {
         guard let device = camera, device.hasTorch else { return }
@@ -56,6 +64,9 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         guard config.valid else { return }
         lock.lock()
         activeSession = session; sequence = 0; gravityTime = 0
+        motionSequence = 0; motionPacket = TrekMotionPacket()
+        motionPacket.session = session; motionPacket.generation = 1; motionPacket.state = 1
+        gyroIntegrator = TrekGyroIntegrator()
         packet = GridPacket(); packet.session = session; packet.calibration = config.identity
         packet.config = config; packet.direction = config.direction
         crossingState = GridCrossingState()
@@ -72,8 +83,30 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
                 self.motion.startDeviceMotionUpdates(using:.xArbitraryZVertical,to:self.imuQueue) { [weak self] value,_ in
                     guard let self = self, let m = value, self.isActive(session) else { return }
                     self.health.record(m,session:session)
-                    self.lock.lock(); self.gravity = SIMD3(m.gravity.x,m.gravity.y,m.gravity.z)
-                    self.gravityTime = m.timestamp; self.lock.unlock()
+                    let g = m.gravity, w = m.rotationRate, a = m.userAcceleration, q = m.attitude.quaternion
+                    let values = [m.timestamp,g.x,g.y,g.z,w.x,w.y,w.z,a.x,a.y,a.z,q.x,q.y,q.z,q.w]
+                    let now = ProcessInfo.processInfo.systemUptime
+                    self.lock.lock(); defer { self.lock.unlock() }
+                    guard self.activeSession == session else { return }
+                    guard values.allSatisfy({ $0.isFinite }), m.timestamp > 0,
+                          m.timestamp <= now, now-m.timestamp <= 0.1,
+                          (0.64...1.44).contains(g.x*g.x+g.y*g.y+g.z*g.z),
+                          (0.9025...1.1025).contains(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w) else {
+                        self.motionPacket.state = 3; self.motionPacket.flags = 0
+                        self.motionPacket.generation &+= 1; self.gyroIntegrator = TrekGyroIntegrator()
+                        return
+                    }
+                    self.gravity = SIMD3(g.x,g.y,g.z); self.gravityTime = m.timestamp
+                    if !self.gyroIntegrator.add(time:m.timestamp, rate:SIMD3(w.x,w.y,w.z), gravity:SIMD3(g.x,g.y,g.z)) {
+                        self.motionPacket.generation &+= 1
+                    }
+                    self.motionPacket.state = 2
+                    self.motionPacket.sampleUS = GroundPacket.us(m.timestamp)
+                    self.motionPacket.quaternion = SIMD4(Float(q.x),Float(q.y),Float(q.z),Float(q.w))
+                    self.motionPacket.gyro = SIMD3(Float(w.x),Float(w.y),Float(w.z))
+                    self.motionPacket.gravity = SIMD3(Float(g.x),Float(g.y),Float(g.z))
+                    self.motionPacket.acceleration = SIMD3(Float(a.x*9.80665),Float(a.y*9.80665),Float(a.z*9.80665))
+                    self.motionPacket.integratedYaw = Float(self.gyroIntegrator.yaw)
                 }
                 self.capture.startRunning(); self.applyTorch()
                 self.focusReadyAt = ProcessInfo.processInfo.systemUptime+1
@@ -122,8 +155,14 @@ final class GridCamera: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         if p.frameUS == 0 || p.frameUS > p.sendUS || p.sendUS-p.frameUS > 250000 {
             p.flags = 2; p.reason = 2; p.detection.valid = false; p.detection.correction = 0
         }
+        motionSequence &+= 1
+        var imu = motionPacket; imu.sequence = motionSequence; imu.sendUS = p.sendUS
+        let age = imu.sendUS >= imu.sampleUS ? imu.sendUS-imu.sampleUS : UInt64.max
+        imu.sampleAgeUS = UInt32(clamping:age)
+        imu.flags = imu.state == 2 && imu.sampleUS > 0 && age <= 100000 ? 1:0
         lock.unlock()
         onPacket?(p)
+        onMotionPacket?(imu)
         NSLog("GridRunner seq=%u valid=%d rows=(%0.4f,%0.4f)/(%0.4f,%0.4f) offset=%0.2f angle=%0.4f confidence=%0.3f correction=%0.4f direction=%d reason=%u tiles=%u",
               p.sequence,p.flags == 3 ? 1:0,p.detection.first.x,p.detection.first.y,
               p.detection.second.x,p.detection.second.y,p.detection.offset,p.detection.angle,

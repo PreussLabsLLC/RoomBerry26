@@ -1,5 +1,5 @@
 """Read-only local dashboard data and a command index from the shipped driver."""
-# @(#)roomberry_web.py 3.2.imu.1 2026/11/12 15:16:02
+# @(#) roomberry_web.py 3.2.flat.1 2026/11/19 11:56:56
 import ast
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +26,12 @@ def command_index():
                              mutates=mutates,aliases=list(aliases),parameters=[]))
     add('Mission','wall','/roomba/?op=wall','Start WALL: qualify tag 16, turn left 90 degrees, forward 200 mm, right 45 degrees, acquire and follow the right wall toward tag15. Stop and validate within300mm using two fresh scans. Cruise80mm/s; moving wheel minimum50mm/s. Clock starts/cancels. Uses right light-bumper target 30 raw units; no distance calibration required.',True)
     add('Mission','gridrunner','/roomba/?op=gridrunner','Reverse along grout; stop and confirm its end, then return through tag-15 scan checkpoints and front contact. Start from this dashboard; Clock now starts WALL.',True,('grid',))
+    for op, description in (
+            ('start', 'Start autonomous tag-15 crossing survey. Required start_mm; optional tile_mm (default305.45), autonomous=false for tape-paced mode. Stream GridRunner Reverse first.'),
+            ('measure', 'Record required tape_mm at stopped station; never commands movement.'),
+            ('next', 'Manual mode only: after tape recording reverse to next crossing or one tile. Autonomous mode advances itself.'),
+            ('rescan', 'Repeat a stationary station scan before advancing; retains prior attempts.')):
+        add('Mission', 'grid_distance_'+op, '/roomba/?op=grid_distance_'+op, description, True)
     add('Mission','return_to_tag15','/roomba/?op=return_to_tag15','Stop the current mission, localize with mapped tags or a valid trace, and home to tag 15. No threshold run or phone stream required.',True)
     for direction, amount in (('left','5 degrees'),('right','5 degrees'),
                               ('left_15','15 degrees'),('right_15','15 degrees'),
@@ -66,7 +72,7 @@ def command_index():
     commands[-1]['parameters']=[dict(name='mode',required=True,default=None)]
     # Parse signatures without importing GPIO or opening the robot. Properties
     # are sensors/settings, not callable HTTP operations.
-    source = Path(__file__).parent/'irobot/robots/create2.py'
+    source = Path(__file__).with_name('roomberry_create2.py')
     text = source.read_text()
     driver = next(n for n in ast.parse(text).body if isinstance(n,ast.ClassDef) and n.name=='Create2')
     already = {c['name'] for c in commands}

@@ -1,4 +1,4 @@
-// @(#)GridLink.swift 3.1.grid.1 2026/11/03 20:30:00
+// @(#)GridLink.swift 3.2.grid.1 2026/11/13 10:00:00
 import Foundation
 import Network
 
@@ -11,18 +11,38 @@ final class GridLink {
     private var ready = false
     private var inFlight = false
     private var attempt = -Double.infinity
+    private var host = "pi3.local"
     private var avahi = false
     private var sent = 0
+    var onReceive: ((Data)->Void)?
+    var onHeartbeat: (()->Void)?
+    private var heartbeatTimer: DispatchSourceTimer?
     var onStatus: ((String)->Void)?
+    func configureHost(_ host: String) {
+        queue.async {
+            guard self.host != host else { return }
+            self.host = host; self.avahi = false
+            if self.connection != nil { self.connect() }
+        }
+    }
     func start(session: UInt64) {
         queue.async {
             self.connection?.cancel(); self.connection = nil; self.session = session
             self.ready = false; self.inFlight = false; self.pending = [:]; self.sent = 0
             self.connect()
+            let timer = DispatchSource.makeTimerSource(queue:self.queue)
+            timer.schedule(deadline:.now(),repeating:2)
+            timer.setEventHandler { [weak self] in
+                guard let self = self else { return }
+                if !self.ready && ProcessInfo.processInfo.systemUptime-self.attempt > 5 { self.connect() }
+                DispatchQueue.main.async { self.onHeartbeat?() }
+            }
+            self.heartbeatTimer?.cancel(); self.heartbeatTimer = timer; timer.resume()
         }
     }
     func stop() {
         queue.async {
+            self.heartbeatTimer?.cancel(); self.heartbeatTimer = nil
             self.session = 0; self.pending = [:]
             // Allow an already queued Stop datagram to leave before closing.
             let old = self.connection; self.connection = nil; self.ready = false
@@ -45,20 +65,38 @@ final class GridLink {
     private func report(_ s: String) { DispatchQueue.main.async { self.onStatus?(s) } }
     private func connect() {
         connection?.cancel(); ready = false; inFlight = false; attempt = ProcessInfo.processInfo.systemUptime
-        let host = avahi ? "pi.local" : "pi"; avahi.toggle()
+        let endpointHost = avahi && !host.contains(".") ? host+".local" : host; avahi.toggle()
         let params = NWParameters.udp
         (params.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options)?.version = .v4
-        let current = NWConnection(host:NWEndpoint.Host(host),port:5010,using:params)
+        let current = NWConnection(host:NWEndpoint.Host(endpointHost),port:5010,using:params)
         connection = current
         current.stateUpdateHandler = { [weak self,weak current] state in
             guard let self = self, let current = current, self.connection === current else { return }
             switch state {
-            case .ready: self.ready = true; self.report("UDP ready · Pi receipt unconfirmed"); self.flush()
+            case .ready:
+                self.ready = true; self.receive(current)
+                self.report("UDP ready · awaiting authenticated Pi reply"); self.flush()
+                DispatchQueue.main.async { self.onHeartbeat?() }
             case .failed(let e), .waiting(let e): self.ready = false; self.report("UDP: "+e.localizedDescription)
             default: break
             }
         }
         current.start(queue:queue)
+    }
+    func sendControl(_ data: Data) {
+        queue.async {
+            guard self.ready, let current = self.connection else { return }
+            current.send(content:data,completion:.contentProcessed { _ in })
+        }
+    }
+    private func receive(_ current: NWConnection) {
+        current.receiveMessage { [weak self,weak current] data,_,_,error in
+            guard let self = self, let current = current, self.connection === current else { return }
+            if let data = data {
+                DispatchQueue.main.async { self.onReceive?(data) }
+            }
+            if error == nil { self.receive(current) } else { self.ready = false }
+        }
     }
     private func flush() {
         guard session != 0, ready, !inFlight, let connection = connection else { return }

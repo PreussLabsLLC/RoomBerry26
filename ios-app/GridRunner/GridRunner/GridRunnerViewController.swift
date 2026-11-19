@@ -1,4 +1,4 @@
-// @(#)GridRunnerViewController.swift 3.1.tiles.1 2026/11/05 16:00:00
+// @(#)GridRunnerViewController.swift 3.2.gridauto.1 2026/11/14 09:15:00
 import UIKit
 import AVFoundation
 
@@ -87,12 +87,18 @@ final class GridOverlay: UIView {
 final class GridRunnerViewController: UIViewController {
     private let camera = GridCamera()
     private let link = GridLink()
+    private let control = TrekControl(key:TrekControl.loadKey())
+    private let speech = TrekSpeech()
+    private let imuStatus = UILabel()
+    private let peerStatus = UILabel()
+    private var lastPeerReply = -Double.infinity
     private let preview = GridPreview()
     private let overlay = GridOverlay()
     private let status = UILabel()
     private let network = UILabel()
     private let button = UIButton(type:.system)
     private let ledButton = UIButton(type:.system)
+    private let mothership = UITextField()
     private let direction = UISegmentedControl(items:["Reverse","Forward"])
     private var fields: [UITextField] = []
     private var config = GridConfiguration()
@@ -110,11 +116,20 @@ final class GridRunnerViewController: UIViewController {
            let c = try? JSONDecoder().decode(GridConfiguration.self,from:data),c.valid { config = c }
         let title = UILabel(); title.text = "GridRunner"; title.font = .boldSystemFont(ofSize:24)
         status.numberOfLines = 0; status.font = .monospacedSystemFont(ofSize:13,weight:.regular)
-        status.text = "Align over grout. Start stream, then press Rosie's Clock."
+        status.text = "Align over grout. Start stream for telemetry; start the chosen run on the Pi."
         network.numberOfLines = 0; network.font = .systemFont(ofSize:11)
         let help = UILabel(); help.numberOfLines = 0; help.font = .systemFont(ofSize:12)
-        help.text = "50 mm/s · Clock starts GRID; Stop ends the stream. Yellow: scan rows · green: detected grout · cyan: camera-center target. White dashed: transverse crossing row · orange: tile-edge band. Align the camera over the grout. Motion stops on stale data or hazards."
-        let stack = UIStackView(arrangedSubviews:[title,status,network,help,direction]); stack.axis = .vertical; stack.spacing = 7
+        help.text = "Clock starts WALL on current Pi builds; Stop ends the stream. Yellow: scan rows · green: detected grout · cyan: camera-center target. White dashed: transverse crossing row · orange: tile-edge band. Align the camera over the grout. Motion stops on stale data or hazards."
+        imuStatus.numberOfLines = 0; imuStatus.font = .monospacedSystemFont(ofSize:11,weight:.regular)
+        peerStatus.numberOfLines = 0; peerStatus.font = .systemFont(ofSize:11)
+        peerStatus.text = TrekControl.loadKey() == nil ? "Control disabled: Documents/NavLink.key missing" : "Control: waiting for Pi"
+        let stack = UIStackView(arrangedSubviews:[title,status,network,peerStatus,imuStatus,help,direction]); stack.axis = .vertical; stack.spacing = 7
+        let hostLabel = UILabel(); hostLabel.text = "Mothership"; hostLabel.font = .systemFont(ofSize:12)
+        mothership.borderStyle = .roundedRect; mothership.autocapitalizationType = .none
+        mothership.autocorrectionType = .no; mothership.keyboardType = .URL
+        mothership.text = UserDefaults.standard.string(forKey:"GridRunner.mothership") ?? "pi3.local"
+        let hostRow = UIStackView(arrangedSubviews:[hostLabel,mothership]); hostRow.spacing = 6
+        stack.addArrangedSubview(hostRow)
         direction.selectedSegmentIndex = config.direction < 0 ? 0:1
         let names = ["Lens height (mm)","Top-edge angle (°)","Lens forward (mm)","Lens left (mm)","Steering gain","Correction limit"]
         let values = [config.heightMM,config.yawDegrees,config.forwardMM,config.leftMM,config.gain,config.limit]
@@ -148,7 +163,62 @@ final class GridRunnerViewController: UIViewController {
             controls.widthAnchor.constraint(equalToConstant:200),preview.heightAnchor.constraint(equalToConstant:190),button.heightAnchor.constraint(equalToConstant:56),ledButton.heightAnchor.constraint(equalToConstant:40),
             overlay.leadingAnchor.constraint(equalTo:preview.rotatedContent.leadingAnchor),overlay.trailingAnchor.constraint(equalTo:preview.rotatedContent.trailingAnchor),overlay.topAnchor.constraint(equalTo:preview.rotatedContent.topAnchor),overlay.bottomAnchor.constraint(equalTo:preview.rotatedContent.bottomAnchor)])
         camera.onPacket = { [weak self] p in self?.link.send(p.encoded(),session:p.session) }
-        camera.health.onPacket = { [weak self] p in self?.link.send(p.encoded(),session:p.session) }
+        camera.onMotionPacket = { [weak self] p in self?.link.send(p.encoded(),session:p.session) }
+        camera.health.onPacket = { [weak self] p in
+            self?.link.send(p.encoded(),session:p.session)
+            DispatchQueue.main.async {
+                guard let self = self, self.active, self.session == p.session else { return }
+                self.imuStatus.text = String(format:"IMU %@ · gyro rad/s %+.3f %+.3f %+.3f\na mm/s² %+.0f %+.0f %+.0f · bumps %u",
+                    p.flags & 1 != 0 ? "fresh":"stale",p.values[3],p.values[4],p.values[5],
+                    p.values[0],p.values[1],p.values[2],p.bumps)
+            }
+        }
+        camera.health.onCompassPacket = { [weak self] p in self?.link.send(p.encoded(),session:p.session) }
+        control.send = { [weak self] in self?.link.sendControl($0) }
+        control.snapshot = { [weak self] in
+            guard let self = self else { return [:] }
+            return ["app":"GridRunner", "state":self.active ? "streaming":"stopped",
+                    "battery_percent":UIDevice.current.batteryLevel < 0 ? -1 : Int((UIDevice.current.batteryLevel*100).rounded()),
+                    "battery_state":UIDevice.current.batteryState.rawValue,
+                    "session":String(self.session), "line_valid":self.overlay.packet?.flags == 3,
+                    "tiles":self.overlay.packet?.crossing.count ?? 0, "led_requested":self.led]
+        }
+        control.execute = { [weak self] body,finish in
+            guard let self = self, self.active else { finish("failed","GridRunner stream inactive"); return }
+            switch body["command"] as? String {
+            case "LED_ON", "LED_OFF":
+                let enabled = body["command"] as? String == "LED_ON"
+                self.camera.setTorch(enabled) { [weak self] applied in
+                    guard let self = self else { finish("failed", "Controller unavailable"); return }
+                    if applied {
+                        self.led = enabled
+                        self.ledButton.setTitle(enabled ? "LED: On":"LED: Off", for:.normal)
+                    }
+                    finish(applied ? "completed":"failed", applied ? "LED applied":"LED unavailable or could not apply")
+                }
+            case "STATUS": finish("completed","GridRunner telemetry active")
+            case "SPEAK":
+                guard let text = body["text"] as? String else { finish("failed","SPEAK requires text"); return }
+                self.speech.speak(text,finish:finish)
+            case "SESSION_STOP":
+                self.stop(keepLink:true); finish("completed","GridRunner stream stopped"); self.link.stop()
+            default: finish("failed","Command unsupported by GridRunner")
+            }
+        }
+        link.onHeartbeat = { [weak self] in
+            guard let self = self, self.active else { return }
+            self.control.heartbeat()
+            if ProcessInfo.processInfo.systemUptime-self.lastPeerReply > 6 {
+                self.peerStatus.text = TrekControl.loadKey() == nil ? "Control disabled: Documents/NavLink.key missing" : "Control: awaiting fresh authenticated Pi reply"
+            }
+        }
+        link.onReceive = { [weak self] data in
+            guard let self = self, self.active,
+                  let body = self.control.decode(data), body["target"] as? String == self.control.target else { return }
+            self.lastPeerReply = ProcessInfo.processInfo.systemUptime
+            self.peerStatus.text = "Control: authenticated Pi reply received"
+            self.control.receive(data)
+        }
         link.onStatus = { [weak self] in self?.network.text = $0 }
         camera.onOverlay = { [weak self] p in
             guard let self = self,self.active,self.session == p.session else { return }
@@ -164,6 +234,7 @@ final class GridRunnerViewController: UIViewController {
         }
         camera.onError = { [weak self] message in self?.stop(); self?.status.text = message }
         NotificationCenter.default.addObserver(self,selector:#selector(background),name:UIApplication.willResignActiveNotification,object:nil)
+        NotificationCenter.default.addObserver(self,selector:#selector(cancelSpeech),name:AVAudioSession.interruptionNotification,object:nil)
         UIDevice.current.isBatteryMonitoringEnabled = true
     }
     override func viewDidLayoutSubviews() {
@@ -173,9 +244,17 @@ final class GridRunnerViewController: UIViewController {
     deinit { NotificationCenter.default.removeObserver(self) }
     @objc private func toggleLED() { led.toggle(); camera.setTorch(led); ledButton.setTitle(led ? "LED: On":"LED: Off",for:.normal) }
     @objc private func background() { stop() }
+    @objc private func cancelSpeech() { speech.cancel() }
     @objc private func toggle() {
         if active { stop(); return }
         guard fields.count == 6 else { return }
+        let host = (mothership.text ?? "").trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !host.isEmpty, host.count <= 253,
+              host.unicodeScalars.allSatisfy({ CharacterSet(charactersIn:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-").contains($0) }) else {
+            status.text = "Enter a Mothership hostname or IPv4 address."; return
+        }
+        UserDefaults.standard.set(host,forKey:"GridRunner.mothership")
+        link.configureHost(host)
         let values = fields.compactMap { Double($0.text ?? "") }
         guard values.count == 6 else { status.text = "Enter numeric mount and gain values."; return }
         config.heightMM = values[0]; config.yawDegrees = values[1]; config.forwardMM = values[2]; config.leftMM = values[3]; config.gain = values[4]; config.limit = values[5]
@@ -188,7 +267,7 @@ final class GridRunnerViewController: UIViewController {
         func begin() {
             guard self.request == token else { return }
             self.session = UInt64.random(in:1...UInt64.max); self.active = true
-            self.fields.forEach { $0.isEnabled = false }; self.direction.isEnabled = false
+            self.fields.forEach { $0.isEnabled = false }; self.direction.isEnabled = false; self.mothership.isEnabled = false
             self.button.setTitle("STOP",for:.normal); self.button.backgroundColor = .systemRed
             UIApplication.shared.isIdleTimerDisabled = true
             self.link.start(session:self.session); self.camera.setTorch(self.led)
@@ -205,13 +284,14 @@ final class GridRunnerViewController: UIViewController {
         default: status.text = "Enable camera permission in Settings."
         }
     }
-    private func stop() {
-        request = UUID(); camera.stop(); link.stop(); active = false
+    private func stop(keepLink: Bool = false) {
+        request = UUID(); speech.cancel(); camera.stop(); if !keepLink { link.stop() }; active = false
         batteryTimer?.invalidate(); batteryTimer = nil
-        fields.forEach { $0.isEnabled = true }; direction.isEnabled = true
+        fields.forEach { $0.isEnabled = true }; direction.isEnabled = true; mothership.isEnabled = true
         button.setTitle("Start stream",for:.normal); button.backgroundColor = .systemGreen
         led = false; ledButton.setTitle("LED: Off",for:.normal)
-        overlay.packet = nil; status.text = "Stopped. Align, restart stream, then press Clock for a new run."
+        imuStatus.text = ""; peerStatus.text = "Control stopped"
+        overlay.packet = nil; status.text = "Stopped. Align, restart stream, then start the chosen run on the Pi."
         UIApplication.shared.isIdleTimerDisabled = false
     }
 }

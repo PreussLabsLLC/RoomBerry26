@@ -1,4 +1,4 @@
-# @(#)roomberry_web_test.py 3.2.imu.1 2026/11/12 15:16:02
+# @(#)roomberry_web_test.py 3.2.grid.2 2026/11/13 16:00:00
 """Local console routes, precise JSON identities and safe mission command routing."""
 import io
 import json
@@ -12,6 +12,32 @@ from roomberry_web import command_index, groundhog_snapshot
 
 
 class LocalConsoleTest(unittest.TestCase):
+    def test_distance_buttons_and_commands_route_to_coordinator(self):
+        for action, params in (('start', {'start_mm':'304.8', 'tile_mm':'304.8'}),
+                               ('measure', {'tape_mm':'610'}), ('next', {}), ('rescan', {})):
+            operation = 'grid_distance_'+action
+            self.assertTrue(self.handler._mission_operation(operation, params))
+            self.handler.server.mission.grid_distance_operation.assert_called_with(operation, params)
+            self.assertTrue(any(c['name'] == operation for c in command_index()['commands']))
+        self.handler.server.roomba_control.execute.assert_not_called()
+        self.handler.path = '/'
+        self.handler.do_GET()
+        page = self.handler.wfile.getvalue().decode()
+        for action in ('start', 'measure', 'next', 'rescan'):
+            self.assertIn('data-distance="'+action+'"', page)
+        self.assertIn('id="distance-results"', page)
+
+    def test_http_distance_route_preserves_decimal_measurements(self):
+        # Exercise do_GET, including the legacy query parser, rather than only
+        # the coordinator routing helper: int('304.8') used to fail here.
+        for action, query, expected in (
+                ('start', '&start_mm=304.8&tile_mm=304.8', {'start_mm':'304.8','tile_mm':'304.8'}),
+                ('measure', '&tape_mm=612.5', {'tape_mm':'612.5'})):
+            self.handler.path = '/roomba/?op=grid_distance_'+action+query
+            self.handler.do_GET()
+            self.handler.server.mission.grid_distance_operation.assert_called_with('grid_distance_'+action, expected)
+        self.handler.server.roomba_control.execute.assert_not_called()
+
     def test_restart_oi_uses_coordinator_and_button_is_present(self):
         self.assertTrue(self.handler._mission_operation('restart_oi', {}))
         self.handler.server.mission.restart_oi.assert_called_once_with()

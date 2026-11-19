@@ -1,12 +1,12 @@
 """Connect localization, cookie mapping, navigation, and Roomba control."""
-# @(#)roomberry_mission.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_mission.py 3.2.return.3 2026/11/19 12:38:26
 
 from math import atan2, cos, hypot, isfinite, pi, sin
 from random import uniform, choice
 from threading import Event, RLock, Thread
 from time import monotonic, time
 
-from irobot.openinterface.constants import MODES, ROBOT
+from roomberry_oi_constants import MODES, ROBOT
 
 from roomberry_wheel_speed import MIN_WHEEL_SPEED, wheel_speeds
 from roomberry_motion import MotionComparison
@@ -14,6 +14,7 @@ from roomberry_run_trails import RunTrails
 from roomberry_speech import MODE_CODES
 from roomberry_calibration import CalibrationDrive, MODE_CALIBRATION
 from roomberry_gridrunner import GridDrive, MODE_GRIDRUNNER
+from roomberry_grid_distance import GridDistanceDrive
 from roomberry_tag_return import Tag15Return
 from roomberry_wall import (WallDrive, MODE_WALL, WALL_TARGET_SIGNAL,
                             WALL_TARGET_MIN, WALL_TARGET_MAX, WALL_SENSOR)
@@ -90,7 +91,7 @@ VISIT_RETRY_LATERAL_OFFSETS_MM = (150.0, -150.0, 300.0, -300.0)
 DISCOVERY_REVERSE_SPEED = 50
 DISCOVERY_TURN_SPEED = 50
 WALL_FOLLOW_SPEED = 50
-DISCOVERY_AVOID_SPEED = 40
+DISCOVERY_AVOID_SPEED = MIN_WHEEL_SPEED
 DISCOVERY_AVOID_REVERSE_MM = 35.0
 DISCOVERY_AVOID_FORWARD_MM = 90.0
 DISCOVERY_AVOID_TURN_RAD = pi / 4.0
@@ -149,6 +150,7 @@ class RoomberryMission:
         self.phone_position = None
         self.navlink = None
         self.trek_alignment_config = {}
+        self.imu_heading_nudge_config = {}
         self.run_trails = None
         self.motion_comparison = MotionComparison(logger)
         self._phone_bump_baseline = None
@@ -291,11 +293,12 @@ class RoomberryMission:
                     self.logger.exception('Unable to clear map coverage for WALL run.')
             if mode == MODE_GRIDRUNNER:
                 self.gridrunner = GridDrive(self)
-                try:
-                    self.mapper.clear_coverage()
-                    self.logger.info('Map coverage cleared for GridRunner run; tags retained.')
-                except Exception:
-                    self.logger.exception('Unable to clear map coverage for GridRunner run.')
+                if phone_mode != 'return_to_tag15':
+                    try:
+                        self.mapper.clear_coverage()
+                        self.logger.info('Map coverage cleared for GridRunner run; tags retained.')
+                    except Exception:
+                        self.logger.exception('Unable to clear map coverage for GridRunner run.')
                 self._manual_motion_until = 0.0
                 self.localizer.invalidate_pose()
             if mode == MODE_CALIBRATION:
@@ -412,6 +415,69 @@ class RoomberryMission:
                 raise RuntimeError('GridRunner requires ready sensors and no safety stop')
             if self._mode != MODE_GRIDRUNNER:
                 self.set_mode(MODE_GRIDRUNNER,wake_robot=False)
+
+    def grid_distance_operation(self, operation, parameters):
+        """Start autonomous or tape-paced distance survey; tape recording never moves."""
+        with self._coord_lock:
+            def number(name, default=None):
+                try:
+                    value = float(parameters.get(name, default))
+                except (TypeError, ValueError) as error:
+                    raise ValueError(name+' must be a number') from error
+                if not isfinite(value):
+                    raise ValueError(name+' must be finite')
+                return value
+            if operation == 'grid_distance_start':
+                if set(parameters) - {'start_mm', 'tile_mm', 'autonomous'}:
+                    raise ValueError('Unknown distance survey parameter')
+                start = number('start_mm')
+                tile = number('tile_mm', 305.45)
+                autonomous = str(parameters.get('autonomous', 'true')).lower()
+                if autonomous not in ('true', 'false', '1', '0'):
+                    raise ValueError('autonomous must be true or false')
+                if not 100 <= start < 5000 or not 100 <= tile <= 1000:
+                    raise ValueError('Start distance must be 100–4999 mm; tile pitch 100–1000 mm')
+                if self._mode != MODE_IDLE:
+                    raise ValueError('Stop the current mission before starting the distance survey')
+                if self._scan_active:
+                    raise ValueError('Wait for the current camera scan to finish')
+                self.start_gridrunner()
+                self.gridrunner = GridDistanceDrive(self, start, tile, autonomous in ('true', '1'))
+                return
+            run = self.gridrunner
+            stopped_measure = (isinstance(run, GridDistanceDrive)
+                               and operation == 'grid_distance_measure'
+                               and self._mode == MODE_IDLE and run.stage == 'stopped'
+                               and bool(run.records))
+            if not isinstance(run, GridDistanceDrive) or (self._mode != MODE_GRIDRUNNER and not stopped_measure):
+                raise ValueError('No active tag-15 distance survey')
+            if operation == 'grid_distance_measure':
+                if set(parameters) != {'tape_mm'}:
+                    raise ValueError('tape_mm is required')
+                tape = number('tape_mm')
+                if not 50 <= tape <= 6000:
+                    raise ValueError('Tape distance must be 50–6000 mm')
+                if stopped_measure:
+                    state = self.robot_control.snapshot()
+                    age = state.get('age')
+                    expected = run.origin+run.records[-1]['wheel_distance_mm']
+                    current = float(state.get('distance', float('nan')))
+                    heading = float(state.get('angle', float('nan')))
+                    scan_heading = run.records[-1].get('wheel_heading_deg', run.odom[1])
+                    if (not state.get('ready') or age is None or not 0 <= age <= .5
+                            or state.get('odometry_epoch') != run.epoch or not isfinite(current)
+                            or abs(current-expected) > 10 or not isfinite(heading)
+                            or abs(heading-scan_heading) > 1):
+                        raise ValueError('Cannot attach tape to stopped scan: wheel position changed or sensors stale')
+                run.measure(tape)
+            elif parameters:
+                raise ValueError('This survey command takes no parameters')
+            elif operation == 'grid_distance_next':
+                run.advance()
+            elif operation == 'grid_distance_rescan':
+                run.rescan()
+            else:
+                raise ValueError('Unknown distance survey command')
 
     def start_wall(self):
         """Clock/web entry: arm WALL at fixed raw IR target 30 after tag-16 qualification."""
@@ -1745,7 +1811,7 @@ class RoomberryMission:
                 roam['phase'] = 'release' if contact else 'choose'
             else:
                 self._dispatch(dict(kind=BACK_UP, reason='bump and go retreat',
-                    velocity=-30, max_duration_s=DRIVE_WATCHDOG_SECONDS,
+                    velocity=-MIN_WHEEL_SPEED, max_duration_s=DRIVE_WATCHDOG_SECONDS,
                     continuous=True), pose)
             return True
         if phase == 'release':
@@ -2865,9 +2931,10 @@ class RoomberryMission:
         """Display manual tag-15 experiments without feeding navigation localization."""
         distance, angle = float(state['distance']), float(state['angle'])
         previous = getattr(self, '_run_map', None)
-        if (getattr(self.gridrunner, 'kind', None) == 'return_to_tag15'
+        if (self._mode == MODE_GRIDRUNNER
+                and getattr(self.gridrunner, 'kind', None) in ('return_to_tag15', 'tag15_distance')
                 and self.gridrunner.pose is None):
-            return  # An unlocalized return must never be placed at tag 15.
+            return  # These runs use a tag fix as their map anchor.
         if self._mode == MODE_GRIDRUNNER and self.gridrunner is not None and self.gridrunner.pose is not None:
             pose = dict(self.gridrunner.pose, localized=True)
         elif previous is None:

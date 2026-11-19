@@ -1,10 +1,11 @@
 """GridRunner packets and a grout-line-end out-and-back with tag checkpoints."""
-# @(#)roomberry_gridrunner.py 3.1.tiles.10 2026/11/06
+# @(#)roomberry_gridrunner.py 3.2.return.3 2026/11/19 12:38:26
 import json
 import math
 import struct
 from roomberry_turn_guard import SettledTurn
 from roomberry_phone_bumps import PhoneBumpPolicy
+from roomberry_wheel_speed import MIN_WHEEL_SPEED
 from time import monotonic, time
 
 MODE_GRIDRUNNER = 'gridrunner'
@@ -18,9 +19,7 @@ GRID_FIELDS = ('magic','version','type','length','session','calibration','seq','
 GRID_CROSSING_MAGIC = 0xc7
 GRID_CROSSING_VERSION = 1
 GRID_SPEED = 100
-# Pit-stop bench: firmware raises anything below ~40 mm/s to ~40, so 30 was
-# fictional. Slow/approach/pivot are 40; I/O steps go 40 -> 70 -> 100.
-GRID_SLOW_SPEED = 40
+GRID_SLOW_SPEED = MIN_WHEEL_SPEED
 GRID_APPROACH_SPEED = GRID_SLOW_SPEED
 GRID_MAX_STEERING = .35
 GRID_LOOKAHEAD_MM = 600.
@@ -235,7 +234,10 @@ class GridDrive:
                            tiles=self.crossing_count,
                            crossings=list(self.crossings),
                            crossing_report=self._tile_report())
-        self.mission.logger.warning('GridRunner stopped: %s', reason)
+        self.mission.logger.warning('GridRunner stopped: %s', reason,
+                                    extra=dict(speech_code='RUN_STOPPED',
+                                               speech_detail='Captain, grid run stopped. '+reason+'.',
+                                               speech_announce=True))
         self.mission.set_mode('idle')
 
     def _row(self, method):

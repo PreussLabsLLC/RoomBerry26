@@ -1,4 +1,4 @@
-# @(#)roomberry_mission_test.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_mission_test.py 3.2.return.3 2026/11/19 12:38:26
 import json
 import logging
 import unittest
@@ -797,7 +797,7 @@ class RoomberryMissionTest(unittest.TestCase):
         pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=0)
         command = self.mission._command_for(self._waypoint_action((50, 0)), pose)
         self.assertEqual(command[0], 'drive_straight')
-        self.assertEqual(command[1]['velocity'], 42)
+        self.assertEqual(command[1]['velocity'], 50)
         self.assertIsNone(self.mission._command_for(self._waypoint_action((30, 0)), pose))
         self.assertEqual(self.mission._command_for(
             self._waypoint_action((100, 0)), dict(pose, heading_rad=-0.7))[0], 'spin_left')
@@ -808,11 +808,11 @@ class RoomberryMissionTest(unittest.TestCase):
         pose = dict(localized=True, x_mm=0, y_mm=0, heading_rad=-0.5)
         operation, wheels, _ = self.mission._command_for(self._waypoint_action(), pose)
         self.assertEqual(operation, 'spin_left')
-        self.assertGreaterEqual(wheels['velocity'], 42)
+        self.assertGreaterEqual(wheels['velocity'], 50)
 
-    def test_alignment_pivot_slows_as_error_shrinks(self):
-        self.assertLess(self.mission._turn_action('align', 0.13)['velocity'],
-                        self.mission._turn_action('align', 1.0)['velocity'])
+    def test_alignment_pivot_respects_the_fifty_mm_s_floor(self):
+        for error in (0.13, 1.0):
+            self.assertEqual(self.mission._turn_action('align', error)['velocity'], 50)
 
     def test_sweeping_approach_reaches_goal_with_acceleration_limits_without_pivots(self):
         self.mission.mapper = RoomberryMapper(60, 60, 174, cell_size_mm=87)
@@ -1052,7 +1052,7 @@ class RoomberryMissionTest(unittest.TestCase):
                 self.mapper.motion_is_clear.return_value = True
                 with patch('roomberry_mission.monotonic', return_value=101), patch.object(self.mission, '_dispatch') as dispatch:
                     self.mission._bump_go_tick(state, pose, roam)
-                    self.assertEqual(dispatch.call_args.args[0]['velocity'], -30)
+                    self.assertEqual(dispatch.call_args.args[0]['velocity'], -50)
                     state.update(distance=965, sensors=self.discovery_sensors())
                     self.mission._bump_go_tick(state, pose, roam)
                     self.assertEqual(roam['phase'], 'choose')
@@ -1803,7 +1803,7 @@ class RoomberryMissionTest(unittest.TestCase):
         calls = self.robot.execute.call_args_list
         drive = [c for c in calls if c.args[0] == 'drive_straight']
         self.assertTrue(drive)
-        self.assertEqual(drive[-1].kwargs['velocity'], 42)
+        self.assertEqual(drive[-1].kwargs['velocity'], 50)
 
     def test_single_proximity_spike_does_not_start_detour(self):
         self.use_visit_landmarks()
@@ -1910,7 +1910,7 @@ class RoomberryMissionTest(unittest.TestCase):
         self.assertEqual(self.mission._discovery_stage, 'avoid_back')
         self.robot.execute.reset_mock()
         self.mission._discovery_tick(state, pose, False, None)
-        self.robot.execute.assert_any_call('drive_straight', velocity=-40)
+        self.robot.execute.assert_any_call('drive_straight', velocity=-50)
         state['travelled_distance'] = 1125
         self.mission._discovery_tick(state, pose, False, None)
         self.assertEqual(self.mission._discovery_stage, 'avoid_turn')
@@ -2079,7 +2079,7 @@ class RoomberryMissionTest(unittest.TestCase):
         }
 
         self.mission._discovery_tick(state, pose, False, None)
-        self.robot.execute.assert_any_call("drive_straight", velocity=-40)
+        self.robot.execute.assert_any_call("drive_straight", velocity=-50)
 
         state["travelled_distance"] = (
             1000.0 + DISCOVERY_AVOID_REVERSE_MM

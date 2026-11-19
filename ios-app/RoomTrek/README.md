@@ -1,4 +1,4 @@
-<!-- @(#)README.md 3.2.imu.1 2026/11/12 15:16:02 -->
+<!-- @(#)README.md 3.2.nudge.1 2026/11/12 18:01:48 -->
 # RoomTrek
 
 For the phone-by-phone walkthrough, see [Room scan and transfer guide](ROOM-SCAN-GUIDE.md).
@@ -304,6 +304,7 @@ runs or guarantee coverage/accuracy improvement. See
 Build3.2.imu.1 adds a separate Core Motion stream alongside ARKit: attitude,
 gyro, gravity, user acceleration and integrated vertical gyro rotation. The Pi
 web console compares relative gyro, ARKit and wheel turns; it hides unavailable
-or stale comparisons. This is diagnostic only and cannot steer or correct pose.
+or stale comparisons. The comparison is diagnostic. An optional bounded tag-homing heading nudge
+can use the separate gyro stream; see roomberry/docs/imu-heading-nudge.md.
 See [type7packet and comparison details](NAVLINK.md#type-7--independent-core-motion-diagnostics-32imu1).
 The iPhone app and Pi receiver must both be updated; the existing key remains.

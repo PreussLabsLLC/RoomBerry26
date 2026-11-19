@@ -1,11 +1,19 @@
 """Standalone tag-15 homing from a fresh fix or a still-valid wheel trace."""
-# @(#)roomberry_tag_return.py 3.2.pulse.1 2026/11/12 16:09:50
+# @(#)roomberry_tag_return.py 3.2.return.2 2026/11/19 12:37:43
 import math
 from time import monotonic, time
-from roomberry_gridrunner import GridDrive
+from roomberry_motion import GyroHeadingNudge
+from roomberry_gridrunner import GridDrive, grid_correction
 from roomberry_wheel_speed import MIN_WHEEL_SPEED
 
 TAG_PULSE_SECONDS = .10
+TAG_RETURN_VISUAL_MAX_M = 5.0
+TAG_BEARING_TRAVEL_MM = 3000.
+TAG_LINE_SPEED = 70
+TAG_VALIDATION_RANGE_MM = 300
+TAG_VALIDATION_RETRY_MAX_RANGE_MM = 325
+TAG_VALIDATION_RETRY_TARGET_MM = 290
+TAG_VALIDATION_RETRY_TRAVEL_MM = 50
 
 
 class Tag15Return(GridDrive):
@@ -13,6 +21,7 @@ class Tag15Return(GridDrive):
 
     def __init__(self, mission, state, prior=None):
         super().__init__(mission)
+        self.imu_heading = GyroHeadingNudge(mission.logger, mission.imu_heading_nudge_config)
         row = self._row('latest_grid_observation')
         if row is not None and 0 <= monotonic()-row.get('received_monotonic', -1e9) <= .5:
             self.target_offset_mm = float(row['lens_left_mm'])
@@ -37,6 +46,10 @@ class Tag15Return(GridDrive):
         self.search_origin = float(state['angle'])
         self.search_index = 0
         self.search_target = None
+        self.bearing_candidate = None
+        self.target_bearing = None
+        self.bearing_travel = 0.
+        self.bearing_active = False
         self.distance_at_scan = float(state['distance'])
         self.distance_at_fix = float(state['distance'])
         self.turning = False
@@ -47,10 +60,13 @@ class Tag15Return(GridDrive):
         self.approach_sample = self.approach_quiet_since = None
         self.approach_empty_pulses = 0
         self.approach_start_distance = None
+        self.validation_retry_origin = None
         self.phone_identity = self.phone_bumps = None
         self.grout_source = None
         self.line_frames = 0
         self.line_seq = None
+        self.line_ready = False
+        self.line_row = None
         self.prior_valid = False
         if (prior is not None and prior.pose is not None and prior.epoch == self.epoch
                 and prior.odom is not None and abs(state['distance']-prior.odom[0]) <= 150
@@ -113,6 +129,14 @@ class Tag15Return(GridDrive):
         return False
 
     def _resume_visible_line(self, state, health, scan_active):
+        """Qualify optional grout steering without leaving the tag controller.
+
+        A standalone return must retain its rescan, final-fix and validation
+        stages. The old GridDrive handoff silently replaced them with bumper
+        arrival and a cruise-speed scan-free path.
+        """
+        self.line_ready = False
+        self.line_row = None
         row = self._row('latest_grid_observation')
         now = monotonic()
         known_homeward = (self.pose is not None and
@@ -120,11 +144,13 @@ class Tag15Return(GridDrive):
         if self.grout_source is not None and self.grout_source.initial_heading is not None:
             known_homeward = known_homeward or abs(self._wrap(math.radians(
                 state['angle']-self.grout_source.initial_heading))) <= .35
-        good = (not scan_active and self.stage != 'scanning' and self.pose is not None
-                and (self.tag_fix_applied or self.prior_valid)
-                and known_homeward
-                and row is not None and row['flags'] == 3 and row['confidence'] >= .75
+        good = (not scan_active and self.stage == 'return' and self.pose is not None
+                and (self.tag_fix_applied or self.prior_valid) and known_homeward
+                and len(self.route) == 1
+                and row is not None and row['flags'] == 3 and row['confidence'] >= .80
                 and row['direction'] == -1
+                and abs(row.get('line_angle_rad', math.inf)) <= math.radians(5)
+                and abs(row.get('offset_mm', math.inf)-row.get('lens_left_mm', 0)) <= 30
                 and (row['session'],row['calibration']) == (health['session'],health['calibration'])
                 and 0 <= now-row['received_monotonic'] <= .5
                 and 0 <= now-row['frame_monotonic'] <= .25)
@@ -141,15 +167,9 @@ class Tag15Return(GridDrive):
                 self.turn_control.reset()
             self.mission.robot_control.renew_motion_lease(.6)
             return True
-        self._pause('Tag homing stopped to resume grout line')
-        source = self.grout_source
-        if source is None:
-            source = GridDrive(self.mission)
-            source.origin = float(state['distance'])
-            source.started = self.started
-            source.observation_started = self.started
-        source.resume_line_return(self, state, row, health)
-        return True
+        self.line_ready = True
+        self.line_row = row
+        return False
 
     def start(self):
         self._request_fix('localize')
@@ -175,10 +195,47 @@ class Tag15Return(GridDrive):
             return None
         if self.all_tag_localizer is None:
             self.all_tag_localizer = AprilTagLocalizer(source.landmarks, source.camera_from_robot,
-                max_tag_distance_m=2.5, max_reprojection_error=source.max_reprojection_error,
+                max_tag_distance_m=TAG_RETURN_VISUAL_MAX_M,
+                max_reprojection_error=source.max_reprojection_error,
                 min_decision_margin=source.min_decision_margin, room_bounds_mm=source.room_bounds_mm)
         self.all_tag_localizer.invalidate_pose()
         return self.all_tag_localizer.update(tuple(detections), 0, 0)
+
+    def _visible_bearing(self, detections, state):
+        """Record direction only; never manufacture a room position from range."""
+        source = self.mission.localizer
+        candidates = []
+        for row in detections:
+            if (row.get('family'), row.get('id')) != ('tag16h5', 15):
+                continue
+            try:
+                pose = row['tag_pose_camera']
+                t = [float(v) for v in pose['translation_m']]
+                margin, error = float(row['decision_margin']), float(pose['error'])
+                if (len(t) != 3 or not all(math.isfinite(v) for v in t+[margin,error])
+                        or row.get('hamming') != 0 or margin < 2*source.min_decision_margin
+                        or not 0 <= error <= source.max_reprojection_error/2
+                        or not 2.5 < math.sqrt(sum(v*v for v in t)) <= TAG_RETURN_VISUAL_MAX_M):
+                    continue
+                transform = source.camera_from_robot
+                # Invert rigid camera_from_robot: R transpose * (point - t).
+                robot = [sum(transform[j][i]*(t[j]-transform[j][3])
+                             for j in range(3)) for i in range(3)]
+                bearing = math.atan2(robot[1], robot[0])
+                if robot[0] <= 0 or abs(bearing) > math.radians(35):
+                    continue
+                candidates.append((margin, bearing))
+            except (KeyError, TypeError, ValueError, IndexError):
+                continue
+        if not candidates:
+            return None
+        bearing = max(candidates)[1]
+        result = dict(heading_deg=float(state['angle'])+math.degrees(bearing),
+                      bearing_deg=math.degrees(bearing), wheel_heading_deg=float(state['angle']),
+                      captured_at=self.mission.camera.last_detection_time,
+                      distance_mm=float(state['distance']))
+        self.mission.logger.info('Tag 15 visible bearing (not a position fix): %s', result)
+        return result
 
     def _scan_result(self, state):
         captured = self.mission.camera.last_detection_time
@@ -211,28 +268,37 @@ class Tag15Return(GridDrive):
         self.mission._shutdown.wait(.35)
         self.fix_candidate = dict(pose) if valid else None
         if consistent:
+            self.bearing_active = False
+            self.bearing_candidate = None
             self.pose = {key:float(pose[key]) for key in ('x_mm','y_mm','heading_rad')}
             self.tag_fix_applied = True
             self.prior_valid = True
             self._relocation_pending = False
             self.odom = (float(state['distance']), float(state['angle']))
+            try:
+                self.imu_heading.bind(self.pose,state,self.mission.navlink,captured)
+            except Exception:
+                self.imu_heading.reset()
+                self.mission.logger.exception('IMU anchor unavailable; using wheel heading.',extra=dict(speech_announce=False))
             self.distance_at_scan = float(state['distance'])
             self.distance_at_fix = float(state['distance'])
             self.fix_attempts = 0
             self.fix_candidate = None
             if self.scan_purpose == 'validate':
                 distance = self._range(state)
-                if distance > 300:
-                    self.abort('tag15 validation outside 300mm; robot remains stopped')
+                if distance <= TAG_VALIDATION_RANGE_MM:
+                    self.stage = 'complete'
+                    self.result = dict(status='complete', reason='tag15 validated within 300mm',
+                                       final_pose=dict(self.pose), range_mm=distance, checkpoints=list(self.records))
+                    self.mission.logger.info('Tag15 validation complete: range_mm=%.1f', distance,
+                        extra=dict(speech_code='TAG15_VALIDATED', speech_announce=True))
+                    self.mission.set_mode('idle')
                     return
-                self.stage = 'complete'
-                self.result = dict(status='complete', reason='tag15 validated within 300mm',
-                                   final_pose=dict(self.pose), range_mm=distance, checkpoints=list(self.records))
-                self.mission.logger.info('Tag15 validation complete: range_mm=%.1f', distance,
-                    extra=dict(speech_code='TAG15_VALIDATED', speech_announce=True))
-                self.mission.set_mode('idle')
-                return
-            if self.scan_purpose == 'final':
+                if (self.validation_retry_origin is not None
+                        or distance > TAG_VALIDATION_RETRY_MAX_RANGE_MM):
+                    self.abort(f'tag15 validation outside 300mm ({distance:.1f} mm); robot remains stopped')
+                    return
+            if self.scan_purpose in ('final', 'validate'):
                 h = self.tag['heading']
                 dx, dy = self.tag['x']-self.pose['x_mm'], self.tag['y']-self.pose['y_mm']
                 gap = dx*math.cos(h)+dy*math.sin(h)
@@ -240,8 +306,13 @@ class Tag15Return(GridDrive):
                 if gap < self.tag['radius']-50 or abs(lateral-self.target_offset_mm) > 150:
                     self.abort('tag pose is outside the final approach corridor; reposition before retrying')
                     return
-                self.final_fix = True
-                self.last_tag_distance = float(state['distance'])
+                if self.scan_purpose == 'validate':
+                    self.validation_retry_origin = float(state['distance'])
+                    self.mission.logger.info('Tag15 validation retry: confirmed range_mm=%.1f; creeping toward %.0f mm',
+                                             distance, TAG_VALIDATION_RETRY_TARGET_MM)
+                else:
+                    self.final_fix = True
+                    self.last_tag_distance = float(state['distance'])
                 self.stage = 'approach'
             else:
                 self.stage = 'return'
@@ -258,6 +329,36 @@ class Tag15Return(GridDrive):
         if getattr(self, '_relocation_pending', False):
             self.abort('stationary relocation could not be confirmed; robot remains stopped')
             return
+        if self.scan_purpose == 'localize' and not valid and not self.prior_valid:
+            bearing = self._visible_bearing(self.mission.camera.latest_detections, state)
+            if bearing is not None:
+                previous = self.bearing_candidate
+                self.bearing_candidate = bearing
+                if previous is None or abs(self._wrap(math.radians(
+                        bearing['heading_deg']-previous['heading_deg']))) > math.radians(3):
+                    if self.fix_attempts >= 3:
+                        self.abort('visible tag bearing could not be confirmed')
+                    else:
+                        self._request_fix('localize')
+                    return
+                old = self.target_bearing
+                if old is not None:
+                    turn = bearing['wheel_heading_deg']-old['wheel_heading_deg']
+                    before, after = old['bearing_deg'], bearing['bearing_deg']
+                    if abs(turn) >= 3 and turn*before > 0 and before*after > 0 and abs(after)-abs(before) > 5:
+                        self.abort('tag bearing moved away after steering; robot remains stopped')
+                        return
+                self.target_bearing = bearing
+                self.bearing_candidate = None
+                self.bearing_active = True
+                self.fix_attempts = 0
+                self.stage = 'bearing'
+                self._begin_motion(state)
+                return
+            self.bearing_candidate = None
+            if self.bearing_active:
+                self.abort('visible target lost during bearing approach; robot remains stopped')
+                return
         if self.scan_purpose not in ('final', 'validate') and self.prior_valid and not valid:
             if self.tag_fix_applied and abs(state['distance']-self.distance_at_fix) >= 1200:
                 self.abort('tag return lost localization after 1200 mm without a new fix')
@@ -348,11 +449,6 @@ class Tag15Return(GridDrive):
         if not self._integrate(state):
             return
         bumps = sensors.bumps_and_wheel_drops
-        if (bumps.bump_left or bumps.bump_right) and self._expected_contact():
-            self.stage = 'complete'
-            self.result = dict(status='complete', reason='tag 15 front bumper contact', final_pose=dict(self.pose))
-            self.mission.set_mode('idle')
-            return
         if (bumps.bump_left or bumps.bump_right or state.get('safety_latched')
                 or state.get('motion_lease_expired') or state.get('battery_status') in ('low','critical','charging')):
             self.abort('return blocked by bumper, safety latch, motion lease or battery state')
@@ -360,6 +456,16 @@ class Tag15Return(GridDrive):
         if now-self.started > 600:
             self.abort('return to tag 15 timed out')
             return
+        if self.stage != 'scanning' and not scan_active:
+            try:
+                self.imu_heading.update(self.pose,state,self.mission.navlink,now)
+            except Exception:
+                self.imu_heading.reset()
+                self.mission.logger.exception('IMU heading nudge unavailable; using wheel heading.',extra=dict(speech_announce=False))
+        if self.last is not None:
+            self.last['imu_heading_nudge'] = self.imu_heading.snapshot()
+        self.line_ready = False
+        self.line_row = None
         health = self._row('latest_health_observation')
         if health is not None and 0 <= now-health.get('received_monotonic', -1e9) <= .5:
             identity = (health['session'], health['calibration'])
@@ -390,7 +496,19 @@ class Tag15Return(GridDrive):
         elif now-self.progress_at > 3:
             self.abort('no wheel progress during tag return')
             return
-        if self.stage == 'searching':
+        if self.stage == 'bearing':
+            bearing = self.target_bearing
+            travel = abs(state['distance']-bearing['distance_mm'])
+            if time()-bearing['captured_at'] > 20 or self.bearing_travel+travel >= TAG_BEARING_TRAVEL_MM:
+                self.abort('bearing approach exceeded freshness or travel limit')
+                return
+            error = self._wrap(math.radians(bearing['heading_deg']-state['angle']))
+            if travel >= 150:
+                self.bearing_travel += travel
+                self._request_fix('localize')
+                return
+            speed = TAG_LINE_SPEED
+        elif self.stage == 'searching':
             error = math.radians(self.search_target-state['angle'])
             if abs(error) <= math.radians(2):
                 self._request_fix('localize')
@@ -420,16 +538,26 @@ class Tag15Return(GridDrive):
                 target = self.route[0]
             else:
                 target = self._target(self.tag['radius'])
-                if self._range(state) < self.tag['radius']-50 or state['distance']-self.last_tag_distance > 750:
+                distance = self._range(state)
+                if distance < self.tag['radius']-50 or state['distance']-self.last_tag_distance > 750:
                     self.abort('tag return final approach exceeded its bounded travel')
                     return
-                if self._range(state) <= 300:
+                validation_target = TAG_VALIDATION_RANGE_MM
+                if self.validation_retry_origin is not None:
+                    if abs(state['distance']-self.validation_retry_origin) >= TAG_VALIDATION_RETRY_TRAVEL_MM:
+                        self.abort('tag15 validation retry reached its 50 mm travel limit')
+                        return
+                    validation_target = TAG_VALIDATION_RETRY_TARGET_MM
+                if distance <= validation_target:
                     self._request_fix('validate')
                     return
             dx, dy = target[0]-self.pose['x_mm'], target[1]-self.pose['y_mm']
             desired = self.tag['heading'] if self.stage == 'approach' and math.hypot(dx,dy) <= 50 else math.atan2(dy,dx)
             error = self._wrap(desired-self.pose['heading_rad'])
-            speed = MIN_WHEEL_SPEED if self.stage == 'approach' else 50
+            speed = MIN_WHEEL_SPEED if self.stage == 'approach' else TAG_LINE_SPEED if self.line_ready else 50
+        if self.stage == 'return' and self.line_ready:
+            row = self.line_row
+            error = row['line_angle_rad'] + math.atan2(row['offset_mm']-row['lens_left_mm'], 600.)
         sign = 1 if error > 0 else -1
         continuing = self.turn_control.phase == 'turning' and self.turn_control.sign == sign
         threshold = 2 if continuing or self.stage in ('aiming','searching') else 5
@@ -440,7 +568,16 @@ class Tag15Return(GridDrive):
             action = dict(kind='turn', velocity=MIN_WHEEL_SPEED, steering=sign)
         else:
             left = right = speed
-            action = dict(kind='drive', velocity=speed, steering=0)
+            correction = 0.
+            if self.stage == 'return' and self.line_ready:
+                row = self.line_row
+                correction = grid_correction(row['offset_mm'], row['line_angle_rad'], 1,
+                    2*row['gain'], min(.35, row['correction_limit']), row['lens_left_mm'])
+                left, right = int(speed*(1-correction)), int(speed*(1+correction))
+            elif self.stage == 'bearing':
+                correction = max(-.2, min(.2, 2*error))
+                left, right = int(speed*(1-correction)), int(speed*(1+correction))
+            action = dict(kind='drive', velocity=speed, steering=correction)
         if self.pose is not None and (self.stage != 'approach' or self._range(state) > self.tag['radius']+200):
             clear = self.mission.mapper.motion_is_clear(self.pose, speed,
                 (right-left)/235., .6)
@@ -455,11 +592,15 @@ class Tag15Return(GridDrive):
         if not ready:
             left = right = speed = 0
         self.last = dict(stage=self.stage, tracking='tag return',
+            imu_heading_nudge=self.imu_heading.snapshot(),
             pulse_seconds=TAG_PULSE_SECONDS if self.turning or self.stage == 'approach' else None, steering_mode='settling' if not ready else 'pivot' if self.turning else 'straight',
             heading_error_rad=error, velocity_mm_s=speed, left_velocity_mm_s=left,
             right_velocity_mm_s=right, wheel_distance_mm=state['distance']-self.origin,
             wheel_heading_deg=state['angle'], tag_distance_mm=None if self.pose is None else self._range(state),
-            offset_mm=None, tracking_error_mm=None, correction=0, tag_fix_applied=self.tag_fix_applied)
+            offset_mm=self.line_row['offset_mm'] if self.line_ready else None,
+            tracking_error_mm=self.line_row['offset_mm']-self.line_row['lens_left_mm'] if self.line_ready else None,
+            correction=action.get('steering',0) if not self.turning else 0,
+            line_guidance=self.line_ready, tag_fix_applied=self.tag_fix_applied)
         self.mission.logger.info('Return to tag 15 sample: %s', self.last)
         try:
             self.mission.robot_control.renew_motion_lease(.6)

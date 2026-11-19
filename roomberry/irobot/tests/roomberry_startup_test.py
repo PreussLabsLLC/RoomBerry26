@@ -1,4 +1,4 @@
-# @(#)roomberry_startup_test.py 3.1.grout.19 2026/10/28 20:30:00
+# @(#) roomberry_startup_test.py 3.2.flat.1 2026/11/19 11:56:56
 """Serial startup checks without robot hardware."""
 import importlib.util
 import itertools
@@ -85,7 +85,7 @@ class StartupTest(unittest.TestCase):
         robot.firmware_release = '3.2.6'
         controller = RobotCommandArbiter.__new__(RobotCommandArbiter)
         controller.logger = logging.getLogger('StartupTest')
-        with patch.dict(sys.modules, {'irobot.robots.create2': driver}), \
+        with patch.dict(sys.modules, {'roomberry_create2': driver}), \
                 patch('roomberry_control.reset_and_identify', return_value={
                     'boot_message': 'boot', 'firmware_version': 'release-test',
                     'firmware_release': '3.2.6'}) as reset:
@@ -119,7 +119,7 @@ class StartupTest(unittest.TestCase):
         driver.Create2.side_effect = TypeError('unsupported argument')
         controller = RobotCommandArbiter.__new__(RobotCommandArbiter)
         controller.logger = Mock()
-        with patch.dict(sys.modules, {'irobot.robots.create2': driver}), \
+        with patch.dict(sys.modules, {'roomberry_create2': driver}), \
                 patch('roomberry_control.reset_and_identify', return_value={}), \
                 patch('roomberry_control.sleep') as sleep:
             with self.assertRaises(TypeError):
